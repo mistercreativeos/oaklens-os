@@ -9,7 +9,7 @@
 // PREPAINT_CSP_HASH must match the byte-exact contents of that inline block;
 // tests/csp.test.js recomputes it from the served pages and fails if it drifts.
 
-import siteConfig from '../../site.config.js';
+import siteConfig from './config.js';
 import { cdnBase } from './site.js';
 
 export const PREPAINT_CSP_HASH = "'sha256-eKGihvdTeSS/Kojs21/kofBNpwKQjXgvZtiAkYR2Z4c='";

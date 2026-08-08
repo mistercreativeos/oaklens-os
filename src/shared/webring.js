@@ -19,7 +19,7 @@
 // site-meta route can share it without a cycle (site-meta already imports from
 // edge/chrome.js).
 
-import siteConfig from '../../site.config.js';
+import siteConfig from './config.js';
 
 export const RING_HOST = 'analogs.network';
 export const RING_URL = `https://${RING_HOST}`;

@@ -146,6 +146,7 @@ For the curious, or anyone deciding whether to trust it:
 |------|--------------|
 | [Install guide](https://os.oaklens.art/install) | The interactive walkthrough, one step at a time |
 | [setup.md](setup.md) | Deploying and operating an instance: accounts, secrets, storage, the console |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in the engine, and whether you need to do anything about it |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | The engine-vs-instance model and the ground rules |
 | [SECURITY.md](SECURITY.md) | How to report a vulnerability privately |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | How we treat each other here |

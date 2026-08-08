@@ -9,7 +9,7 @@
 // Extracted from worker.js (decomposition, manual §6.7). Coordinates come from
 // site.config.js → location.coords, so nothing here is instance-hardcoded.
 
-import siteConfig from '../../site.config.js';
+import siteConfig from '../shared/config.js';
 
 const wxCacheKey = (origin) => `${origin}/__wx_cache`;
 const WX_FRESH_MS = 90 * 60 * 1000; // revalidate in the background after 90 min

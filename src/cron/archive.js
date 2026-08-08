@@ -6,7 +6,7 @@
 // per-minute rate limit; a 429 stops the run early and the next daily tick
 // resumes. Extracted from worker.js (decomposition, manual §6.7).
 
-import siteConfig from '../../site.config.js';
+import siteConfig from '../shared/config.js';
 import { publicPages, pageDisabled } from '../shared/pages.js';
 
 // Built from PUBLIC_PAGES (the sitemap list) against the configured canonical

@@ -10,7 +10,7 @@
 //
 // worker.js re-exports _navLinksHtml for tests/page-gate.test.js.
 
-import siteConfig from '../../site.config.js';
+import siteConfig from '../shared/config.js';
 import { cdnBase, siteMetaTags, entityJsonLd, wordmark, wordmarkHtml, locationLabel } from '../shared/site.js';
 import { pageDisabled } from '../shared/pages.js';
 import { webringNode, ringNodeId, ringHref } from '../shared/webring.js';

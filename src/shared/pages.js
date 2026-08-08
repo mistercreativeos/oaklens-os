@@ -6,7 +6,7 @@
 // site.config.js. worker.js re-exports pageDisabled/publicPages so the public
 // contract (and tests/page-gate.test.js) is unchanged.
 
-import siteConfig from '../../site.config.js';
+import siteConfig from './config.js';
 
 // Every public page. Shared by the sitemap and the daily Wayback-archive cron.
 export const PUBLIC_PAGES = ['/', '/about', '/archive', '/field-notes', '/support', '/wall'];

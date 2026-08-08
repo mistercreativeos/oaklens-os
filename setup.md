@@ -226,6 +226,11 @@ git merge upstream/main
 Run `npm test` afterwards, and if it's green, `git push origin main` — your site
 redeploys itself.
 
+**Read [CHANGELOG.md](CHANGELOG.md) first.** It lists what changed since your
+last merge, and flags the rare entry that needs you to *do* something (create a
+Cloudflare resource, change a setting) rather than just merge. Anything not
+flagged is safe to take without reading further.
+
 **Two files will conflict, and it's the same two every time:** `site.config.js`
 and `wrangler.jsonc`. That's not a bug. Those hold *your* identity and *your*
 Cloudflare resources, while the engine ships example versions of both. **Always

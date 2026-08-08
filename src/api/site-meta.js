@@ -9,7 +9,7 @@
 //   GET /api/buffer-summary    — ~120-byte precomputed buffer counts
 //   GET /.well-known/analogs.txt — webring ownership claim (config-gated)
 
-import siteConfig from '../../site.config.js';
+import siteConfig from '../shared/config.js';
 import { cdnBase } from '../shared/site.js';
 import { PAGE_ROUTES, pageDisabled, publicPages } from '../shared/pages.js';
 import { configuredNode, analogsToken } from '../shared/webring.js';

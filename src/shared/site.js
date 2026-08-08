@@ -1,6 +1,6 @@
 // Config-derived helpers shared by worker.js and the portal worker.
 
-import siteConfig from '../../site.config.js';
+import siteConfig from './config.js';
 import { escapeHtml } from './text.js';
 
 // The CDN root for image/video assets: the configured custom domain, or the

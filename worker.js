@@ -1,7 +1,7 @@
 import {
   createRawToken, sha256Hex, verifyShellRequest,
 } from './src/shared/auth.js';
-import siteConfig from './site.config.js';
+import siteConfig from './src/shared/config.js';
 import { withCors, handleCORS, demoModeRes } from './src/shared/http.js';
 import { securityHeaders, withCsp } from './src/shared/csp.js';
 import { readCachedTemp, refreshLocalTemp } from './src/edge/weather.js';
