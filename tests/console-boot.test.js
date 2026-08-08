@@ -296,6 +296,65 @@ describe('build stamp', () => {
   });
 });
 
+// The first-run note (2026-08-08 cold run). A stranger reached a live site and
+// a working console and then had to ask how to get rid of the sample photos,
+// how to change the hero, and whether link previews were on. Every answer
+// existed and none was anywhere they would look.
+//
+// Tested here rather than by reading the source, because the failure modes are
+// both behavioural: showing to someone who has been running the site for a year
+// (patronising, and they cannot make it stop), and never showing at all
+// (silently useless). Both need a real DOM and the real markup.
+describe('the first-run welcome', () => {
+  const card = () => document.getElementById('welcome-card');
+  const reset = () => {
+    localStorage.removeItem('oaklens-console-welcomed');
+    card().classList.add('hidden');
+    card().classList.remove('open');
+  };
+
+  it('shows on a console with nothing in it', () => {
+    reset();
+    window.maybeShowWelcome({ posts: [], buffer: [], archive: [], wallpapers: [], library: [] });
+    expect(card().classList.contains('hidden'), 'a brand new owner should see it').toBe(false);
+  });
+
+  it('stays away from a site that already has work in it', () => {
+    reset();
+    window.maybeShowWelcome({ posts: [], buffer: [{ id: 'f1' }], archive: [], wallpapers: [], library: [] });
+    expect(card().classList.contains('hidden')).toBe(true);
+  });
+
+  it('does not lie in wait for the day an existing site empties its buffer', () => {
+    // The subtle one. Skipping without recording it leaves the card primed, so
+    // a year-old site that clears its buffer gets welcomed to its new space.
+    reset();
+    window.maybeShowWelcome({ posts: [{ id: 'p1' }], buffer: [], archive: [], wallpapers: [], library: [] });
+    expect(localStorage.getItem('oaklens-console-welcomed')).toBe('1');
+  });
+
+  it('shows once, then never again', () => {
+    reset();
+    const empty = { posts: [], buffer: [], archive: [], wallpapers: [], library: [] };
+    window.maybeShowWelcome(empty);
+    window.dismissWelcome();
+    expect(localStorage.getItem('oaklens-console-welcomed')).toBe('1');
+    card().classList.add('hidden');
+    window.maybeShowWelcome(empty);
+    expect(card().classList.contains('hidden'), 'dismissed means dismissed').toBe(true);
+  });
+
+  it('answers the four questions the cold run actually asked', () => {
+    // Content, not chrome: this card exists for these specific unknowns, and a
+    // future tidy-up that drops one silently removes the only place it is said.
+    const text = card().textContent;
+    expect(text, 'the sample photographs').toMatch(/sample/i);
+    expect(text, 'where the hero image comes from').toMatch(/folioHero/);
+    expect(text, 'link previews are already on').toMatch(/link preview/i);
+    expect(text, 'it installs as an app').toMatch(/install/i);
+  });
+});
+
 describe('long-press registry', () => {
   const bufferTarget = () => window._registeredLongPress().find((t) => t.hostId === 'buffer-display');
 

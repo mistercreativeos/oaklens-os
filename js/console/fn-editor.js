@@ -190,11 +190,28 @@ export function nextFnId() {
   return "fn-" + String(maxNum + 1).padStart(3, "0");
 }
 
+// A note you have not named is still a note. The cold run put it exactly right:
+// the cursor blinks in an editor that silently refuses to keep anything, which
+// is a poor first impression from a surface whose own header advertises
+// AUTO-SAVE. So the title is required to PUBLISH — a post going out into the
+// world under "Draft 2026-08-08 15:42" helps nobody — and not to save.
+//
+// Untitled drafts get a timestamp for a name so they are still findable in the
+// drafts picker, which is the only thing the name was ever load-bearing for.
+function draftStamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `Draft ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} `
+       + `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+export const _draftStamp = draftStamp;
+const isPlaceholderTitle = (t) => !t || /^Draft \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(t);
+export const _isPlaceholderTitle = isPlaceholderTitle;
+
 export function fnStage(explicitStatus = null) {
   if (!fnCurrentId) return toast("click + New Draft first", "error");
   let fn_id = document.getElementById("fn-id").value.trim();
-  const title = document.getElementById("fn-title").value.trim();
-  if (!title) return toast("title required", "error");
+  let title = document.getElementById("fn-title").value.trim();
   const slot = document.getElementById("fn-hero-slot");
 
   const existingPost = STATE.posts.find(p => p.id === fnCurrentId);
@@ -205,6 +222,22 @@ export function fnStage(explicitStatus = null) {
     finalStatus = existingPost.status || "published";
   } else {
     finalStatus = "draft";
+  }
+
+  // Gate on the RESOLVED status, not the argument. `fnStage()` with no argument
+  // inherits the post's existing status, so keying off `explicitStatus` would
+  // let an edit to an already-published post go out under a placeholder name.
+  if (finalStatus === "published") {
+    // Ask, rather than refuse. "title required" named the problem and left you
+    // to find it; this puts the cursor in the field that needs you.
+    if (isPlaceholderTitle(title)) {
+      document.getElementById("fn-title").focus();
+      toast("Give it a title before it goes out", "error");
+      return;
+    }
+  } else if (!title) {
+    title = draftStamp();
+    document.getElementById("fn-title").value = title;
   }
 
   // Claim an fn-NNN the moment a draft is staged for publish (not before). Drafts keep
@@ -427,6 +460,16 @@ export function fnRender() {
 }
 
 export function renderFN() {
+  // The editor is ALWAYS live. Opening Field Notes used to give you a blinking
+  // cursor in a box that refused to keep anything, because every save path
+  // starts `if (!fnCurrentId) return` and nothing had created a draft — you had
+  // to know to press + NEW DRAFT first. Nothing on screen said so.
+  //
+  // Creating one here rather than at the view switch covers every way in: boot,
+  // the sidebar, the tab bar, and returning after a publish. `+ NEW DRAFT`
+  // keeps its job, which is starting a SECOND one.
+  if (!fnCurrentId) fnNewPost();
+
   const drafts    = STATE.posts.filter(p => p.status === "draft");
   const published = STATE.posts.filter(p => !p.status || p.status === "published");
   document.getElementById("fn-stats").textContent =

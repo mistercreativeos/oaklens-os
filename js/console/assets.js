@@ -68,6 +68,16 @@ export function cdnThumb(entry, folder = 'archive') {
   return '';
 }
 
+// The same address at a chosen width. cdnThumb() is hardcoded to 1024w because
+// that is the only size a grid cell ever wants; anything pointing at a full
+// frame (the homepage hero line, for one) needs 2048w, and building that string
+// by hand at the call site is how a folder or a suffix drifts.
+export function cdnVariant(entry, width = 2048, folder = 'archive') {
+  if (!entry?.filename) return '';
+  const base = entry.filename.replace(/\.[^.]+$/, '');
+  return `${CDN_BASE}/${folder}/${base}-${width}w.webp`;
+}
+
 // ============== IMAGE RESIZING ==============
 // Decode the source ONCE, then draw every size variant from that single bitmap.
 // iOS Safari (iPad) enforces a per-page decoded-image budget; the old path

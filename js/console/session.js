@@ -111,6 +111,48 @@ export async function _renderSiteSettings() {
   }
 }
 
+// ---- First run ----
+//
+// A console that has never published anything belongs to someone who has been
+// an owner for about ninety seconds. The cold run got a live site, opened the
+// console, and had nowhere to learn the four things every new owner asks in
+// their first five minutes. All four answers already existed; none of them was
+// discoverable, which is the same as not existing.
+//
+// Two conditions, both required, so this never surprises a working site:
+//   · nothing published yet — a real site has posts, frames or archive entries
+//   · not dismissed before — one localStorage key, set on close
+// The key is checked FIRST and is the cheap one, so the usual path is a single
+// read and a return.
+const WELCOME_KEY = 'oaklens-console-welcomed';
+
+export function maybeShowWelcome(state) {
+  let seen = false;
+  try { seen = localStorage.getItem(WELCOME_KEY) === '1'; } catch { /* private mode */ }
+  if (seen) return;
+  const empty = ['posts', 'buffer', 'archive', 'wallpapers', 'library']
+    .every((k) => !(state?.[k] || []).length);
+  if (!empty) {
+    // An existing site should never see this, and should never see it LATER
+    // either — mark it read rather than leaving a card primed to appear the
+    // first time someone empties their buffer.
+    dismissWelcome();
+    return;
+  }
+  const el = document.getElementById('welcome-card');
+  if (!el) return;
+  el.classList.remove('hidden');
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('open')));
+}
+
+export function dismissWelcome() {
+  try { localStorage.setItem(WELCOME_KEY, '1'); } catch { /* private mode */ }
+  const el = document.getElementById('welcome-card');
+  if (!el) return;
+  el.classList.remove('open');
+  setTimeout(() => el.classList.add('hidden'), 200);
+}
+
 // ---- Instance posture (boot) ----
 // Two config flags the shell reflects without a reload: demoMode shows the
 // topbar "DEMO · BROWSE-ONLY" badge (writes answer 403 demoMode — see

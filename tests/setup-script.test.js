@@ -242,12 +242,23 @@ case "$*" in
     printf 'DEPLOYED\\n' >> "$CALL_LOG"
     msg="Deployed my-photo-site triggers (1.20 sec)
   https://my-photo-site.teststudio.workers.dev"
+    # FAKE_DEPLOY_SILENT: a deploy that works and says nothing we can parse.
+    [ "\${FAKE_DEPLOY_SILENT:-0}" = "1" ] && msg="Deployed my-photo-site triggers (1.20 sec)"
     echo "\$msg"
     # Real wrangler mirrors its console output into WRANGLER_LOG_PATH, which is
     # how setup.sh reads the address back without piping stdout — piping would
     # make wrangler non-interactive and turn the workers.dev subdomain question
     # into a hard failure instead of a question.
-    [ -n "\${WRANGLER_LOG_PATH:-}" ] && printf '%s\\n' "\$msg" >> "\$WRANGLER_LOG_PATH"
+    #
+    # THE REFUSAL BELOW IS THE POINT. Real wrangler will not write to a log path
+    # that ALREADY EXISTS; it writes nothing at all, silently. setup.sh created
+    # that path with \`mktemp\`, which creates the file — so the capture came back
+    # empty on the real cold run while this suite stayed green, because the stub
+    # used to append unconditionally. A stub more permissive than the binary is
+    # not a test, it is a rehearsal of the happy path.
+    if [ -n "\${WRANGLER_LOG_PATH:-}" ] && [ ! -e "\$WRANGLER_LOG_PATH" ]; then
+      printf '%s\\n' "\$msg" > "\$WRANGLER_LOG_PATH"
+    fi
     exit 0 ;;
 esac
 exit 0
@@ -664,11 +675,29 @@ describe('setup.sh deploys before it sets secrets', () => {
     // "When we give the your site is live line are we able to print the url for
     // copy at this moment?" — asked during the cold run, because the address
     // scrolls past inside wrangler's output and is genuinely hard to find.
+    //
+    // Assert on the CLOSING BLOCK, not on the bare URL. wrangler's own output
+    // contains the address too, so `toContain(url)` passes even when our
+    // capture failed completely — which is exactly what it did on the real run
+    // while this suite stayed green. "live at:" only ever renders when setup.sh
+    // genuinely read the address back.
     const r = runSetup(dir, ANSWERS);
-    expect(r.stdout).toContain('https://my-photo-site.teststudio.workers.dev');
+    expect(r.stdout).toMatch(/Your site is live at:/);
     const onItsOwn = r.stdout.split('\n')
       .some((l) => l.replace(/\[[0-9;]*m/g, '').trim() === 'https://my-photo-site.teststudio.workers.dev');
     expect(onItsOwn, 'the address should sit alone on a line, not inside a sentence').toBe(true);
+    // "Open the address above" is only honest here, where one really is above.
+    // The fallback case is guarded by the next test.
+  });
+
+  it('says where to find the address even when it could not read one', () => {
+    // Belt and braces: the log is wrangler's to write and we do not control it
+    // forever. If the capture ever comes back empty again, the closing block
+    // has to send someone somewhere real instead of dangling.
+    const r = runSetup(dir, ANSWERS, { FAKE_DEPLOY_SILENT: '1' });
+    expect(r.stdout).not.toMatch(/the address above/i);
+    expect(r.stdout).toMatch(/Workers & Pages/);
+    expect(r.stdout).toMatch(/Visit/);
   });
 
   it('blames the deploy, not the network, when the deploy fails', () => {

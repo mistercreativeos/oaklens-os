@@ -123,3 +123,51 @@ describe('page wiring', () => {
     expect(html).toContain('js/mode-toggle.js');
   });
 });
+
+// ---------------------------------------------------------------------------
+// The console wears the SITE's brand, not this instance's (2026-08-08 cold run).
+//
+// A fork installed on the aperture preset opened Field Notes and found the //
+// marks in the rendered preview still noir red, because `.fn-preview-area`
+// pinned `--accent: #ff2b2b` along with the dark palette it legitimately pins.
+// The OG card canvas had the same bug in a harder place: canvas cannot resolve
+// CSS variables, so two brand marks were drawn from `'#FF0000'` literals and
+// every fork's link previews carried this instance's colour.
+//
+// Both are the same mistake — a brand value written down instead of derived —
+// and the leak scan cannot catch either, because a hex code is not a wordmark.
+describe('the console derives its brand rather than hardcoding it', () => {
+  const consoleCss = readFileSync(
+    join(import.meta.dirname, '..', 'css', 'field-console.css'), 'utf8');
+
+  // The L1 primitives are the ONE place a brand literal belongs. Everything
+  // after that first :root block has to go through a token.
+  const primitivesEnd = consoleCss.indexOf('}', consoleCss.indexOf('--brand-rgb'));
+  const NOIR_LITERALS = /#ff0000|#ff2b2b|#c41111|#5a0000/gi;
+
+  it('keeps every noir brand literal inside the L1 primitives block', () => {
+    const strays = [...consoleCss.matchAll(NOIR_LITERALS)]
+      .filter((m) => m.index > primitivesEnd)
+      .map((m) => `${m[0]} at offset ${m.index}`);
+    expect(strays, 'a brand literal outside the primitives cannot follow the preset').toEqual([]);
+  });
+
+  it('the rendered preview takes its accent from a token, not a hex', () => {
+    const start = consoleCss.indexOf('.fn-preview-area');
+    const body = consoleCss.slice(start, consoleCss.indexOf('}', start));
+    const accent = body.match(/--accent:\s*([^;]+);/);
+    expect(accent, '.fn-preview-area still pins its own --accent').toBeTruthy();
+    expect(accent[1].trim(), 'pin the dark MODE, derive the BRAND').toMatch(/^var\(--/);
+  });
+
+  it('the OG card canvas reads the brand token at draw time', () => {
+    const focal = readFileSync(
+      join(import.meta.dirname, '..', 'js', 'console', 'focal.js'), 'utf8');
+    expect(focal, 'canvas has to pull --brand, it cannot inherit it')
+      .toMatch(/getPropertyValue\(\s*['"]--brand['"]\s*\)/);
+    // One literal is allowed: the fallback when the token is missing.
+    const reds = focal.match(/#(?:FF0000|ff0000|ff2b2b)/gi) || [];
+    expect(reds.length, `expected at most a single fallback, found ${reds.length}`)
+      .toBeLessThanOrEqual(1);
+  });
+});

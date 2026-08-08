@@ -106,6 +106,16 @@ export const FocalModal = (() => {
     let cx = align === 'right' ? x - widths.reduce((a, b) => a + b, 0) : x;
     segs.forEach((s, i) => { ctx.fillStyle = s.c; ctx.fillText(s.t, cx, y); cx += widths[i]; });
   }
+  // The card is drawn to a canvas, and a canvas cannot resolve CSS variables —
+  // which is why the two brand marks below were hardcoded red, and why every
+  // fork's link previews carried this instance's colour no matter which preset
+  // it ran. Read the token instead, at draw time, so the card wears the site's
+  // own brand. --brand rather than --accent: the card is always on black, and
+  // --accent swaps to the paper tier in DAYLIGHT while the card never does.
+  function brandColor() {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim();
+    return v || '#FF0000';
+  }
   function drawCard() {
     const cv = $('ogc-canvas'); if (!cv) return;
     const ctx = cv.getContext('2d');
@@ -116,14 +126,16 @@ export const FocalModal = (() => {
     }
     ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, PHOTO_H, CW, 1);
     const cy = PHOTO_H + RAIL / 2;
+    const brand = brandColor();
     const leftSegs = [{ t: `${(card.label || '').toUpperCase()} `, c: '#9b9b9b' }];
-    if (card.dateStr && card.dateStr !== '—') leftSegs.push({ t: '//', c: '#FF0000' }, { t: ` ${card.dateStr}`, c: '#9b9b9b' });
+    if (card.dateStr && card.dateStr !== '—') leftSegs.push({ t: '//', c: brand }, { t: ` ${card.dateStr}`, c: '#9b9b9b' });
     drawSegments(ctx, leftSegs, 44, cy, 26, 'left');
-    // The wordmark rail. Two segments so the accent half stays red, from the
-    // same site.config.js the markup gets — the card is a published image, so a
-    // hardcoded brand here would ship this instance's name in every fork's OG.
+    // The wordmark rail. Two segments so the accent half carries the brand, both
+    // the TEXT and the COLOUR from the site's own config and preset — the card
+    // is a published image, so either one hardcoded here ships this instance's
+    // identity in every fork's link previews.
     const brandSegs = [{ t: SITE_WORDMARK_STEM, c: '#E0E0E0' }];
-    if (SITE_WORDMARK_ACCENT) brandSegs.push({ t: SITE_WORDMARK_ACCENT, c: '#FF0000' });
+    if (SITE_WORDMARK_ACCENT) brandSegs.push({ t: SITE_WORDMARK_ACCENT, c: brand });
     drawSegments(ctx, brandSegs, CW - 44, cy, 24, 'right');
   }
 

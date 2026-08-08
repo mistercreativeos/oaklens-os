@@ -445,7 +445,15 @@ else
   info "That becomes part of your address, so your name or your studio name is"
   info "a good answer. Everything else you can just accept."
   echo
-  deploy_log="$(mktemp -t oaklens-deploy)"
+  # The log path MUST NOT EXIST YET. Wrangler refuses to write to a
+  # WRANGLER_LOG_PATH that is already a file — it writes nothing, silently, and
+  # says nothing about it. The first version of this used `mktemp`, which
+  # CREATES the file, so the capture came back empty on a real cold run and the
+  # script cheerfully printed "Done. Your site is live." followed by "Open the
+  # address above", pointing at nothing. `mktemp -d` gives us a private
+  # directory; the log is a name inside it that nothing has touched.
+  deploy_dir="$(mktemp -d -t oaklens-deploy)"
+  deploy_log="$deploy_dir/deploy.log"
   if WRANGLER_LOG_PATH="$deploy_log" npx wrangler deploy; then
     LIVE_URL="$(grep -oE 'https://[a-z0-9][a-z0-9.-]*\.workers\.dev' "$deploy_log" 2>/dev/null | head -1)"
     echo
@@ -454,10 +462,16 @@ else
       bold "  $LIVE_URL"
       info "That's the address — copy it straight from the line above."
     else
-      good "Your site is live. The address is in the output just above."
+      # Reading the address is wrangler's to give and ours to lose, so the
+      # fallback has to send someone somewhere real rather than gesture at
+      # output that may have scrolled away.
+      good "Your site is live."
+      info "Couldn't read the address back this time. It's in Cloudflare:"
+      info "  dash.cloudflare.com → Compute → Workers & Pages → your site"
+      info "  then the blue \"Visit\" button, top right."
     fi
   else
-    rm -f "$deploy_log"
+    rm -rf "$deploy_dir"
     oops "The deploy didn't go through."
     info "Cloudflare's own words are in the output above — that line is the real"
     info "answer, and it is usually specific."
@@ -465,7 +479,7 @@ else
     info "run this script again; it picks up right here."
     exit 1
   fi
-  rm -f "$deploy_log"
+  rm -rf "$deploy_dir"
 fi
 
 # ---- 7. secrets -----------------------------------------------------------
@@ -529,21 +543,35 @@ if [ -n "$SUMMARY_LINES" ]; then
 fi
 
 echo
+# Two shapes, because "Open the address above" with no address above is how the
+# last cold run ended. Whichever branch runs, the reader is left holding
+# something they can actually act on.
 if [ -n "$LIVE_URL" ]; then
   bold "Done. Your site is live at:"
   bold "  $LIVE_URL"
   info "Your control room is that address with /dev/field-console on the end:"
   info "  $LIVE_URL/dev/field-console"
+  echo
+  info "Lost it later? It's in Cloudflare under"
+  info "Compute → Workers & Pages → your site → the \"Visit\" button."
+  first_step="Open the address above."
 else
   bold "Done. Your site is live."
+  echo
+  info "To find its address:"
+  info "  dash.cloudflare.com → Compute → Workers & Pages → your site"
+  info "  then the blue \"Visit\" button, top right. (Or the Domains tab, where"
+  info "  it's listed under Worker URL → Production.)"
+  info "Your control room is that address with /dev/field-console on the end."
+  first_step="Open your site's address, found as above."
 fi
+
+# Step 1 is printed separately, then the rest as a QUOTED heredoc. The quoting
+# is not stylistic: the block below contains backticks around `npx wrangler
+# deploy`, and an unquoted heredoc would run them as command substitution —
+# deploying the site from inside a help message.
+printf '\n  Next, in order:\n\n  1. Have a look at it\n     %s It comes with sample\n     photographs, so it should look like a real site straight away.\n' "$first_step"
 cat <<'EOF'
-
-  Next, in order:
-
-  1. Have a look at it
-     Open the address above. It comes with sample photographs, so it
-     should look like a real site straight away.
 
   2. Put your name on it
      Open site.config.js and fill in your name, tagline, email and

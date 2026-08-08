@@ -15,7 +15,7 @@
 // Extracted from console-ui.js 2026-07-29 — the last of fifteen. See
 // dev/console-module-plan.md.
 
-import { load, restoreSidebar, restoreFnBar, resetConsole } from '../console-state.js';
+import { STATE, load, restoreSidebar, restoreFnBar, resetConsole } from '../console-state.js';
 import { isLoggedIn } from '../console-api.js';
 import { registerView, registerLongPress, refreshStageIndicators, themeInit, wireDropzone, _wireSheetDrag, _initKeyboardInsets, _initStickyHeaders, _initLongPress, closeActionSheet, closeMoreSheet } from './chrome.js';
 import { updatePurgeR2Button } from './sync.js';
@@ -27,7 +27,7 @@ import { renderFN, fnHeroIngest, fnHeroClear, fnSetupEnhancements, _applyFnFront
 import { FocalModal, bufferFocal, loadOgCards } from './focal.js';
 import { closeAssetLibrary } from './asset-library.js';
 import { renderPublish, syncFromServer } from './publish.js';
-import { checkAuth, closeSettings, _updateSettingsDots, _checkSessionExpiry, _initOfflineIndicator, applyInstancePosture, _wireRingJoin } from './session.js';
+import { checkAuth, closeSettings, _updateSettingsDots, _checkSessionExpiry, _initOfflineIndicator, applyInstancePosture, _wireRingJoin, maybeShowWelcome } from './session.js';
 import { renderBench } from './bench.js';
 
 // ============== INIT ==============
@@ -127,6 +127,7 @@ export function init() {
   checkAuth();
   _wireRingJoin();          // ring join mailto; must be built at runtime, not markup
   applyInstancePosture();   // demo badge + truthful deploy copy; async, cosmetic
+  maybeShowWelcome(STATE);  // first run only; no-ops on a site with any content
   if (isLoggedIn()) {
     setTimeout(syncFromServer, 400);
     _lastFocusSync = Date.now();

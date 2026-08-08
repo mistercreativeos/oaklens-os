@@ -897,10 +897,15 @@ button { font-family: inherit; cursor: pointer; }
   overflow-y: auto;
   padding: 24px 28px;
   /* The rendered preview proxies the PUBLIC site, which is dark regardless of
-     console mode — pin the dark palette locally so DAYLIGHT can't wash it out. */
+     console mode — pin the dark palette locally so DAYLIGHT can't wash it out.
+     Pinning the MODE is right; pinning the BRAND was not. --accent was the
+     literal noir red, so an aperture site previewed its // marks in someone
+     else's colour and a fork inherited that. --brand-bright is the same tier
+     (small brand text on dark) and re-derives per preset above, so this line
+     now follows whatever the site actually runs. */
   background: #000;
   --text: #c9c9c9; --text-bright: #f2f2f2; --text-dim: #8f8f8f;
-  --text-faint: #8f8f8f; --accent: #ff2b2b; --border: #242424;
+  --text-faint: #8f8f8f; --accent: var(--brand-bright); --border: #242424;
   --border-strong: #2a2a2a; --bg-elev-2: #141414; --media-well: #000;
 }
 
@@ -2498,6 +2503,38 @@ html, body { overscroll-behavior: none; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .tabbar, .sheet { background: var(--surface-1); }
 }
+
+/* ---- FIRST RUN card. Rides .sheet-overlay for the backdrop and the
+   hidden/open transition, then centres its own panel instead of sliding up
+   from the bottom — this is a note to read, not a menu to pick from. ---- */
+.welcome {
+  margin: auto;
+  max-width: 34rem;
+  background: var(--surface-1);
+  border: 1px solid var(--line-3);
+  border-radius: var(--r-2, 8px);
+  padding: 26px 28px 22px;
+  transform: translateY(8px);
+  transition: transform .22s ease;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.sheet-overlay.open .welcome { transform: none; }
+.welcome-h h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem; letter-spacing: .01em; color: var(--ink-1); margin-bottom: 4px;
+}
+.welcome-h p { color: var(--ink-3); font-size: .82rem; margin-bottom: 18px; }
+.welcome-list { margin: 0 0 20px; padding-left: 1.35em; display: grid; gap: 13px; }
+.welcome-list li { color: var(--ink-2); font-size: .84rem; line-height: 1.6; }
+.welcome-list li::marker { color: var(--accent-text); font-variant-numeric: tabular-nums; }
+.welcome-list b { color: var(--ink-1); font-weight: 600; }
+.welcome-list code {
+  background: var(--surface-2); padding: 1px 5px; border-radius: 3px;
+  color: var(--accent-text); font-size: .95em;
+}
+.welcome-foot { display: flex; align-items: center; gap: 14px; }
+.welcome-note { color: var(--ink-3); font-size: .74rem; }
 
 .sheet-grabber {
   width: 36px;

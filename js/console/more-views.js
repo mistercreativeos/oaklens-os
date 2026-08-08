@@ -19,7 +19,7 @@ import { STATE, save, bumpStage, trashItem } from '../console-state.js';
 import { getToken } from '../console-api.js';
 import { showToast, startProgress, updateProgress, endProgress, logEvent } from '../console-telemetry.js';
 import { toast, escapeHTML } from './chrome.js';
-import { generateVariants, cdnThumb, isVideoAsset, SITE_FILE_PREFIX } from './assets.js';
+import { generateVariants, cdnThumb, cdnVariant, isVideoAsset, SITE_FILE_PREFIX } from './assets.js';
 import { todayISO, uid, cleanFilename, readFileAsDataURL, computeHash, findDuplicateByHash } from './utils.js';
 import { scheduleLibrarySync } from './sync.js';
 import { _enqueueUpload } from './upload.js';
@@ -224,9 +224,34 @@ export function renderLibrary() {
         <div class="sub">${item.hash || '—'}</div>
         <div class="tag">${item._uploading ? '▲ UPLOADING' : item._uploadError ? '✕ FAILED' : item._uploaded ? '✓ CDN' : 'LOCAL'}${isVideoAsset(item) ? ' · ▶ VIDEO' : ''}</div>
       </div>
+      <button class="icon-btn" onclick="event.stopPropagation(); libraryHeroLine('${item.id}')" title="Copy the homepage hero line for this image">⌂</button>
       <button class="icon-btn danger" onclick="event.stopPropagation(); libraryRemove('${item.id}')" title="Remove">×</button>
     </div>`;
   }).join('');
+}
+
+// "How does one change the hero image? … This will be the first thing someone
+// will want to do next to just writing." — 2026-08-08 cold run.
+//
+// The honest answer today is one line of site.config.js and a deploy, because
+// `folioHero` is read by injectSiteChrome(), which is SYNCHRONOUS and takes no
+// env — it cannot see published data, so the console genuinely cannot set this
+// without restructuring the hot path. Doing that properly is its own change.
+//
+// What it can do is delete the twenty minutes of hunting: hand over the exact
+// line, already filled in, ready to paste. Not the finished feature; the whole
+// of the finished feature's value minus one paste.
+export function libraryHeroLine(id) {
+  const item = STATE.library.find(x => x.id === id);
+  if (!item) return;
+  if (!item._uploaded) {
+    return showToast('Upload this to the CDN first — a local image has no address yet', { kind: 'warning' });
+  }
+  const line = `  folioHero: { image: '${cdnVariant(item, 2048)}', alt: '' },`;
+  navigator.clipboard.writeText(line).then(
+    () => showToast('Hero line copied — paste it into site.config.js, then deploy'),
+    () => showToast('Copy failed — the address is ' + cdnVariant(item, 2048), { kind: 'warning' }),
+  );
 }
 
 export function libraryRemove(id) {
