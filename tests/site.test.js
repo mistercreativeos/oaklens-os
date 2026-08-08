@@ -65,9 +65,28 @@ describe('entityJsonLd', () => {
     for (const u of org.sameAs ?? []) {
       expect(u, `${u} must be an absolute https URL`).toMatch(/^https:\/\//);
     }
-    // The engine repo is private until launch — a 404 to crawlers. It joins
-    // sameAs via the commented-out line in site.config.js on launch day.
-    expect(JSON.stringify(data)).not.toContain('oaklens-os');
+  });
+
+  it('declares the engine only when config names a repository', () => {
+    // This replaced a pre-launch assertion that the graph must never contain
+    // "oaklens-os", which was true only while that repo was private and became
+    // false the day it opened. What actually has to hold forever is that the
+    // node is CONFIG-DERIVED: src/shared/site.js ships to every fork, so a
+    // hardcoded repo URL would have every fork's homepage telling crawlers its
+    // source code lives in somebody else's repository — and no leak scan would
+    // catch it, because a GitHub org slug is not the wordmark.
+    const node = parseGraph(entityJsonLd(ALIAS_ORIGIN))['@graph']
+      .find((n) => n['@type'] === 'SoftwareSourceCode');
+    const configured = siteConfig.entity.codeRepository;
+
+    if (!configured) {
+      expect(node, 'no configured repository must mean no node').toBeUndefined();
+      return;
+    }
+    expect(node.codeRepository).toBe(configured);
+    expect(configured, 'a declared repository must be an absolute https URL')
+      .toMatch(/^https:\/\//);
+    expect(node.author['@id']).toContain('#organization');
   });
 
   it('keeps personal identity out of the public entity', () => {

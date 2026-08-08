@@ -111,20 +111,29 @@ export function entityJsonLd(origin) {
       url: `${canonical}/`,
       publisher: { '@id': orgId },
     },
-    // Launch-day node for the open-source engine — add when
-    // github.com/oaklensart/oaklens-os flips public (it 404s to crawlers
-    // until then, so shipping it early would point the graph at nothing).
-    // Uncomment together with the oaklens-os line in site.config.js sameAs:
-    // {
-    //   '@type': 'SoftwareSourceCode',
-    //   '@id': `${canonical}/#oaklens-os`,
-    //   name: 'OAKLENS OS',
-    //   description: `The open-source engine that powers ${new URL(`${canonical}/`).host}.`,
-    //   codeRepository: 'https://github.com/oaklensart/oaklens-os',
-    //   programmingLanguage: 'JavaScript',
-    //   author: { '@id': orgId },
-    // },
   ];
+
+  // The engine this site runs on, as a node in the same graph — declared only
+  // when `entity.codeRepository` names one.
+  //
+  // CONFIG-DERIVED, NOT HARDCODED, and that is the whole point. This function
+  // ships to every fork, so a literal repo URL here would have every fork's
+  // homepage publishing structured data claiming ITS source lives in somebody
+  // else's repository. Nothing would have caught it either: the leak scan hunts
+  // the wordmark, and a GitHub org slug is not the wordmark. Absent key, no
+  // node, which is also the right default — a fork that has not published its
+  // code has no repository to point a crawler at.
+  if (entity.codeRepository) {
+    graph.push({
+      '@type': 'SoftwareSourceCode',
+      '@id': `${canonical}/#engine`,
+      name: entity.codeName || 'OAKLENS OS',
+      description: `The open-source engine that powers ${new URL(`${canonical}/`).host}.`,
+      codeRepository: entity.codeRepository,
+      programmingLanguage: 'JavaScript',
+      author: { '@id': orgId },
+    });
+  }
 
   const json = JSON.stringify({ '@context': 'https://schema.org', '@graph': graph })
     .replace(/</g, '\\u003c'); // never let markup break out of the script tag

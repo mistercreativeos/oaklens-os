@@ -63,7 +63,7 @@ export const SHAPE = Object.freeze({
   folioHero: { image: '', alt: '' },
   pages: { archive: true, fieldNotes: true, about: true, wall: false, support: false },
   console: { bench: false },
-  entity: { name: '', logo: '/favicon.svg', sameAs: [] },
+  entity: { name: '', logo: '/favicon.svg', sameAs: [], codeRepository: '', codeName: '' },
   support: { blurb: '', tiers: [], note: '', disclaimer: '' },
   webring: { node: null, slug: '' },
 });

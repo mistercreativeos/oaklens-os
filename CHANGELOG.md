@@ -29,6 +29,27 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 The engine repository went public. Everything below shipped alongside that.
 
+### New optional config: `entity.codeRepository`
+
+If your own fork's code is public, naming it credits you as the author of your
+engine in the homepage's structured data:
+
+```js
+entity: {
+  // ...
+  codeRepository: 'https://github.com/YOUR-USERNAME/YOUR-REPO',
+  codeName: 'YOUR ENGINE NAME',   // optional, defaults to OAKLENS OS
+},
+```
+
+Leave it empty and nothing is emitted, which is the right default: pointing a
+crawler at a private repository weakens your entity signal instead of helping
+it. Nothing to do unless you want it.
+
+This is also the first key to arrive since configs became forward-compatible,
+so it is the shape every future one will take: optional, defaulted, and
+inert until you fill it in.
+
 ### Your config is now forward-compatible
 
 New config keys can no longer break your site. The engine reads

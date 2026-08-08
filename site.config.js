@@ -159,5 +159,12 @@ export default Object.freeze({
     name: 'YOUR STUDIO',
     logo: '/favicon.svg',
     sameAs: [],
+    // Optional: if your fork's code is public, naming it here adds a
+    // SoftwareSourceCode node to the homepage entity graph, credited to you.
+    // Leave empty and no node is emitted — a private repo would only point
+    // crawlers at a 404, which weakens the entity signal rather than helping.
+    // codeName defaults to 'OAKLENS OS'; set it if you renamed your fork.
+    codeRepository: '',
+    codeName: '',
   },
 });
