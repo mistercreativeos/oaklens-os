@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title data-site-title>SYS.UPKEEP</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" as="font" type="font/woff2" href="/fonts/syne-latin-var.woff2" crossorigin data-font-preload>
+<script>
+/* Pre-paint mode resolution: visitor override -> config default -> OS.
+   Runs before the stylesheet so there is no flash of the wrong mode. The
+   worker stamps data-theme-default on <html> and HTMLRewriter streams the
+   document top-down, so the attribute is present by the time this runs. */
+(function () {
+  var d = document.documentElement, s = null;
+  try { s = localStorage.getItem('ol-theme'); } catch (e) {}
+  var def = d.getAttribute('data-theme-default') || 'midnight';
+  var light = s ? s === 'light'
+    : def === 'auto' ? matchMedia('(prefers-color-scheme: light)').matches
+    : def === 'daylight';
+  if (light) d.setAttribute('data-theme', 'light');
+})();
+</script>
+<link rel="stylesheet" href="../css/main.css?v=17">
+<script src="/js/mode-toggle.js?v=1" defer></script>
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<style>
+/* ============================================
+   SYS.UPKEEP — SUPPORT / DONATE PAGE
+   ============================================ */
+
+.upkeep {
+  min-height: calc(100vh - var(--nav-h) - 32px);
+  min-height: calc(100dvh - var(--nav-h) - 32px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px 80px;
+}
+
+/* ---- HEADER ---- */
+
+.upkeep-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2.2rem, 7vw, 4.5rem);
+  line-height: 0.9;
+  color: var(--white-bright);
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 24px;
+  letter-spacing: -2px;
+}
+
+.upkeep-title .dot { color: var(--red); }
+
+.upkeep-copy {
+  max-width: 500px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: var(--gray-300);
+  margin-bottom: 48px;
+  border-left: 2px solid var(--red);
+  padding-left: 20px;
+  text-align: left;
+}
+
+/* ---- TIER GRID ---- */
+
+.tier-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  width: 100%;
+  max-width: 1100px;
+}
+
+@media (min-width: 600px) { .tier-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1000px) { .tier-grid { grid-template-columns: repeat(4, 1fr); } }
+
+/* No tiers configured: the shared empty state (css/main.css) spans the grid
+   rather than sitting in the first cell. */
+.tier-grid .page-empty { grid-column: 1 / -1; padding: 60px 24px; }
+
+/* ---- TIER CARD ---- */
+
+.tier-card {
+  background: transparent;
+  border: 1px solid var(--gray-800);
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  min-height: 190px;
+}
+
+.tier-card:hover {
+  border-color: var(--red);
+  background: rgba(255, 0, 0, 0.03);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+.tier-icon {
+  font-size: 1.8rem;
+  margin-bottom: 14px;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+
+.tier-card:hover .tier-icon { opacity: 0.8; }
+
+.tier-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--white-bright);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.tier-price {
+  font-family: var(--font-mono);
+  color: var(--red);
+  font-weight: 700;
+  font-size: 0.82rem;
+  margin-bottom: 14px;
+  letter-spacing: 0.5px;
+}
+
+.tier-price .sub {
+  font-size: 0.6rem;
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+.tier-desc {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--gray-500);
+  text-align: center;
+  line-height: 1.45;
+  flex-grow: 1;
+}
+
+/* ---- FOOTER NOTE ---- */
+
+.upkeep-footer-note {
+  margin-top: 48px;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--gray-700);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  text-align: center;
+  max-width: 600px;
+  line-height: 1.7;
+}
+
+.upkeep-footer-note .accent { color: var(--red); }
+
+.upkeep-disclaimer {
+  display: block;
+  margin-top: 10px;
+  color: var(--gray-800);
+  font-size: 0.5rem;
+  letter-spacing: 1px;
+}
+
+/* ---- RESPONSIVE ---- */
+
+@media (max-width: 600px) {
+  .upkeep {
+    padding: 40px 16px 60px;
+  }
+
+  .upkeep-title {
+    letter-spacing: -1px;
+  }
+
+  .tier-card {
+    min-height: auto;
+    padding: 24px 20px;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="nav">
+  <a href="/" class="nav-logo" data-site-wordmark="dot-art">SITE<span class="dot-art">.NAME</span></a>
+  <div class="nav-links">
+    <a href="/" class="nav-link">Home</a>
+    <a href="/archive" class="nav-link">theArchive</a>
+    <a href="/field-notes" class="nav-link">FN//Blog</a>
+    <a href="/wall" class="nav-link">theWall</a>
+    <a href="/about" class="nav-link">About</a>
+    <a href="/dev" class="nav-link terminal">&gt;Dev</a>
+    <a href="mailto:you@example.com" class="nav-mail" title="Contact">&#9993;</a>
+  </div>
+  <button class="nav-hamburger" id="nav-toggle" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<div class="nav-mobile" id="nav-mobile">
+  <a href="/">Home</a>
+  <a href="/archive">theArchive</a>
+  <a href="/field-notes">FN//Blog</a>
+  <a href="/wall">theWall</a>
+  <a href="/about">About</a>
+  <a href="/dev">&gt;Dev</a>
+  <a href="mailto:you@example.com">&#9993; Contact</a>
+</div>
+
+<!-- ============ SYS.UPKEEP ============ -->
+<main class="upkeep">
+
+  <h1 class="upkeep-title">SYS<span class="dot">.</span>UPKEEP</h1>
+
+  <div class="upkeep-copy" data-support-blurb>
+    This site is made by hand and paid for out of pocket.<br>
+    If it has been useful to you, here are a few ways to help keep it running.
+  </div>
+
+  <!-- The tiers are identity: the checkout links and the copy around them are
+       the site owner's, never the engine's. site.config.js -> support.tiers is
+       the source of truth and the worker replaces this whole grid on every
+       response (src/edge/chrome.js, injectSupport). These placeholder cards
+       carry no links; they are here so the page has shape without a config. -->
+  <div class="tier-grid">
+
+    <a class="tier-card">
+      <div class="tier-icon">&#9749;</div>
+      <div class="tier-name">Tier One</div>
+      <div class="tier-price">OPEN / PWYW</div>
+      <div class="tier-desc">What this tier pays for, in a line.</div>
+    </a>
+
+    <a class="tier-card">
+      <div class="tier-icon">&#128190;</div>
+      <div class="tier-name">Tier Two</div>
+      <div class="tier-price">00.00 USD</div>
+      <div class="tier-desc">What this tier pays for, in a line.</div>
+    </a>
+
+    <a class="tier-card">
+      <div class="tier-icon">&#128189;</div>
+      <div class="tier-name">Tier Three</div>
+      <div class="tier-price">00.00 USD</div>
+      <div class="tier-desc">What this tier pays for, in a line.</div>
+    </a>
+
+  </div>
+
+  <div class="upkeep-footer-note">
+    <span data-support-note><span class="accent">//</span> SECURE PAYMENT <span class="accent">//</span></span> <span data-site-wordmark>SITE.NAME</span>
+    <span class="upkeep-disclaimer" data-support-disclaimer>Any terms that apply to your tiers.</span>
+  </div>
+
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="footer-left"><span data-site-wordmark="accent">SITE<span class="accent">.NAME</span></span> · <span data-site-location>YOUR CITY</span> · <span class="wx-telemetry"><span class="wx-label">WX</span> <span class="wx-sep">//</span> <span class="wx-data" id="wx-temp">--°</span></span> · <a href="/archive/manifest.html" class="footer-manifest">MANIFEST</a></div>
+  <div class="footer-right">WE OBSERVE. WE DO NOT CONSUME.</div>
+</footer>
+
+<script src="/js/site-common.js?v=2"></script>
+
+</body>
+</html>

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title data-site-title>About</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" as="font" type="font/woff2" href="/fonts/syne-latin-var.woff2" crossorigin data-font-preload>
+<script>
+/* Pre-paint mode resolution: visitor override -> config default -> OS.
+   Runs before the stylesheet so there is no flash of the wrong mode. The
+   worker stamps data-theme-default on <html> and HTMLRewriter streams the
+   document top-down, so the attribute is present by the time this runs. */
+(function () {
+  var d = document.documentElement, s = null;
+  try { s = localStorage.getItem('ol-theme'); } catch (e) {}
+  var def = d.getAttribute('data-theme-default') || 'midnight';
+  var light = s ? s === 'light'
+    : def === 'auto' ? matchMedia('(prefers-color-scheme: light)').matches
+    : def === 'daylight';
+  if (light) d.setAttribute('data-theme', 'light');
+})();
+</script>
+<link rel="stylesheet" href="../css/main.css?v=17">
+<script src="/js/mode-toggle.js?v=1" defer></script>
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<style>
+/* ============================================
+   ABOUT — CLEAN EDITORIAL (rev 2.0)
+   Pure type, no portrait (an obvious slot is left commented beside the intro).
+   Semantic tokens only, so it themes across all presets. Shares main.css chrome.
+   ============================================ */
+
+/* Page shell: clear the sticky nav on top and the fixed footer on the bottom,
+   and give the column comfortable reading margins. */
+.ab-page {
+  padding: clamp(40px, 7vh, 88px) 24px 96px;
+}
+
+.ab { max-width: 62ch; margin: 0 auto; }
+
+/* Intro row: the lead sits alone now; when the owner adds a portrait, uncomment
+   the .ab-portrait block below and this becomes a two-column intro on wide
+   viewports (type stays single-column and readable on narrow ones). */
+/*
+.ab-intro { display: grid; grid-template-columns: 1fr; gap: 28px; align-items: start; }
+@media (min-width: 720px) { .ab-intro { grid-template-columns: 1fr 200px; } }
+.ab-portrait { aspect-ratio: 4/5; border-radius: 10px; overflow: hidden; background: var(--surface-2); border: 1px solid var(--line); }
+.ab-portrait img { width: 100%; height: 100%; object-fit: cover; display: block; }
+*/
+
+.ab-eyebrow { font-family: var(--font-meta); font-size: .62rem; letter-spacing: .24em; text-transform: uppercase; color: var(--accent-text); margin: 0 0 12px; }
+.ab-title { font-family: var(--font-display); font-weight: 650; font-size: clamp(1.7rem, 4vw, 2.5rem); line-height: 1.06; letter-spacing: -.02em; color: var(--fg-strong); margin: 0 0 18px; text-wrap: balance; }
+.ab-lead { font-size: 1.08rem; line-height: 1.6; color: var(--fg); margin: 0 0 6px; }
+.ab-block { margin-top: 34px; padding-top: 30px; border-top: 1px solid var(--line); }
+.ab-h2 { font-family: var(--font-meta); font-size: .66rem; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
+.ab-block p { margin: 0; color: var(--fg); line-height: 1.65; }
+.ab-stack { margin: 18px 0 0; padding: 0; }
+.ab-stack-row { display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding: 11px 0; border-top: 1px solid var(--line); }
+.ab-stack-row:first-child { border-top: 0; }
+.ab-stack dt { font-family: var(--font-meta); font-size: .82rem; color: var(--fg-strong); letter-spacing: .02em; }
+.ab-stack dd { margin: 0; color: var(--muted); font-size: .92rem; }
+.ab-note { margin: 6px 0 0; padding: 14px 18px; border-left: 2px solid var(--accent); background: var(--accent-wash); border-radius: 0 8px 8px 0; color: var(--fg); font-size: .96rem; line-height: 1.6; }
+.ab-closer { margin-top: 34px; padding-top: 24px; border-top: 1px solid var(--line); }
+.ab-closer-line { font-family: var(--font-display); font-size: 1.15rem; color: var(--fg-strong); margin: 0; letter-spacing: -.01em; }
+
+/* Contact block. The three ways to reach the owner, in the same editorial
+   rhythm as the blocks above. The subscribe kit itself (.gtd-*) is shared in
+   main.css — only the button row and the panel's width are local, so this
+   page can gain a contact section without a site-wide stylesheet bump. */
+.ab-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.ab-btn {
+  font-family: var(--font-meta); font-size: .72rem; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--fg); text-decoration: none;
+  padding: 12px 18px; line-height: 1; border-radius: var(--r-chip, 6px);
+  border: 1px solid var(--line-2); background: var(--surface);
+  cursor: pointer; -webkit-appearance: none; appearance: none;
+  transition: border-color .18s ease, color .18s ease, background .18s ease;
+}
+.ab-btn:hover, .ab-btn:focus-visible {
+  border-color: var(--accent); color: var(--accent-text); background: var(--accent-wash);
+}
+.ab-btn--primary { border-color: var(--accent); color: var(--accent-text); background: var(--accent-wash); }
+.ab-btn--primary:hover, .ab-btn--primary:focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
+.ab-contact .gtd-about-panel { max-width: 340px; }
+.ab-contact .gtd-about-ok { align-items: center; gap: 8px; margin-top: 6px; }
+
+@media (max-width: 560px) {
+  .ab-stack-row { grid-template-columns: 1fr; gap: 3px; }
+  .ab-actions { flex-direction: column; align-items: stretch; }
+  .ab-btn { text-align: center; }
+  .ab-contact .gtd-about-panel { max-width: 100%; }
+}
+
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="nav">
+  <a href="/" class="nav-logo" data-site-wordmark="dot-art">SITE<span class="dot-art">.NAME</span></a>
+  <div class="nav-links">
+    <a href="/" class="nav-link">Home</a>
+    <a href="/archive" class="nav-link">theArchive</a>
+    <a href="/field-notes" class="nav-link">FN//Blog</a>
+    <a href="/wall" class="nav-link">theWall</a>
+    <a href="/about" class="nav-link active">About</a>
+    <a href="/dev" class="nav-link terminal">&gt;Dev</a>
+    <a href="mailto:you@example.com" class="nav-mail" title="Contact">&#9993;</a>
+  </div>
+  <button class="nav-hamburger" id="nav-toggle" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<div class="nav-mobile" id="nav-mobile">
+  <a href="/">Home</a>
+  <a href="/archive">theArchive</a>
+  <a href="/field-notes">FN//Blog</a>
+  <a href="/wall">theWall</a>
+  <a href="/about" class="active">About</a>
+  <a href="/dev">&gt;Dev</a>
+  <a href="mailto:you@example.com">&#9993; Contact</a>
+</div>
+
+<!-- ============ ABOUT ============ -->
+<main class="ab-page">
+  <article class="ab">
+    <header class="ab-hero">
+      <!-- ab-intro: when the owner adds a portrait, wrap this header's copy and
+           the commented .ab-portrait below in <div class="ab-intro"> and
+           uncomment the .ab-intro/.ab-portrait CSS in the <style> above. -->
+      <p class="ab-eyebrow">About</p>
+      <h1 class="ab-title">The work starts when the shutter stops.</h1>
+      <p class="ab-lead">This is your story. Replace it with yours — who you
+        are, where you shoot, and why the work matters to you. A few honest
+        sentences beat a polished paragraph; this is the first thing most
+        visitors read.</p>
+      <!-- Portrait slot (decision 3: pure type for now, no image). Drop a frame
+           in here and uncomment the .ab-portrait CSS above when ready.
+      <div class="ab-portrait"><img src="/api/cdn/about/portrait-800w.webp" alt="Portrait" loading="lazy"></div>
+      -->
+    </header>
+
+    <section class="ab-block"><h2 class="ab-h2">The work</h2>
+      <p>Describe your process — what happens between pressing the shutter and a
+      frame landing on this site. How do you sort, name, and choose? Two or three
+      plain sentences about how you actually work are more interesting to a
+      visitor than any mission statement.</p>
+    </section>
+
+    <section class="ab-block"><h2 class="ab-h2">The stack</h2>
+      <p>List the tools your photographs pass through on the way here. It quietly
+      answers the questions people actually ask, and credits the services you
+      rely on. Swap these example rows for your own chain.</p>
+      <dl class="ab-stack">
+        <div class="ab-stack-row"><dt>Camera</dt><dd>Your body and glass — whatever fills the card</dd></div>
+        <div class="ab-stack-row"><dt>Editing</dt><dd>Where frames get culled, named, and finished</dd></div>
+        <div class="ab-stack-row"><dt>Hosting</dt><dd>Where the site lives — this engine runs on Cloudflare</dd></div>
+      </dl>
+    </section>
+
+    <section class="ab-block"><h2 class="ab-h2">Disclosure</h2>
+      <blockquote class="ab-note">If there is something you want visitors to know
+      about how your images are made — film or digital, edited or straight out of
+      camera, whether software or AI touches the picture — say it here in your own
+      words. A plain sentence about your process builds more trust than fine
+      print. Or delete this section if it isn't for you.</blockquote>
+    </section>
+
+    <!-- Optional owner block (decision 4: "Friends of" network is OFF by default
+         in the template). Uncomment for the owner's site; genericize/gate before
+         shipping in the template. Data still lives in data/friends.json and is
+         authored via the Field Console NETWORK section.
+    <section class="ab-block"><h2 class="ab-h2">Friends of</h2>
+      <p>Independent spaces run by photographers who own their corner of the web.</p>
+    </section>
+    -->
+
+    <!-- Contact. The address is a neutral placeholder on purpose: the worker
+         rewrites every mailto: at the edge from site.config.js `email`
+         (src/edge/chrome.js), so no instance identity ships in this file.
+         The Drop posts to /api/subscribe via submitGTD() in site-common.js;
+         the toggle/submit are wired in js/page-about.js because public pages
+         run a strict script-src with no inline handlers. -->
+    <section class="ab-block ab-contact"><h2 class="ab-h2">Get in touch</h2>
+      <p>Prints, questions, corrections, or just to say a frame landed — the inbox
+      is open and I read all of it. The Drop is the occasional note when new work
+      goes up; no schedule, no noise.</p>
+      <div class="ab-actions">
+        <a href="mailto:you@example.com" class="ab-btn ab-btn--primary">Email me</a>
+        <a href="/support" class="ab-btn">Support <span data-site-name>this site</span></a>
+        <button type="button" class="ab-btn" id="gtd-about-btn"
+                aria-expanded="false" aria-controls="gtd-about-panel">The Drop</button>
+      </div>
+      <div class="gtd-about-panel" id="gtd-about-panel" style="display:none;">
+        <div class="gtd-about-form" id="gtd-about-form">
+          <div class="gtd-hp"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
+          <input class="gtd-input" type="email" inputmode="email" autocomplete="email"
+                 placeholder="your@email.com" id="gtd-about-email" aria-label="Your email address">
+          <button type="button" class="gtd-submit" aria-label="Submit email">&rarr;</button>
+        </div>
+        <div class="gtd-error" id="gtd-about-err" role="status"></div>
+        <div class="gtd-about-ok" id="gtd-about-ok" style="display:none;">
+          <span class="gtd-dot gtd-dot--solid"></span>
+          <span class="gtd-success">you're in. // next drop incoming.</span>
+        </div>
+      </div>
+    </section>
+
+    <footer class="ab-closer"><p class="ab-closer-line">This is my archive. Welcome to it.</p></footer>
+  </article>
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="footer-left"><span data-site-wordmark="accent">SITE<span class="accent">.NAME</span></span> · <span data-site-location>YOUR CITY</span> · <span class="wx-telemetry"><span class="wx-label">WX</span> <span class="wx-sep">//</span> <span class="wx-data" id="wx-temp">--°</span></span> · <a href="/archive/manifest.html" class="footer-manifest">MANIFEST</a></div>
+  <div class="footer-right">WE OBSERVE. WE DO NOT CONSUME.</div>
+</footer>
+
+<script src="/js/site-common.js?v=2"></script>
+<script src="/js/page-about.js?v=1" defer></script>
+
+</body>
+</html>
