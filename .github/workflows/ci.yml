@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# CI only reads the repo; never grant the default write token.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22   # Wrangler 4.x requires Node >= 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      # Identity gate. Fill in IDENTITY_PATTERNS in scripts/os-leak-scan.sh
+      # with your own name, email and domain — the engine ships that list
+      # blank, so until you edit it this checks secret-shaped strings and real
+      # Cloudflare resource IDs only. Your own wrangler.jsonc is exempt from
+      # the ID check: it is meant to hold your resource IDs, and they are not
+      # secrets.
+      - name: Identity leak scan
+        run: bash scripts/os-leak-scan.sh
+
+      # Validates that the Worker bundles and the config is well-formed, without
+      # deploying or needing credentials.
+      - name: Worker build check
+        run: npx wrangler deploy --dry-run --outdir dist
