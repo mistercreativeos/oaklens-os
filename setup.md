@@ -199,6 +199,60 @@ Publish) — and you should **stop running `npx wrangler deploy` by hand**. A
 hand deploy isn't saved in the repo, so the next publish-triggered rebuild
 quietly puts things back the way the repo has them, undoing it.
 
+## Keeping your site up to date with the engine
+
+Your site is a **fork**. It's yours — your config, your photos, your changes —
+but the engine underneath it keeps getting fixes. Here's how to take them.
+
+Do this once, to tell git where the engine lives:
+
+```bash
+git remote add upstream https://github.com/oaklensart/oaklens-os.git
+```
+
+Then whenever you want the latest:
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
+Run `npm test` afterwards, and if it's green, `git push origin main` — your site
+redeploys itself.
+
+**Two files will conflict, and it's the same two every time:** `site.config.js`
+and `wrangler.jsonc`. That's not a bug. Those hold *your* identity and *your*
+Cloudflare resources, while the engine ships example versions of both. **Always
+keep yours:**
+
+```bash
+git checkout --ours site.config.js wrangler.jsonc
+git add site.config.js wrangler.jsonc
+```
+
+For anything else that conflicts, take the engine's copy (`git checkout --theirs
+<file>`) unless you deliberately changed that file yourself.
+
+> **Worth a skim before you merge:** the engine's `site.config.example.js`
+> sometimes gains new options, and `wrangler.jsonc` occasionally gains a new
+> setting that matters (`preview_urls: false` was one — it stops every deployed
+> version from getting its own public address, which you want on a site with an
+> admin console). Diffing your two files against the examples after a merge
+> takes a minute and is worth it.
+
+**If you started from the "Deploy to Cloudflare" button:** that copied the code
+into a brand-new repo rather than a git fork, so your history and the engine's
+have nothing in common. Your *first* merge needs an extra flag and will report
+conflicts on a lot of files at once:
+
+```bash
+git merge upstream/main --allow-unrelated-histories
+```
+
+Resolve them the same way (yours for the two config files, the engine's for the
+rest). It's a one-time tax — after that first merge the two share history and
+updates are ordinary.
+
 ## Join a webring (optional)
 
 Webrings are the old-web way of finding good work: a set of independent sites
