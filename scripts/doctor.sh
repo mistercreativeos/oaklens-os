@@ -106,6 +106,40 @@ if [ "$signed_in" = "1" ]; then
     fix "Run: bash scripts/setup.sh"
   fi
 
+  # Does the storage this config NAMES actually exist on the account?
+  #
+  # It did not, on a real first run, and nothing here noticed. setup.sh had
+  # written `photo-cdn` into the config after a create that failed, so every
+  # check above went green while the bucket had never been made — and the
+  # truth only arrived as a dead `wrangler deploy` some minutes later. A health
+  # check that reads the settings file and stops there is checking the map, not
+  # the ground.
+  cfg_value() { grep -oE "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]+\"" wrangler.jsonc 2>/dev/null | head -1 | sed 's/.*:[[:space:]]*"//;s/"$//'; }
+
+  bucket="$(cfg_value bucket_name)"
+  if [ -n "$bucket" ]; then
+    r2_out="$(npx wrangler r2 bucket info "$bucket" 2>&1)"
+    if [ $? -eq 0 ]; then
+      ok "Photo storage \"$bucket\" is there"
+    elif printf '%s' "$r2_out" | grep -qE '10042|enable R2|not entitled to use r2'; then
+      bad "Photo storage isn't switched on for your Cloudflare account yet"
+      fix "Turn it on once in your browser: dash.cloudflare.com -> Storage & databases -> R2"
+    else
+      bad "Your settings name a photo storage called \"$bucket\", but it isn't on your account"
+      fix "Run: bash scripts/setup.sh"
+    fi
+  fi
+
+  db="$(cfg_value database_name)"
+  if [ -n "$db" ] && [ "$db" != "YOUR_DB_NAME" ]; then
+    if npx wrangler d1 list --json 2>/dev/null | grep -q "\"$db\""; then
+      ok "Database \"$db\" is there"
+    else
+      bad "Your settings name a database called \"$db\", but it isn't on your account"
+      fix "Run: bash scripts/setup.sh"
+    fi
+  fi
+
   # Optional features. Each is off until you set it, and off is a valid,
   # fully-working state — so these are notes, never failures.
   off=""
@@ -134,8 +168,8 @@ if grep -Eq '^[[:space:]]*consoleShellPublic:[[:space:]]*true' site.config.js 2>
 else
   ok "Admin console is private (asks for your password before it loads)"
 fi
-note "Optional second lock: Cloudflare One → Access controls → Applications"
-fix "Puts a sign-in wall at Cloudflare's edge, in front of /dev/field-console. Free for up to 50 people; walkthrough in setup.md."
+note "Optional second lock: Zero Trust → Access controls → Applications"
+fix "Puts a sign-in wall at Cloudflare's edge, in front of /dev/field-console. Free for up to 50 people; walkthrough in setup.md. (Some accounts still label that sidebar entry \"Cloudflare One\".)"
 echo
 
 # ---- tests ----------------------------------------------------------------

@@ -65,17 +65,67 @@ One thing to know: the **client portal** (`/c/*`) stays switched off on an
 install that never set `SESSION_SECRET` explicitly. It is out of launch scope
 and a new site is not using it; set the secret if you want it on.
 
+## Before either way: switch on R2
+
+Every other Cloudflare service used here works the moment you have an account.
+**R2 — the photo and video storage — does not.** It needs a one-time
+subscription added from the dashboard, and there is no CLI equivalent: wrangler
+answers `code: 10042 — Please enable R2 through the Cloudflare Dashboard` and
+cannot do anything about it.
+
+> Dashboard → **Storage & databases** → **R2 Object Storage** → **Overview** →
+> **Add R2 subscription to my account** → complete the checkout.
+> Some accounts shorten it to **R2**, and some show it directly in the sidebar
+> with no "Storage & databases" above it. Cloudflare is rolling a redesign out
+> account by account, so both are current.
+>
+> Done correctly, you land on an R2 overview reading `$0.00` billable usage,
+> *No billable usage incurred yet*, and `0 B` total storage. There is an **Add
+> Budget Alert** button on that panel; setting it is a good habit and a good
+> thing to recommend to anyone you hand this to.
+
+**The checkout asks for a payment method and still bills nothing.** Card, Apple
+Pay, Google Pay, PayPal or bank, plus a billing address; the page reads
+`Total Due Now $0.00` / `$0 per month`, and the authorisation is for usage
+*above* the free allowance. Cloudflare may place a temporary hold to validate
+the payment method. This is worth saying out loud in your own docs if you fork
+this: it is the single most likely place a non-technical installer stops,
+because "free" and "enter your card" arriving together reads as a trap.
+
+Verified against the real checkout, 2026-08-08. The free allowance is 10 GB
+storage, 1 M Class A (write) operations and 10 M Class B (read) operations per
+month. For this engine that is roughly 25,000 photographs (about 350 KB each
+across the three generated sizes), and reads are cheaper than they look because
+`handleCdnProxy` serves repeat views from `caches.default` (manual §3.4). The
+binding constraint on a fork is the Workers free tier's 100,000 requests/day,
+not R2.
+
+Skip it and the first `wrangler deploy` dies on a bucket that does not exist.
+`setup.sh` now checks for this before it creates anything and stops with these
+instructions, and `doctor.sh` reports it — but neither can flip the switch for
+you.
+
 ## The guided way — one command
 
 ```bash
 npx wrangler login      # sign in to Cloudflare
-bash scripts/setup.sh   # six steps, asks a few questions
+bash scripts/setup.sh   # seven steps, asks a few questions, ends with your site live
 bash scripts/doctor.sh  # confirms it all worked
-npx wrangler deploy     # go live
 ```
 
 `setup.sh` creates the same resources and never asks you to copy an ID out of
-your terminal. Everything below is the manual version of what it does.
+your terminal. It also **deploys for you** and prints the resulting
+`.workers.dev` address — both on purpose:
+
+- The two required secrets are stored *on a Worker*, so until something has
+  deployed there is nothing to attach them to. Wrangler asks whether to create
+  the Worker and reads the answer from stdin, which is the same stdin the secret
+  is piped to, so the prompt eats the secret and the command fails. Deploying
+  first removes the whole failure mode.
+- The address otherwise scrolls past inside wrangler's output, and people
+  genuinely could not find their own site.
+
+Everything below is the manual version of what it does.
 
 > **On Windows, run these in Git Bash** — the terminal that comes with
 > [Git for Windows](https://git-scm.com/downloads), not PowerShell and not
@@ -190,8 +240,10 @@ you — this section is for everyone who used `setup.sh` instead.)
 
 To connect it, in the Cloudflare dashboard:
 
-1. **Workers & Pages** → your Worker → **Settings** → **Build** →
+1. **Compute → Workers & Pages** → your Worker → **Settings** → **Build** →
    **Connect a repository**, and pick your site's GitHub repo.
+   *(Accounts still on the older sidebar have **Workers & Pages** at the top
+   level, with no **Compute** above it. Same destination.)*
 2. Leave the **build command empty** — this site has no build step.
    Set the **deploy command** to `npx wrangler deploy`.
 3. Turn **off** builds for non-production branches (your site deploys from
@@ -330,8 +382,11 @@ For instances holding real client data (portal projects, subscriber lists),
 add an identity wall at Cloudflare's edge — enforced **before** any request
 reaches the worker, free for up to 50 users, zero code:
 
-1. Cloudflare dashboard → **Cloudflare One → Access controls →
+1. Cloudflare dashboard → **Zero Trust → Access controls →
    Applications → Add an application → Self-hosted**.
+   *(This sidebar entry has been renamed in both directions. Accounts on the
+   older dashboard show it as **Cloudflare One**; the redesigned one says
+   **Zero Trust**. Same screens either way — go by whichever you can see.)*
 2. **Click "+ Add public hostname" first**, before touching anything else.
    Then **delete the pre-filled Private IP row** — leaving it blank is not
    enough, and the save fails with

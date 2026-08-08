@@ -25,6 +25,81 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-09
+
+Three first-run bugs, all found by watching a stranger install this from
+nothing. None of them affect a site that is already up and running — but the
+first one may be quietly true of yours, so it is worth two minutes.
+
+### ⚠️ ACTION REQUIRED — check your photo storage actually exists
+
+`setup.sh` used to treat *any* failure from `wrangler r2 bucket create` as
+"it must already exist". There is another reason it fails: R2 is not switched
+on for the account, which needs a one-time subscription added from the
+Cloudflare dashboard and cannot be done from the terminal.
+
+When that happened the script said **"Photo storage ready"**, wrote the bucket
+name into `wrangler.jsonc` anyway, and from then on skipped the storage step
+entirely because the placeholder was filled. The bucket was never created. The
+only symptom was a deploy that failed minutes later on a bucket that had never
+existed.
+
+Check yours:
+
+```bash
+bash scripts/doctor.sh
+```
+
+It now verifies that the storage your config *names* is really on your account,
+rather than trusting the config to be telling the truth. If it reports the
+bucket missing, switch R2 on (dashboard → **Storage & databases** → **R2**),
+then re-run `bash scripts/setup.sh` — it will create it and pick up from there.
+
+If your site is serving photographs today, your bucket exists and there is
+nothing to do.
+
+### `setup.sh` now deploys, and tells you your web address
+
+Two required secrets are stored *on a Worker*, and until something has deployed
+there is no Worker to attach them to. Wrangler asks whether to create one and
+reads the answer from stdin — the same stdin the secret is piped to — so the
+prompt ate the secret and the command failed. The script then reported
+`check you're online`, which was wrong every single time it fired.
+
+Setup is seven steps now instead of six: it deploys before setting secrets, so
+they always attach, and it reads your `.workers.dev` address back out of the
+deploy and prints it on a line of its own. Finding your own site used to mean
+scrolling back through wrangler's output.
+
+Failures quote wrangler's actual words instead of guessing.
+
+If your repo is connected to Cloudflare, the new deploy step skips itself — a
+hand-deploy on a connected repo is undone by the next automatic build.
+
+### The R2 sign-up wants a payment method, and the docs now say so
+
+Switching on R2 goes through a Cloudflare checkout that asks for a card, Apple
+Pay, Google Pay, PayPal or a bank account, plus a billing address — while
+showing `Total Due Now $0.00` and `$0/month`. Both things are true: you are
+authorising charges only above the free allowance.
+
+The README and the install guide used to say "no card required", which was
+wrong. They now say what actually happens, and spell out what the allowance
+holds in terms you can check: 10 GB is roughly 25,000 photographs at the three
+sizes this engine generates, and the limit you would really meet first is the
+Workers free tier's 100,000 requests a day, not storage.
+
+Nothing to do. This is a documentation correction, not a change to your site.
+
+### Dashboard names, both of them
+
+Cloudflare is rolling out a redesigned dashboard account by account, so
+**Workers & Pages** now sits under **Compute**, and **Cloudflare One** is
+**Zero Trust** again. The scripts and `setup.md` name both labels rather than
+picking the one that is wrong for half of you.
+
+---
+
 ## 2026-08-08
 
 The engine repository went public. Everything below shipped alongside that.

@@ -77,21 +77,35 @@ cd YOUR-REPO
 > one directly and everything works right up until your first Publish, hours
 > later. Fork now; it takes five seconds.
 
-### 2. Stand it up
+### 2. Switch on R2
+
+One click, in your browser, and it has to happen before the next step.
+
+Cloudflare dashboard, then **Storage & databases**, then **R2 Object Storage**,
+then **Add R2 subscription to my account**. R2 is where your photographs live,
+and it is the only piece here that a new Cloudflare account does not already
+have switched on. No command can do it for you.
+
+It asks for a payment method and charges nothing. See
+[What it costs](#what-it-costs) below before you get there, so it is not a
+surprise. When it is done the R2 page reads `$0.00` billable usage and `0 B`
+stored, and there is an **Add Budget Alert** button worth thirty seconds.
+
+### 3. Stand it up
 
 ```bash
 npm install
 npx wrangler login      # sign in to Cloudflare
-bash scripts/setup.sh   # creates your storage, sets your password
+bash scripts/setup.sh   # creates your storage, deploys, prints your address
 bash scripts/doctor.sh  # confirms it all worked
-npx wrangler deploy     # go live
 ```
 
-That's the whole install. `setup.sh` asks a few questions and creates the
-Cloudflare resources for you; `doctor.sh` tells you in plain English if
-anything is still missing.
+That's the whole install. `setup.sh` asks a few questions, creates the
+Cloudflare resources for you, puts the site online and tells you its
+`.workers.dev` address. `doctor.sh` says in plain English if anything is still
+missing, including storage your settings name but your account does not have.
 
-### 3. Make it yours
+### 4. Make it yours
 
 Open `site.config.js` and fill in every field: your name, your tagline, your
 contact address, your city. Then connect the repo to Cloudflare so publishing
@@ -99,9 +113,31 @@ goes live on its own. Both are walked through in [setup.md](setup.md).
 
 ## What it costs
 
-Nothing, for a normal portfolio. Cloudflare's free tier covers the Worker, the
-database, the image storage and the subscriber list, and GitHub hosts the repo
-free. There's no trial and no card required to follow the install guide.
+Nothing, for a normal portfolio. But you do have to put a payment method on
+file, and we would rather you heard that here than at step 2.
+
+**Cloudflare asks for a payment method to switch on R2**, the photo storage.
+Card, Apple Pay, Google Pay, PayPal or bank, plus a billing address. The
+checkout says **Due today $0.00** and **$0/month**, and you are agreeing to be
+charged only for usage above the free allowance. Nothing else in this install
+asks for one, and GitHub hosts your repo free.
+
+So the accurate sentence is "free, but you have to hand over a card number to
+prove it." Here is what the allowance actually holds, so the word "free" means
+something you can check:
+
+| Free every month | What that is, in this site's terms |
+|---|---|
+| **10 GB of storage** | A photograph is stored in three sizes and averages about **350 KB** all in, so roughly **25,000 photographs**. A written post with one hero image costs the same as one photograph. If you also keep full resolution originals in there, think **1,000 to 1,500** instead. |
+| **1 million uploads** | Three writes per photograph, so about **300,000 photographs uploaded per month**. You will not meet this. |
+| **10 million image reads** | Repeat views are served from Cloudflare's edge cache and cost **zero** reads, so in practice this is hundreds of thousands of page views. |
+
+The limit you would actually meet first is not R2 at all. It is the Worker's
+**100,000 requests a day**, which is roughly **2,000 to 3,000 page views a day**
+for a photo-heavy site, or somewhere around 60,000 to 90,000 a month. That is a
+lot of traffic for a portfolio, and if you get there consistently you are having
+a good year. Cloudflare's own pricing pages are the source of truth for what
+happens past it, not this README.
 
 The honest caveat: free tiers have limits, and R2 storage and Worker requests
 are the ones you'd meet first. A personal site with thousands of photos sits
@@ -112,7 +148,8 @@ this README.
 ## Requirements
 
 - A **GitHub account**, free
-- A **Cloudflare account**, free, no card
+- A **Cloudflare account**, free. The account itself asks for no card; the R2
+  storage in step 2 does. See [What it costs](#what-it-costs)
 - **Node 22 or newer**. The Cloudflare tooling refuses to run on older versions,
   with an error that doesn't explain itself
 - **Git**, and a terminal you can paste into. On Windows use **Git Bash** (it

@@ -194,24 +194,61 @@ case "$*" in
     echo '{ "d1_databases": [ { "binding": "DB", "database_id": "a1b2c3d4-1111-2222-3333-444455556666" } ] }'
     exit 0 ;;
 
-  *"r2 bucket create"*)
+  # R2 has an account-level switch only the dashboard can flip. FAKE_R2_OFF
+  # models an account that has not flipped it: every r2 command answers 10042.
+  *"r2 "*)
+    if [ "\${FAKE_R2_OFF:-0}" = "1" ]; then
+      echo "✘ [ERROR] A request to the Cloudflare API failed." >&2
+      echo "  Please enable R2 through the Cloudflare Dashboard. [code: 10042]" >&2
+      exit 1
+    fi
     case "$*" in
-      *--update-config*)
-        if [ "\${FAKE_NO_UPDATE_CONFIG:-0}" != "1" ]; then
-          bucket="\$(printf '%s' "$*" | sed -E 's/.*r2 bucket create ([^ ]+).*/\\1/')"
-          sed -i "s/your-bucket-name/\$bucket/g" "$cfg"
-        fi ;;
+      *"r2 bucket create"*)
+        # FAKE_R2_CREATE_FAILS models the OTHER way create can fail — the name
+        # is taken. Whether the bucket is then adopted depends on \`bucket info\`.
+        if [ "\${FAKE_R2_CREATE_FAILS:-0}" = "1" ]; then
+          echo "✘ [ERROR] The bucket you tried to create already exists." >&2; exit 1
+        fi
+        echo "✨ Created bucket"; exit 0 ;;
+      *"r2 bucket info"*)
+        [ "\${FAKE_R2_BUCKET_MISSING:-0}" = "1" ] && { echo "✘ [ERROR] The specified bucket does not exist." >&2; exit 1; }
+        echo "name: photo-cdn"; exit 0 ;;
+      *"r2 bucket list"*) echo "[]"; exit 0 ;;
     esac
-    echo "✨ Created bucket"; exit 0 ;;
+    exit 0 ;;
 
   *"d1 execute"*) echo "🚣 Executed successfully"; exit 0 ;;
+  *"d1 list"*)
+    echo '[{ "uuid": "a1b2c3d4-1111-2222-3333-444455556666", "name": "photo-portal" }]'
+    exit 0 ;;
   *"secret put"*)
     name="\$(printf '%s' "$*" | sed -E 's/.*secret put ([A-Z_0-9]+).*/\\1/')"
     val="\$(cat)"
+    # Secrets live ON A WORKER. Before anything has deployed there is no worker
+    # to put them on, and wrangler asks whether to create one — reading the
+    # answer from the same stdin the secret was piped to, so it eats the secret
+    # and fails. That is why setup.sh deploys BEFORE this step, and this stub
+    # refuses until it has seen a deploy so the ordering is actually pinned.
+    if [ "\${FAKE_SECRETS_FAIL:-0}" = "1" ] \\
+       || { [ "\${FAKE_SECRETS_NEED_WORKER:-0}" = "1" ] && ! grep -q '^DEPLOYED\$' "$CALL_LOG"; }; then
+      echo "✘ [ERROR] There doesn't seem to be a Worker called \\"my-photo-site\\"." >&2
+      exit 1
+    fi
     printf 'SECRET %s=%s\\n' "\$name" "\$val" >> "$CALL_LOG"
     echo "✨ Success! Uploaded secret \$name"; exit 0 ;;
   *"secret list"*) echo '[{"name":"AUTH_PASSWORD_HASH"},{"name":"SESSION_SECRET"}]'; exit 0 ;;
-  *"deploy"*) echo "Deployed to https://test.workers.dev"; exit 0 ;;
+  *"deploy"*)
+    [ "\${FAKE_DEPLOY_FAILS:-0}" = "1" ] && { echo "✘ [ERROR] Please enable R2 through the Cloudflare Dashboard. [code: 10042]" >&2; exit 1; }
+    printf 'DEPLOYED\\n' >> "$CALL_LOG"
+    msg="Deployed my-photo-site triggers (1.20 sec)
+  https://my-photo-site.teststudio.workers.dev"
+    echo "\$msg"
+    # Real wrangler mirrors its console output into WRANGLER_LOG_PATH, which is
+    # how setup.sh reads the address back without piping stdout — piping would
+    # make wrangler non-interactive and turn the workers.dev subdomain question
+    # into a hard failure instead of a question.
+    [ -n "\${WRANGLER_LOG_PATH:-}" ] && printf '%s\\n' "\$msg" >> "\$WRANGLER_LOG_PATH"
+    exit 0 ;;
 esac
 exit 0
 `;
@@ -512,19 +549,154 @@ describe('doctor.sh', () => {
 
 describe('the scripts do not send people to pages that no longer exist', () => {
   // Walking Cloudflare Access live on 2026-07-26 found four doc defects, one
-  // of which left a real hole. The nav path was renamed; both scripts still
-  // printed the old one, which is a dead end for anyone following it.
+  // of which left a real hole: the nav path had been renamed and both scripts
+  // still printed the old one.
+  //
+  // Then it was renamed BACK. The 2026-08-08 cold run's dashboard showed "Zero
+  // Trust" in the sidebar — the name these tests were written to forbid — while
+  // other accounts still show "Cloudflare One", because Cloudflare rolls the
+  // redesign out account by account. Pinning either name alone is therefore
+  // guaranteed to be wrong for somebody. So the rule is now: name BOTH, and
+  // let the reader match whichever sidebar they are looking at.
   const SCRIPTS = ['scripts/setup.sh', 'scripts/doctor.sh'];
 
-  it.each(SCRIPTS.map((s) => [s]))('%s does not mention the retired Zero Trust path', (s) => {
-    const src = readFileSync(join(ROOT, s), 'utf8');
-    expect(src).not.toMatch(/Zero Trust/i);
-  });
-
-  it.each(SCRIPTS.map((s) => [s]))('%s names the current Cloudflare One path', (s) => {
+  it.each(SCRIPTS.map((s) => [s]))('%s names both labels for the Access sidebar', (s) => {
     const src = readFileSync(join(ROOT, s), 'utf8');
     if (!/Access/.test(src)) return; // not every script has to mention it
-    expect(src).toMatch(/Cloudflare One/i);
+    expect(src, 'the redesigned sidebar says "Zero Trust"').toMatch(/Zero Trust/i);
+    expect(src, 'accounts on the old sidebar say "Cloudflare One"').toMatch(/Cloudflare One/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R2 has a switch, and only the dashboard can flip it (2026-08-08 cold run).
+//
+// A stranger's first install died here, ten minutes after the actual mistake.
+// `r2 bucket create` failed with `code: 10042 — Please enable R2 through the
+// Cloudflare Dashboard`; the script had no branch for that, assumed the only
+// other explanation ("must already exist"), printed "Photo storage ready", and
+// wrote the bucket name into wrangler.jsonc. From then on the placeholder was
+// filled, so every re-run SKIPPED the storage step entirely and the bucket was
+// never created. The failure finally surfaced as a dead `wrangler deploy`.
+//
+// Two properties matter, and neither was true before: ask before creating
+// anything, and never claim to have adopted a bucket without looking for it.
+describe('setup.sh and the R2 switch', () => {
+  let dir;
+  beforeEach(() => { dir = makeFork(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  const ANSWERS = ['my-photo-site', 'photo-subscribers', 'photo-portal', 'photo-cdn', '2', 'hunter2hunter2'];
+
+  it('stops before creating anything when R2 is not switched on', () => {
+    const r = runSetup(dir, ANSWERS, { FAKE_R2_OFF: '1' });
+    expect(r.status).not.toBe(0);
+    // Half-made resources on a stranger's account are worse than a clean stop.
+    expect(r.calls.filter((c) => c.includes('create'))).toHaveLength(0);
+  });
+
+  it('says where the switch is, in words someone can follow', () => {
+    const r = runSetup(dir, ANSWERS, { FAKE_R2_OFF: '1' });
+    expect(r.stdout).toContain('dash.cloudflare.com');
+    expect(r.stdout).toMatch(/Storage & databases/);
+    expect(r.stdout).toMatch(/run this script again/i);
+  });
+
+  it('leaves the bucket placeholder alone so the re-run does the work', () => {
+    // The heart of the bug. A filled placeholder means "done" to every later
+    // run, so writing it for a bucket that does not exist does not just fail —
+    // it makes the failure permanent and invisible.
+    const r = runSetup(dir, ANSWERS, { FAKE_R2_OFF: '1' });
+    expect(remainingPlaceholders(r.config)).toContain('your-bucket-name');
+  });
+
+  it('adopts an existing bucket only after confirming it is really there', () => {
+    const r = runSetup(dir, ANSWERS, { FAKE_R2_CREATE_FAILS: '1' });
+    expect(r.stdout).toMatch(/reusing/i);
+    expect(r.calls.some((c) => c.includes('r2 bucket info')),
+      'the reuse claim has to be checked against the account').toBe(true);
+    expect(r.config).toContain('photo-cdn');
+  });
+
+  it('does not claim reuse when the create failed and no bucket exists', () => {
+    const r = runSetup(dir, ANSWERS, {
+      FAKE_R2_CREATE_FAILS: '1', FAKE_R2_BUCKET_MISSING: '1',
+    });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).not.toMatch(/Photo storage ready/);
+    expect(remainingPlaceholders(r.config)).toContain('your-bucket-name');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Secrets are stored ON A WORKER (2026-08-08 cold run).
+//
+// setup.sh used to set them before anything had ever deployed, so there was no
+// worker to store them on. Wrangler asks "There doesn't seem to be a Worker
+// called X — create one?" and reads the answer from stdin — the same stdin the
+// secret is piped to. So the prompt ate the secret, the command failed, and the
+// script reported "check you're online", which sent a real person off hunting a
+// network problem that did not exist. Both required secrets failed this way on
+// every single fresh install; `doctor.sh` then said the password was not set.
+describe('setup.sh deploys before it sets secrets', () => {
+  let dir;
+  beforeEach(() => { dir = makeFork(); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  const ANSWERS = ['my-photo-site', 'photo-subscribers', 'photo-portal', 'photo-cdn', '2', 'hunter2hunter2'];
+
+  it('both secrets land even when they require an existing worker', () => {
+    const r = runSetup(dir, ANSWERS, { FAKE_SECRETS_NEED_WORKER: '1' });
+    const names = r.calls.filter((c) => c.startsWith('SECRET '))
+      .map((c) => c.slice(7).split('=')[0]).sort();
+    expect(names).toEqual(['AUTH_PASSWORD_HASH', 'SESSION_SECRET']);
+  });
+
+  it('the deploy really does come first in the call order', () => {
+    const r = runSetup(dir, ANSWERS);
+    const deployedAt = r.calls.findIndex((c) => c === 'DEPLOYED');
+    const firstSecretAt = r.calls.findIndex((c) => c.startsWith('SECRET '));
+    expect(deployedAt).toBeGreaterThanOrEqual(0);
+    expect(firstSecretAt).toBeGreaterThan(deployedAt);
+  });
+
+  it('prints the live address, copyable, on its own line', () => {
+    // "When we give the your site is live line are we able to print the url for
+    // copy at this moment?" — asked during the cold run, because the address
+    // scrolls past inside wrangler's output and is genuinely hard to find.
+    const r = runSetup(dir, ANSWERS);
+    expect(r.stdout).toContain('https://my-photo-site.teststudio.workers.dev');
+    const onItsOwn = r.stdout.split('\n')
+      .some((l) => l.replace(/\[[0-9;]*m/g, '').trim() === 'https://my-photo-site.teststudio.workers.dev');
+    expect(onItsOwn, 'the address should sit alone on a line, not inside a sentence').toBe(true);
+  });
+
+  it('blames the deploy, not the network, when the deploy fails', () => {
+    const r = runSetup(dir, ANSWERS, { FAKE_DEPLOY_FAILS: '1' });
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).not.toMatch(/check you're online/i);
+    // and it must not go on to set secrets that cannot possibly stick
+    expect(r.calls.filter((c) => c.startsWith('SECRET '))).toHaveLength(0);
+  });
+
+  it('quotes wrangler instead of guessing when a secret will not save', () => {
+    // The old message was a guess, and it was wrong every time it fired. Only
+    // wrangler knows why wrangler failed, so the fix is to stop inventing a
+    // reason and show the one it gave.
+    const r = runSetup(dir, ANSWERS, { FAKE_SECRETS_FAIL: '1' });
+    expect(r.stdout).not.toMatch(/check you're online/i);
+    expect(r.stdout).toContain("doesn't seem to be a Worker");
+  });
+
+  it('skips the deploy when the repo is wired to Cloudflare', () => {
+    // A hand-deploy on a connected repo is undone by the next automatic build.
+    cpSync(join(dir, 'site.config.example.js'), join(dir, 'site.config.js'));
+    writeFileSync(join(dir, 'site.config.js'),
+      `${readFileSync(join(dir, 'site.config.js'), 'utf8').replace(/^export default Object\.freeze\(\{/m,
+        'export default Object.freeze({\n  repoConnected: true,')}`);
+    const r = runSetup(dir, ANSWERS);
+    expect(r.stdout).toMatch(/deploys itself/i);
+    expect(r.calls.filter((c) => c === 'DEPLOYED')).toHaveLength(0);
   });
 });
 

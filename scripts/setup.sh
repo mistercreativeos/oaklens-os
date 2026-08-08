@@ -26,7 +26,7 @@ cd "$(dirname "$0")/.." || exit 1
 
 # ---- output helpers -------------------------------------------------------
 bold()  { printf '\033[1m%s\033[0m\n' "$1"; }
-step()  { printf '\n\033[1m[%s of 6] %s\033[0m\n' "$1" "$2"; }
+step()  { printf '\n\033[1m[%s of 7] %s\033[0m\n' "$1" "$2"; }
 info()  { printf '  %s\n' "$1"; }
 good()  { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn()  { printf '  \033[33m!\033[0m %s\n' "$1"; }
@@ -143,27 +143,24 @@ step 2 "Naming your site"
 # in this script asks the placeholder; this one now does too.
 [ -f wrangler.jsonc ] || cp wrangler.example.jsonc wrangler.jsonc
 if placeholder_left your-worker-name; then
-  info "This is the name Cloudflare uses internally. Lowercase letters,"
-  info "numbers and dashes. It is not your domain — you can add that later."
+  # Say that the name is VISIBLE. A real run typed one character wrong and
+  # ended up living at mistercreaetiveos.workers.dev, because nothing here
+  # suggested the answer was worth reading back before pressing return.
+  info "Lowercase letters, numbers and dashes."
+  info "This becomes part of your web address, like"
+  info "  https://your-site-name.something.workers.dev"
+  info "so it's worth a second look before you press return. It is not your own"
+  info "domain — you can add one of those later, and this name still works."
   worker_name="$(ask 'Site name' 'my-photo-site')"
   sub your-worker-name "$worker_name"
   good "Named: $worker_name"
+  info "Your address will end up looking like  $worker_name.<something>.workers.dev"
 else
   good "Already named — leaving your existing settings alone."
 fi
 
 # ---- 3. storage -----------------------------------------------------------
 step 3 "Creating your storage"
-info "Three pieces, all on Cloudflare's free tier:"
-info "  • a place for photos and video   (R2)"
-info "  • a small database for your notes and client portal   (D1)"
-info "  • a list for email subscribers   (KV)"
-echo
-info "Two things you'll see and can ignore: wrangler asking whether it should"
-info "edit your config (this script fills it in itself, more reliably), and an"
-info "\"already exists\" error if something here is already on your account —"
-info "that one gets reused, and this script says so when it happens."
-echo
 
 # Recover the id of a resource that already exists. `create` fails outright
 # when the name is taken, and that is not an edge case: it happens on any
@@ -181,9 +178,76 @@ lookup_id() { # lookup_id kv|d1 NAME -> prints the id, or nothing
   printf '%s' "$out" | node scripts/lib/wrangler-parse.mjs "find-$kind" "$name" 2>/dev/null
 }
 
+# R2 is the one piece here that an account does not get switched on by default:
+# Cloudflare wants you to add the R2 subscription once, in the browser, and
+# wrangler cannot do it — it answers `code: 10042`.
+#
+# That used to be completely invisible, and it cost a real person their whole
+# first run. `r2 bucket create` failed, the script assumed the only other
+# explanation ("must already exist"), said "Photo storage ready", and wrote the
+# bucket name into the config anyway. Every later run then SKIPPED this step,
+# because the placeholder was filled — so the bucket was never created at all,
+# and the truth surfaced ten minutes later as a deploy that died on it.
+#
+# Hence two checks: ask BEFORE creating anything, and never claim to have
+# adopted an existing bucket without looking for it.
+r2_off() {
+  local out
+  out="$(npx wrangler r2 bucket list 2>&1)"
+  case "$out" in
+    *10042*|*"enable R2"*|*"not entitled to use r2"*) return 0 ;;
+  esac
+  return 1
+}
+bucket_exists() { npx wrangler r2 bucket info "$1" >/dev/null 2>&1; }
+
+# Ask about that switch before creating ANYTHING. Rule 3 of this script's
+# header: stopping before anything exists beats leaving half-made resources
+# behind on a stranger's account.
+if placeholder_left your-bucket-name && r2_off; then
+  oops "One switch to flip first."
+  info "Photo storage (Cloudflare calls it R2) is the only piece here that isn't"
+  info "already switched on. Cloudflare asks you to turn it on once, in your"
+  info "browser, and there is no way to do it from the terminal."
+  echo
+  info "  1. Open   https://dash.cloudflare.com"
+  info "  2. Go to  Storage & databases  →  R2 Object Storage  →  Overview"
+  info "            (some accounts shorten this to just \"R2\")"
+  info "  3. Press \"Add R2 subscription\" and finish the checkout."
+  echo
+  info "It asks for a payment method and still costs nothing: the page says"
+  info "Total Due Now \$0.00 and \$0/month, and you're only charged if you go"
+  info "past the free allowance. That allowance is 10GB, which is around 25,000"
+  info "photographs at the three sizes this site saves them in."
+  info "You'll know it worked when the R2 page reads \$0.00 billable usage and"
+  info "\"No billable usage incurred yet\". There's an \"Add Budget Alert\" button"
+  info "right there too — worth setting, and it takes half a minute."
+  echo
+  info "Then run this script again. Nothing has been created yet, so you are not"
+  info "leaving anything half-finished behind you."
+  exit 1
+fi
+
+# The orientation comes AFTER the gate on purpose: someone about to be sent to
+# the dashboard should not first read three lines about what is coming next.
+info "Three pieces, all on Cloudflare's free tier:"
+info "  • a place for photos and video   (R2)"
+info "  • a small database for your notes and client portal   (D1)"
+info "  • a list for email subscribers   (KV)"
+echo
+info "Two things you'll see and can ignore: wrangler asking whether it should"
+info "edit your config (this script fills it in itself, more reliably), and an"
+info "\"already exists\" error if something here is already on your account —"
+info "that one gets reused, and this script says so when it happens."
+echo
+
 # --- KV. Wrangler can write this into the config itself; we verify it did.
 if placeholder_left YOUR_KV_NAMESPACE_ID; then
   info "Subscriber list…"
+  info "  Somewhere to keep the email addresses of people who want to hear when"
+  info "  you post. Nothing is sent yet and nobody is on it — this just makes"
+  info "  the empty list. You can have several later; one general list is the"
+  info "  right place to start, and the suggested name below is a fine one."
   # The TITLE is asked for, like the database and the bucket below. It used to
   # be hardcoded to the binding name, "SUBSCRIBERS" — and titles are unique per
   # account, so the second site on an account could never create one. The
@@ -238,6 +302,11 @@ fi
 if placeholder_left YOUR_D1_DATABASE_ID; then
   echo
   info "Database…"
+  info "  A small filing drawer your site writes to as you work: drafts of field"
+  info "  notes you haven't published, and the client portal. Your photographs"
+  info "  do not go in here."
+  info "  The name is internal — visitors never see it, it isn't part of your"
+  info "  web address, and the suggestion below is a good long-term answer."
   db_name="$(ask 'Database name' 'photo-portal')"
   sub YOUR_DB_NAME "$db_name"
   capture npx wrangler d1 create "$db_name"
@@ -262,18 +331,34 @@ fi
 if placeholder_left your-bucket-name; then
   echo
   info "Photo and video storage…"
+  info "  Where your photographs and video actually live. This is the one that"
+  info "  grows as you shoot; the free tier holds around 10GB."
   bucket="$(ask 'Storage name' 'photo-cdn')"
-  # A bucket is addressed by NAME, so there is no id to read back — the name
-  # the person just chose is the answer, and "already exists" is harmless here.
+  # A bucket is addressed by NAME, so there is no id to read back. But "create
+  # failed" is NOT the same as "already exists" — see r2_off above — and this
+  # branch used to treat them as identical, tick green, and fill the config for
+  # a bucket that did not exist. So the reuse claim is now VERIFIED against the
+  # account before it is made, exactly like the KV and D1 lookups above, and
+  # the config is only written once something is really there.
   if capture npx wrangler r2 bucket create "$bucket"; then
     made "Photo storage    $bucket"
+    sub your-bucket-name "$bucket"
+    good "Photo storage ready."
   else
     explain_create_failure
-    good "Reusing \"$bucket\". Your photos are untouched."
-    reused "Photo storage    $bucket"
+    if bucket_exists "$bucket"; then
+      good "Found it — reusing \"$bucket\". Your photos are untouched."
+      reused "Photo storage    $bucket"
+      sub your-bucket-name "$bucket"
+      good "Photo storage ready."
+    else
+      oops "The photo storage couldn't be created, and there's no \"$bucket\" on your account either."
+      info "Cloudflare's own words are in the output just above."
+      info "Nothing was written to your settings, so fixing whatever it says and"
+      info "running this script again picks up right here."
+      exit 1
+    fi
   fi
-  placeholder_left your-bucket-name && sub your-bucket-name "$bucket"
-  good "Photo storage ready."
 fi
 
 # ---- 4. database tables ---------------------------------------------------
@@ -325,14 +410,82 @@ const out = src.replace(/preset:\s*'[^']*'/, \"preset: '$preset'\");
 if (out !== src) fs.writeFileSync('site.config.js', out);
 " && good "Look set to $preset."
 
-# ---- 6. secrets -----------------------------------------------------------
-step 6 "Setting your password"
+# ---- 6. go live -----------------------------------------------------------
+#
+# This step used to be homework: the script finished, printed "now run npx
+# wrangler deploy", and stopped. Two things went wrong with that, both found on
+# a real first run.
+#
+# 1. The secrets in step 7 are stored ON A WORKER, and until something deploys
+#    there is no worker to store them on. Wrangler asks "There doesn't seem to
+#    be a Worker called X — create one?" — but the secret is piped to its
+#    stdin, so the prompt swallowed the secret as its own answer and the
+#    command failed. The script then said "check you're online", sending a real
+#    person off hunting a network problem that did not exist. Deploying first
+#    deletes that whole class of failure.
+#
+# 2. Nobody could find their own web address. It scrolls past inside wrangler's
+#    output somewhere above the fold. Now the script reads it back out and says
+#    it plainly, twice.
+#
+# The deploy runs with the terminal attached rather than through `capture`,
+# because the very first one may ask which workers.dev subdomain you want and a
+# question nobody can see is a hang. WRANGLER_LOG_PATH gets us the output
+# anyway: wrangler writes its own log to that file while the screen stays
+# interactive.
+step 6 "Putting your site on the internet"
+LIVE_URL=""
+if grep -Eq '^[[:space:]]*repoConnected:[[:space:]]*true' site.config.js 2>/dev/null; then
+  good "Your repo is connected to Cloudflare, so it deploys itself."
+  info "Skipping the manual deploy on purpose — a hand-deploy gets undone by"
+  info "the next automatic build. Push to main instead."
+else
+  info "This uploads your site and gives it a web address."
+  info "The first time, Cloudflare may ask you to pick a workers.dev subdomain."
+  info "That becomes part of your address, so your name or your studio name is"
+  info "a good answer. Everything else you can just accept."
+  echo
+  deploy_log="$(mktemp -t oaklens-deploy)"
+  if WRANGLER_LOG_PATH="$deploy_log" npx wrangler deploy; then
+    LIVE_URL="$(grep -oE 'https://[a-z0-9][a-z0-9.-]*\.workers\.dev' "$deploy_log" 2>/dev/null | head -1)"
+    echo
+    if [ -n "$LIVE_URL" ]; then
+      good "Your site is live."
+      bold "  $LIVE_URL"
+      info "That's the address — copy it straight from the line above."
+    else
+      good "Your site is live. The address is in the output just above."
+    fi
+  else
+    rm -f "$deploy_log"
+    oops "The deploy didn't go through."
+    info "Cloudflare's own words are in the output above — that line is the real"
+    info "answer, and it is usually specific."
+    info "Your storage is all set up, so nothing is lost. Fix what it names and"
+    info "run this script again; it picks up right here."
+    exit 1
+  fi
+  rm -f "$deploy_log"
+fi
+
+# ---- 7. secrets -----------------------------------------------------------
+step 7 "Setting your password"
 info "Two things get stored securely on Cloudflare — never in your code,"
 info "never in your repo, and not visible to anyone who clones your site."
 echo
+# Failures show wrangler's own last line. The old version swallowed all output
+# and guessed "check you're online", which was wrong every single time it fired.
+secret_put() { # secret_put NAME VALUE "done message" "the thing, for the error"
+  local out rc
+  out="$(printf '%s' "$2" | npx wrangler secret put "$1" 2>&1)"; rc=$?
+  if [ "$rc" -eq 0 ]; then good "$3"; return 0; fi
+  warn "Couldn't save the $4. Cloudflare said:"
+  printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | tail -3 | sed 's/^/      /'
+  info "Running this script again retries it."
+  return 1
+}
 session_secret="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
-printf '%s' "$session_secret" | npx wrangler secret put SESSION_SECRET >/dev/null 2>&1 \
-  && good "Signing key generated." || warn "Couldn't save the signing key — check you're online."
+secret_put SESSION_SECRET "$session_secret" "Signing key generated." "signing key"
 
 info "Now your console password. This is what you'll use to sign in and post"
 info "photos. It's scrambled before it's stored, so nobody — including you —"
@@ -345,8 +498,7 @@ while :; do
   info "A bit longer, please — at least 8 characters."
 done
 hash="$(node -e "require('bcryptjs').hash(process.argv[1],12).then(h=>process.stdout.write(h))" "$pw")"
-printf '%s' "$hash" | npx wrangler secret put AUTH_PASSWORD_HASH >/dev/null 2>&1 \
-  && good "Password saved." || warn "Couldn't save the password — check you're online."
+secret_put AUTH_PASSWORD_HASH "$hash" "Password saved." "password"
 unset pw hash
 
 # ---- final check ----------------------------------------------------------
@@ -376,31 +528,46 @@ if [ -n "$SUMMARY_LINES" ]; then
   done
 fi
 
-bold "Done. Your site is ready to go live."
+echo
+if [ -n "$LIVE_URL" ]; then
+  bold "Done. Your site is live at:"
+  bold "  $LIVE_URL"
+  info "Your control room is that address with /dev/field-console on the end:"
+  info "  $LIVE_URL/dev/field-console"
+else
+  bold "Done. Your site is live."
+fi
 cat <<'EOF'
 
   Next, in order:
 
-  1. Put your name on it
+  1. Have a look at it
+     Open the address above. It comes with sample photographs, so it
+     should look like a real site straight away.
+
+  2. Put your name on it
      Open site.config.js and fill in your name, tagline, email and
      location. That's the only file with your details in it.
 
-  2. Check everything
+  3. Publish the change
+     npx wrangler deploy
+     Same command as before. Run it any time you change something.
+
+  4. Check everything
      bash scripts/doctor.sh
 
-  3. Go live
-     npx wrangler deploy
-
-  Then sign in at  <your-site>/dev/field-console  with the password you
+  Then sign in at your address + /dev/field-console with the password you
   just set, and start posting.
 
-  4. Worth doing soon: connect your GitHub repo to Cloudflare
+  5. Worth doing soon: connect your GitHub repo to Cloudflare
      Right now, publishing from the console saves your changes to GitHub,
      but your live site only picks them up when you run `npx wrangler
      deploy`. Connect the repo once and that last step disappears —
      publish, and the site updates itself in about a minute:
-        Cloudflare dashboard -> Workers & Pages -> your Worker
+        Cloudflare dashboard -> Compute -> Workers & Pages -> your Worker
         -> Settings -> Build -> Connect a repository
+     (Cloudflare is mid-redesign. Older accounts show "Workers & Pages"
+     straight in the sidebar with no "Compute" above it — same place.)
      Leave the build command empty (there is nothing to build), set the
      deploy command to `npx wrangler deploy`, and switch off builds for
      non-production branches. Then set  repoConnected: true  in
@@ -427,6 +594,8 @@ cat <<'EOF'
   set before it will even load. If your site will hold client photos or a
   subscriber list, you can add a second lock at Cloudflare's edge so the
   page never even reaches your site without an approved sign-in:
-     Cloudflare dashboard -> Cloudflare One -> Access controls -> Applications
+     Cloudflare dashboard -> Zero Trust -> Access controls -> Applications
+     (Some accounts still label that sidebar entry "Cloudflare One". Same
+     place, same screens — Cloudflare has renamed it in both directions.)
   Free for up to 50 people. Full walkthrough in setup.md, "Optional hardening".
 EOF
