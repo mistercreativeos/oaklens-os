@@ -1,0 +1,14 @@
+{
+  "name": "OAKLENS Field Console",
+  "short_name": "Field Console",
+  "description": "OAKLENS content management console",
+  "start_url": "/dev/field-console",
+  "scope": "/dev/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    { "src": "/dev/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title data-site-title="prefix">FIELD CONSOLE v0.13.0</title>
+
+<!-- PWA: installable + lite offline shell for iPad field use -->
+<link rel="icon" type="image/svg+xml" href="/dev/icon.svg">
+<link rel="apple-touch-icon" href="/dev/icon-180.png">   <!-- iOS ignores SVG here; springboard needs PNG -->
+<link rel="manifest" href="/dev/manifest.webmanifest">
+<meta name="theme-color" content="#050505">
+<script>
+/* Anti-flash theme boot: resolve STUDIO (dark) / DAYLIGHT (light) before the
+   stylesheet paints. Full theme logic lives in console-ui.js (themeToggle). */
+try {
+  var _t = localStorage.getItem('console_theme')
+        || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  if (_t === 'light') document.documentElement.dataset.theme = 'light';
+  document.querySelector('meta[name="theme-color"]')
+    .setAttribute('content', _t === 'light' ? '#f4f1ea' : '#050505');
+} catch (e) {}
+</script>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Field Console">
+
+<!-- Fonts are self-hosted (@font-face in field-console.css → /fonts/*.woff2,
+     same files as the public site) and precached by the service worker, so
+     the console renders in brand type at zero bars. -->
+<!-- Third-party libs: version-pinned + SRI'd, loaded async so a stalled CDN
+     on flaky cellular never blocks first paint or DOMContentLoaded (the SW
+     serves them cache-first after the first visit). Both globals are guarded:
+     a drop before exifr lands just means EXIF dates fall back to today. -->
+<script async src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" integrity="sha384-KRanV2NRwHPanp7iM6nlLQC5jPCTscSYMko30dLJHzNXJaUNtcucWv+SOi3jV3PE" crossorigin="anonymous"></script>
+<script async src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+
+<link rel="stylesheet" href="/css/field-console.css?v=27">
+</head>
+<body>
+
+<header class="topbar">
+  <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" title="Collapse navigation" aria-label="Toggle navigation">‹‹</button>
+  <div class="brand"><span data-site-wordmark="accent">SITE<span class="accent">.NAME</span></span><span class="brand-sub">FIELD CONSOLE</span><span class="brand-sub" id="demo-badge" style="display:none; color:var(--accent);">DEMO · BROWSE-ONLY</span></div>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-stat" id="topbar-stage-stat">NO PENDING CHANGES</div>
+  <button class="sys-lamp" id="sys-lamp" data-state="logged-out" title="System activity — click for the ledger" aria-label="System activity">
+    <span class="sys-lamp-led" id="sys-lamp-led"></span>
+    <span class="sys-lamp-label" id="sys-lamp-label">SYS.BOOT</span>
+  </button>
+  <button class="settings-btn theme-btn" id="theme-toggle" onclick="themeToggle()" title="Switch STUDIO / DAYLIGHT mode" aria-label="Toggle light or dark mode">☀</button>
+  <button class="settings-btn" id="settings-topbar-btn" onclick="openSettings()" title="Console Settings">
+    ⚙<span class="settings-status-dot" id="settings-dot"></span>
+  </button>
+  <button class="publish-btn empty" id="publish-btn" onclick="openPublishView()">
+    Publish <span class="badge" id="publish-badge">0</span>
+  </button>
+  <div class="sys-ledger hidden" id="sys-ledger" role="log" aria-label="Activity ledger"></div>
+  <div class="sys-progress" id="sys-progress"><div class="sys-progress-fill" id="sys-progress-fill"></div></div>
+</header>
+
+<div class="layout">
+
+  <nav class="sidebar">
+    <div class="nav-group">
+      <div class="nav-group-label">Content</div>
+      <button class="nav-btn active" data-view="buffer" onclick="showView('buffer')">
+        <span class="nav-icon">◉</span> Buffer
+        <span class="nav-count" id="nav-count-buffer">0</span>
+      </button>
+      <button class="nav-btn" data-view="archive" onclick="showView('archive')">
+        <span class="nav-icon">▦</span> Archive
+        <span class="nav-count" id="nav-count-archive">0</span>
+      </button>
+      <button class="nav-btn" data-view="fn" onclick="showView('fn')">
+        <span class="nav-icon">✍</span> FN//
+        <span class="nav-count" id="nav-count-fn">0</span>
+      </button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Manage</div>
+      <button class="nav-btn" data-view="wall" onclick="showView('wall')">
+        <span class="nav-icon">▤</span> Wall
+        <span class="nav-count" id="nav-count-wall">0</span>
+      </button>
+      <button class="nav-btn" data-view="barrel" onclick="showView('barrel')">
+        <span class="nav-icon">◈</span> Barrel
+        <span class="nav-count" id="nav-count-barrel">0</span>
+      </button>
+      <button class="nav-btn" data-view="friends" onclick="showView('friends')">
+        <span class="nav-icon">⬡</span> Network
+        <span class="nav-count" id="nav-count-friends">0</span>
+      </button>
+      <button class="nav-btn" data-view="library" onclick="showView('library')">
+        <span class="nav-icon">◎</span> Library
+        <span class="nav-count" id="nav-count-library">0</span>
+      </button>
+      <!-- Config-gated (site.config.js -> console.bench). The edge removes this
+           button, the More-sheet item and #view-bench when the flag is off. -->
+      <button class="nav-btn" data-console-feature="bench" data-view="bench" onclick="showView('bench')">
+        <span class="nav-icon">▤</span> Bench
+        <span class="nav-count" id="nav-count-bench">0</span>
+      </button>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <div class="nav-group">
+      <button class="nav-btn" data-view="publish" onclick="showView('publish')">
+        <span class="nav-icon">▲</span> Publish
+        <span class="nav-stage-pip" id="nav-stage-pip" style="display:none;"></span>
+      </button>
+      <button class="nav-btn" onclick="openSettings()">
+        <span class="nav-icon">⚙</span> Settings
+        <span class="settings-status-dot" id="sidebar-settings-dot" style="margin-left:auto;"></span>
+      </button>
+    </div>
+
+
+    <div class="sidebar-foot">
+      v0.13.0 // REMOTE ENABLED<br>
+      REPO: set GITHUB_REPO<br>
+      <span style="color:var(--text-dim);">⌥ + R to reset</span>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <section class="view active" id="view-buffer">
+      <div class="view-header">
+        <div>
+          <div class="view-title">THE ROLLING <em>BUFFER</em></div>
+          <div class="view-sub">// CAPTURE FIRST. PROCESS LATER.</div>
+        </div>
+        <div class="view-meta">
+          <div><span class="accent">DROP PHOTOS · EXIF DATE AUTO</span></div>
+          <div id="buffer-stats">— frames · — days</div>
+        </div>
+      </div>
+
+      <div class="dropzone dropzone-big" id="buffer-dropzone">
+        <input type="file" id="buffer-file-input" class="dz-hidden-input" multiple accept="image/*">
+        <div class="dz-icon">◢ ◣</div>
+        <div class="dz-prompt">DROP PHOTOS HERE</div>
+        <div class="dz-hint">EXIF capture date used automatically · drag a folder, drop a stack, no titles needed · RAW files open in the lens</div>
+      </div>
+
+      <div class="btn-row" style="margin-top: 8px;">
+        <button class="btn btn-sm btn-ghost" onclick="openAssetLibrary(assetToBuffer, 'archive')">◎ FROM LIBRARY</button>
+        <button class="btn btn-sm btn-ghost" onclick="RawLens.open('buffer')" title="Browse RAW files from a card reader — extracts the embedded JPEG on-device">◇ RAW LENS</button>
+      </div>
+
+      <div class="stage-section">
+        <div class="stage-header">
+          <div class="stage-title">RECENT BUFFER · <span class="count" id="buffer-count">0</span> FRAMES</div>
+          <div class="btn-row">
+            <button class="btn btn-sm btn-ghost" id="burst-link-btn" onclick="toggleBurstLinkMode()" title="Group frames into a burst sequence — click to toggle Link mode, Esc to exit">⛓ LINK</button>
+            <button class="btn btn-sm btn-ghost" onclick="loadSampleBuffer()">+ load sample data</button>
+          </div>
+        </div>
+        <div id="buffer-display"></div>
+      </div>
+
+      <!-- Burst linking floating action bar (shown via JS when 2+ frames selected in Link mode) -->
+      <div class="burst-actionbar" id="burst-actionbar">
+        <span class="bab-label" id="burst-bar-label">LINK BURST // <span class="accent">0 FRAMES</span></span>
+        <button class="btn btn-sm btn-stage" id="burst-link-action" onclick="commitBurstLink()">LINK BURST</button>
+        <button class="btn btn-sm btn-ghost" onclick="burstCancel()">CANCEL</button>
+      </div>
+
+      <!-- Floating Link toggle — reachable from ANY scroll depth in a long buffer,
+           so you never lose your place scrolling up to the toolbar button (which
+           stays too). Auto-scoped to the buffer: it lives inside #view-buffer and
+           .view is display:none unless active. Mirrors the toolbar button's state. -->
+      <button class="buffer-link-fab" id="buffer-link-fab" onclick="toggleBurstLinkMode()"
+              title="Toggle burst Link mode — Esc to exit">⛓ LINK</button>
+    </section>
+
+    <section class="view" id="view-archive">
+      <div class="view-header">
+        <div>
+          <div class="view-title">ECHOES <em>ARCHIVE</em></div>
+          <div class="view-sub">// CURATED · METADATA REQUIRED</div>
+        </div>
+        <div class="view-meta">
+          <div><span class="accent">PHOTO + TAG IN ONE FORM</span></div>
+          <div id="archive-stats">— curated frames</div>
+        </div>
+      </div>
+
+      <div class="archive-compose">
+        <div class="compose-photo">
+          <div class="dropzone" id="archive-dropzone">
+            <input type="file" id="archive-file-input" class="dz-hidden-input" accept="image/*">
+            <div class="dz-icon" style="font-size:1.4rem;">◢</div>
+            <div class="dz-prompt">DROP PHOTO</div>
+            <div class="dz-hint">single image · srcset variants generated on stage</div>
+          </div>
+          <div class="btn-row" style="margin-top: 8px;">
+            <button class="btn btn-sm btn-ghost" onclick="openAssetLibrary(assetToArchiveForm, 'archive')">◎ FROM LIBRARY</button>
+            <button class="btn btn-sm btn-ghost" onclick="RawLens.open('archive')" title="Pick one frame from a RAW card — extracts the embedded JPEG on-device">◇ RAW</button>
+          </div>
+          <div class="preview-wrap" id="archive-preview-wrap">
+            <div class="preview-empty">// NO IMAGE LOADED</div>
+          </div>
+          <div class="filename" id="archive-filename"></div>
+          <button class="btn btn-sm btn-ghost" onclick="openArchiveFocal()" title="Set the thumbnail crop focal point">◎ FOCAL POINT</button>
+          <button class="btn btn-sm btn-ghost" onclick="openArchiveCardFocal()" title="Set the crop for the tall 4:5 homepage 'recent work' card (falls back to the focal point if unset)">◎ CARD CROP</button>
+        </div>
+
+        <div class="compose-form">
+          <div class="field">
+            <label class="field-label">Title</label>
+            <input class="field-input" id="arch-title" placeholder="The Pause">
+          </div>
+          <div class="field">
+            <label class="field-label">Subtitle / Description</label>
+            <input class="field-input" id="arch-sub" placeholder="Redwood Solitude">
+          </div>
+          <div class="field">
+            <label class="field-label">Location, Year</label>
+            <input class="field-input" id="arch-loc" placeholder="Location, Year">
+          </div>
+          <div class="field-row cols-3">
+            <div class="field" style="margin:0;">
+              <label class="field-label">Camera</label>
+              <select class="field-select" id="arch-cam">
+                <option>LUMIX G85</option>
+                <option>LUMIX GX85</option>
+              </select>
+            </div>
+            <div class="field" style="margin:0;">
+              <label class="field-label">Lens</label>
+              <select class="field-select" id="arch-lens">
+                <option>Prime</option>
+                <option>Telephoto</option>
+              </select>
+            </div>
+            <div class="field" style="margin:0;">
+              <label class="field-label">Medium</label>
+              <select class="field-select" id="arch-med">
+                <option>Digital</option>
+                <option>Film</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">Hash <span style="color:var(--text-faint);font-size:0.55rem;letter-spacing:1px;">(auto-generated on image drop)</span></label>
+            <input class="field-input" id="arch-hash" placeholder="// awaiting image" readonly style="color:var(--text-ghost);cursor:default;">
+          </div>
+
+          <div class="archive-tag-preview" id="arch-tag-preview">
+            <strong>Title</strong><br>
+            Subtitle<br>
+            Location, Year<br>
+            <span class="meta">LUMIX G85 <span class="pipe">|</span> Prime <span class="pipe">|</span> Digital</span>
+          </div>
+
+          <div class="btn-row gap-12">
+            <button class="btn btn-stage btn-full" onclick="archiveStage()">▲ Stage to Archive</button>
+            <button class="btn btn-ghost" onclick="archiveClear()">Clear</button>
+          </div>
+          <div class="hint-text">
+            Stages the photo + tag into archive.json · <span class="accent">srcset variants generated client-side</span> ·
+            output goes to /02-assets/optimized/ on publish
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-section">
+        <div class="stage-header">
+          <div class="stage-title">ARCHIVE · <span class="count" id="archive-count">0</span> FRAMES</div>
+        </div>
+        <div class="archive-list" id="archive-display"></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-fn">
+      <div class="view-header">
+        <div>
+          <div class="view-title">FIELD <em>NOTES</em></div>
+          <div class="view-sub">// MARKDOWN · INLINE IMAGES · f#N CITES A BUFFER FRAME · AUTO-SAVE · ⌘B ⌘I ⌘K</div>
+        </div>
+        <div class="view-meta">
+          <div><span class="accent">WRITES TO: /posts/<id>.md</span></div>
+          <div id="fn-stats">— posts</div>
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-bottom: 14px;">
+        <button class="btn btn-primary btn-sm" onclick="fnNewPost()">+ New Draft</button>
+        <select class="field-select" id="fn-draft-select" style="max-width: 260px;" onchange="fnLoadPost(this.value)" title="Open a saved draft">
+          <option value="">— Drafts —</option>
+        </select>
+        <select class="field-select" id="fn-post-select" style="max-width: 260px;" onchange="fnLoadPost(this.value)" title="Open a published post">
+          <option value="">— Published —</option>
+        </select>
+      </div>
+
+      <hr class="rule-perf" aria-hidden="true">
+
+
+      <!-- Portrait writing bar (shown ≤920px / iPad portrait): one pane at a
+           time — WRITE is primary, PREVIEW renders on demand. SAVE/STAGE ride
+           here because the preview pane (which hosts them on desktop) is
+           hidden while writing. -->
+      <div class="fn-portrait-bar">
+        <div class="fn-seg" role="tablist" aria-label="Editor pane">
+          <button class="fn-seg-btn active" id="fn-seg-write" role="tab" onclick="fnSetPane('write')">✍ WRITE</button>
+          <button class="fn-seg-btn" id="fn-seg-preview" role="tab" onclick="fnSetPane('preview')">◫ PREVIEW</button>
+        </div>
+        <div class="fn-portrait-actions">
+          <button class="fn-panel-btn fn-bar-toggle" id="fn-bar-toggle-p" onclick="toggleFnBar()" title="Hide tab bar" aria-label="Hide tab bar" aria-pressed="false">▾</button>
+          <button class="btn btn-sm btn-ghost" onclick="fnStage('draft')">SAVE</button>
+          <button class="btn btn-sm btn-stage" onclick="fnStage('published')">▲ STAGE</button>
+        </div>
+      </div>
+
+      <div class="fn-compose">
+        <div class="editor">
+          <div class="fn-pane-hdr">
+            <span>EDITOR · <span id="fn-current-slug" style="color:var(--accent);">UNTITLED</span><span id="fn-status-badge" style="font-size: 0.6rem; margin-left: 8px; color: var(--text-faint);"></span><span class="fn-unsaved-dot" id="fn-unsaved-dot"></span></span>
+            <div class="fn-hdr-tools">
+              <button class="fn-panel-btn" id="fn-dates-btn" onclick="fnToggleBufferDates()" title="Buffer date embed picker">DATES</button>
+              <button class="fn-panel-btn" id="fn-frames-btn" onclick="fnToggleFrameBrowser()" title="Frame strip browser">FRAMES</button>
+              <button class="fn-panel-btn" id="fn-asset-btn" onclick="openAssetLibrary(assetToPostBody, 'archive', true)" title="Insert image(s) from asset library">ASSET</button>
+              <button class="fn-panel-btn" id="fn-video-btn" onclick="openAssetLibrary(assetToPostVideo, 'videos')" title="Insert a looping video banner">VIDEO</button>
+              <button class="fn-panel-btn" id="fn-music-btn" onclick="fnInsertMusic()" title="Insert an Apple Music player from a share link or embed code">MUSIC</button>
+              <button class="fn-collapse-btn" id="fn-collapse-btn" onclick="fnToggleFrontmatter()" title="Add a title, location and date">TITLE ▾</button>
+              <button class="fn-focus-btn" onclick="fnToggleFocus()" title="Focus mode (Esc to exit)">◎ FOCUS</button>
+              <button class="fn-panel-btn fn-bar-toggle" id="fn-bar-toggle" onclick="toggleFnBar()" title="Hide tab bar" aria-label="Hide tab bar" aria-pressed="false">▾ BAR</button>
+              <button class="btn btn-sm btn-danger" id="fn-delete-btn" style="display:none; padding: 4px 8px; font-size: 0.55rem;" onclick="fnDeletePost()">⌫ Delete</button>
+              <span class="fn-hdr-stats">
+                <span class="fn-save-status" id="fn-save-status"></span>
+                <span class="fn-cloud-status" id="fn-cloud-status" title="Cloud draft sync (D1)"></span>
+                <span id="fn-word-count">0 words</span>
+                <span id="fn-read-time"></span>
+              </span>
+            </div>
+          </div>
+          <div class="fn-frontmatter">
+            <div class="field">
+              <label class="field-label">FN ID</label>
+              <input class="field-input" id="fn-id" placeholder="auto-assigned on publish">
+            </div>
+            <div class="field">
+              <label class="field-label">Title</label>
+              <input class="field-input" id="fn-title" placeholder="WHATEVER YOU SAW">
+            </div>
+            <div class="field">
+              <label class="field-label">Location</label>
+              <!-- Value comes from site.config location.name (SITE_LOCATION,
+                   js/console/assets.js); the markup carries no place name. -->
+              <input class="field-input" id="fn-location" placeholder="Location">
+            </div>
+            <div class="field">
+              <label class="field-label">Date</label>
+              <input class="field-input" id="fn-date" placeholder="2026-05-02">
+            </div>
+          </div>
+          <div class="fn-hero-slot" id="fn-hero-slot">
+            <input type="file" id="fn-hero-input" class="dz-hidden-input" accept="image/*">
+            <div class="fn-hero-empty" id="fn-hero-empty">
+              <span class="accent">+</span>&nbsp;&nbsp;DROP HERO IMAGE&nbsp;&nbsp;
+              <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); openAssetLibrary(assetToHero, 'archive')" style="margin-left: 12px; padding: 3px 8px; font-size: 0.55rem;">◎ LIBRARY</button>
+              <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); RawLens.open('fnhero')" style="margin-left: 6px; padding: 3px 8px; font-size: 0.55rem;" title="Pick a hero frame from a RAW card">◇ RAW</button>
+            </div>
+            <img class="fn-hero-thumb" id="fn-hero-thumb" style="display:none;" alt="">
+            <div class="fn-hero-name" id="fn-hero-name" style="display:none;"></div>
+            <button class="btn btn-sm btn-ghost" id="fn-hero-focal" style="display:none; padding:3px 8px; font-size:0.55rem;" onclick="event.stopPropagation(); openFnFocal()" title="Set the thumbnail / OG-card focal point">◎ FOCAL</button>
+            <button class="fn-hero-clear" id="fn-hero-clear" style="display:none;" title="Remove hero">×</button>
+          </div>
+          <div class="fn-buffer-dates-panel" id="fn-buffer-dates-panel" style="display:none;"></div>
+          <div class="fn-frame-browser" id="fn-frame-browser" style="display:none;"></div>
+          <div class="fn-editor-area">
+            <textarea id="fn-body" placeholder="# Field note begins here
+
+Write the body in Markdown. Use **red emphasis** for *key phrases*.
+
+Paste an Apple Music link (iPad share sheet) or embed code anywhere to load the player.
+
+The image attached above the post lives at /assets/posts/{id}-hero.jpg
+
+Use --- to separate sections.
+
+Capture first. Process later."></textarea>
+          </div>
+        </div>
+
+        <div class="preview-pane">
+          <div class="fn-pane-hdr">
+            <span>RENDERED PREVIEW</span>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-sm btn-ghost" onclick="fnPreview()">PREVIEW</button>
+              <button class="btn btn-sm btn-ghost" onclick="fnStage('draft')">SAVE DRAFT</button>
+              <button class="btn btn-sm btn-stage" onclick="fnStage('published')">▲ STAGE POST</button>
+            </div>
+          </div>
+          <div class="fn-preview-area">
+            <div class="fn-render" id="fn-preview"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-wall">
+      <div class="view-header">
+        <div>
+          <div class="view-title">THE <em>WALL</em></div>
+          <div class="view-sub">// DESKTOP WALLPAPER GALLERY</div>
+        </div>
+        <div class="view-meta">
+          <div><span class="accent">DRAG TO REORDER</span></div>
+          <div id="wall-stats">— wallpapers</div>
+        </div>
+      </div>
+
+      <div class="dropzone" id="wall-dropzone" style="margin-bottom: 0;">
+        <input type="file" id="wall-file-input" class="dz-hidden-input" accept="image/*" multiple>
+        <div class="dz-icon" style="font-size:1.4rem;">+</div>
+        <div class="dz-prompt">DROP WALLPAPER</div>
+        <div class="dz-hint">or use field below to add by URL</div>
+      </div>
+
+      <button class="btn btn-sm btn-ghost" onclick="openAssetLibrary(assetToWallForm, 'wallpaper')" style="margin-top: 8px;">◎ FROM LIBRARY</button>
+
+      <div class="entry-form-card gap-top">
+        <div class="entry-form-title">
+          + ADD BY FILENAME
+          <span class="entry-form-note">// OR DROP AN IMAGE ABOVE</span>
+        </div>
+        <div class="entry-form-row wall-cols">
+          <input class="field-input" id="wall-url" placeholder="Filename (e.g. Title.webp)">
+          <input class="field-input" id="wall-title" placeholder="Title">
+          <input class="field-input" id="wall-desc" placeholder="Description">
+          <button class="btn btn-stage" onclick="wallAdd()">+ Add</button>
+          <button class="btn btn-ghost btn-sm" id="wall-cancel-btn" onclick="wallClearEdit()" style="display:none;">Cancel</button>
+        </div>
+      </div>
+
+      <div class="list-table" id="wall-list"></div>
+    </section>
+
+    <section class="view" id="view-barrel">
+      <div class="view-header">
+        <div>
+          <div class="view-title">CHANGELOG <em>BARREL</em></div>
+          <div class="view-sub">// HORIZONTAL TIMELINE · EXPORTS TO /data/barrel.json</div>
+        </div>
+        <div class="view-meta">
+          <div><span class="accent">SORTED BY DATE</span></div>
+          <div id="barrel-stats">— entries</div>
+        </div>
+      </div>
+
+      <div class="entry-form-card">
+        <div class="entry-form-title">
+          ✦ ADD MANUAL ENTRY
+          <span class="entry-form-note">// MILESTONES · THROWBACKS · COLLABS · OUTBOUND LINKS</span>
+        </div>
+        <div class="entry-form-row barrel-cols">
+          <input class="field-input" id="barrel-date" placeholder="MM.DD">
+          <input class="field-input" id="barrel-title" placeholder="✦ Two years on the platform">
+          <input class="field-input" id="barrel-url" placeholder="/field-notes/post?slug=fn-008  or  https://...">
+          <button class="btn btn-stage" onclick="barrelAdd()">+ Add</button>
+          <button class="btn btn-ghost btn-sm" id="barrel-cancel-btn" onclick="barrelClearEdit()" style="display:none;">Cancel</button>
+        </div>
+        <div class="hint-text">
+          External URLs (https://...) get an outbound <span class="accent">↗</span> glyph automatically.
+          Auto-entries from FN// posts and Archive frames appear below — they have an <span style="color: var(--text-dim);">AUTO</span> tag.
+        </div>
+      </div>
+
+      <div class="list-table" id="barrel-list"></div>
+    </section>
+
+    <section class="view" id="view-friends">
+      <div class="view-header">
+        <div>
+          <div class="view-title">NETWORK <em>FRIENDS OF</em></div>
+          <div class="view-sub">// ABOUT &middot; SECTION 004 · EXPORTS TO /data/friends.json</div>
+        </div>
+        <div class="view-meta">
+          <div><span class="accent">INDEPENDENT SPACES</span></div>
+          <div id="friends-stats">— nodes</div>
+        </div>
+      </div>
+
+      <div class="entry-form-card">
+        <div class="entry-form-title">
+          ⬡ ADD NODE
+          <span class="entry-form-note">// PHOTOGRAPHER-RUN SITES · LINKED FROM THE ABOUT PAGE</span>
+        </div>
+        <div class="entry-form-row friends-cols">
+          <input class="field-input" id="friends-name" placeholder="GREY.AREA">
+          <input class="field-input" id="friends-tag" placeholder="film">
+          <input class="field-input" id="friends-location" placeholder="Portland, OR">
+          <input class="field-input" id="friends-url" placeholder="https://grey.area  (optional)">
+          <button class="btn btn-stage" onclick="networkAdd()">+ Add</button>
+          <button class="btn btn-ghost btn-sm" id="friends-cancel-btn" onclick="networkClearEdit()" style="display:none;">Cancel</button>
+        </div>
+        <div class="hint-text">
+          NAME shows as the node title; TAG / LOCATION render as the dim sub-line (e.g. <span class="accent">film / portland, OR</span>).
+          URL is optional — with one, the node links out in a new tab. The About page <span class="accent">[ count ]</span> updates automatically.
+        </div>
+      </div>
+
+      <div class="list-table" id="friends-list"></div>
+    </section>
+
+    <section class="view" id="view-library">
+      <div class="view-header">
+        <div>
+          <div class="view-title">ASSET <em>LIBRARY</em></div>
+          <div class="view-sub">// PRE-STAGE IMAGES + VIDEO · NOT ASSIGNED TO ANY SURFACE</div>
+        </div>
+        <div class="view-meta">
+          <div><span class="accent">UPLOAD TO R2 · PICK LATER</span></div>
+          <div id="library-stats">— images</div>
+        </div>
+      </div>
+
+      <div class="dropzone" id="library-dropzone">
+        <input type="file" id="library-file-input" class="dz-hidden-input" multiple accept="image/*,video/mp4,video/webm">
+        <div class="dz-icon">◎</div>
+        <div class="dz-prompt">DROP IMAGES OR VIDEO TO STAGE</div>
+        <div class="dz-hint">images → webp variants · video (mp4/webm) → looping field-note banner · in the asset picker</div>
+      </div>
+
+      <div class="btn-row" style="margin-top: 8px;">
+        <button class="btn btn-sm btn-ghost" onclick="openAssetLibrary(null)">◎ BROWSE ALL ASSETS</button>
+        <button class="btn btn-sm btn-ghost" onclick="RawLens.open('library')" title="Stage frames straight off a RAW card — extracts the embedded JPEG on-device">◇ RAW LENS</button>
+      </div>
+
+      <div class="stage-section">
+        <div class="stage-header">
+          <div class="stage-title">STAGED ASSETS · <span class="count" id="library-count">0</span></div>
+        </div>
+        <div class="archive-list" id="library-display"></div>
+      </div>
+    </section>
+    <section class="view" id="view-bench" data-console-feature="bench">
+      <div class="view-header">
+        <div>
+          <div class="view-title">BENCH <button class="icon-btn" onclick="refreshBench()" title="Refresh" style="font-size: 1rem; margin-left: 0.5rem; transform: translateY(-2px);">↺</button></div>
+          <div class="view-sub" id="bench-stats">// 0 QUEUED · 0 IN-PROGRESS · 0 DONE</div>
+        </div>
+        <div class="view-meta">
+          <button class="action-btn danger" id="bench-clear-done-btn" onclick="clearDoneBenchEntries()" style="display: none; background: none; border: 1px solid var(--accent); color: var(--accent); padding: 0.25rem 0.5rem; font-family: 'Syne Mono', monospace; cursor: pointer; text-transform: uppercase;">CLEAR DONE</button>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <button class="filter-btn active" onclick="setBenchFilter('ACTIVE')">ACTIVE</button>
+        <button class="filter-btn" onclick="setBenchFilter('QUEUED')">QUEUED</button>
+        <button class="filter-btn" onclick="setBenchFilter('IN-PROGRESS')">IN-PROGRESS</button>
+        <button class="filter-btn" onclick="setBenchFilter('DONE')">DONE</button>
+        <button class="filter-btn" onclick="setBenchFilter('ALL')">ALL</button>
+      </div>
+
+      <div class="bench-grid-container">
+        <div class="bench-grid" id="bench-grid"></div>
+        <div class="empty-state" id="bench-empty" style="display: none;">BENCH EMPTY
+// no frames in queue</div>
+      </div>
+
+      <div id="bench-detail">
+        <button class="back-btn" onclick="closeBenchDetail()">← BACK</button>
+        <img class="detail-preview" id="bench-detail-preview" src="">
+        <div class="detail-meta" id="bench-detail-meta"></div>
+        <div class="status-controls" id="bench-detail-status-controls"></div>
+        <textarea class="notes-area" id="bench-detail-notes" placeholder="Notes..."></textarea>
+        <div class="action-row">
+          <button class="action-btn" onclick="saveBenchNotes()" style="background: var(--text); color: #000; font-weight: bold;">SAVE NOTES</button>
+          <button class="action-btn" id="bench-detail-download" onclick="downloadBenchRaw(this)">DOWNLOAD RAW</button>
+          <button class="action-btn danger" onclick="removeBenchEntry()">REMOVE</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-publish">
+      <div class="view-header">
+        <div>
+          <div class="view-title">PUBLISH <em>QUEUE</em></div>
+          <div class="view-sub">// REVIEW + DEPLOY TO 03-site/</div>
+        </div>
+        <div class="view-meta">
+          <div><span class="accent">PATH A · STATIC · GIT-COMMIT</span></div>
+        </div>
+      </div>
+
+      <div class="publish-summary">
+        <div class="summary-card" id="sum-buffer">
+          <div class="label">Buffer</div>
+          <div class="count" id="sum-count-buffer">0</div>
+          <div class="delta" id="sum-delta-buffer"></div>
+        </div>
+        <div class="summary-card" id="sum-archive">
+          <div class="label">Archive</div>
+          <div class="count" id="sum-count-archive">0</div>
+          <div class="delta" id="sum-delta-archive"></div>
+        </div>
+        <div class="summary-card" id="sum-fn">
+          <div class="label">FN// Posts</div>
+          <div class="count" id="sum-count-fn">0</div>
+          <div class="delta" id="sum-delta-fn"></div>
+        </div>
+        <div class="summary-card" id="sum-wall">
+          <div class="label">Wall</div>
+          <div class="count" id="sum-count-wall">0</div>
+          <div class="delta" id="sum-delta-wall"></div>
+        </div>
+        <div class="summary-card" id="sum-barrel">
+          <div class="label">Barrel</div>
+          <div class="count" id="sum-count-barrel">0</div>
+          <div class="delta" id="sum-delta-barrel"></div>
+        </div>
+        <div class="summary-card" id="sum-network">
+          <div class="label">Network</div>
+          <div class="count" id="sum-count-network">0</div>
+          <div class="delta" id="sum-delta-network"></div>
+        </div>
+        <div class="summary-card" id="sum-library">
+          <div class="label">Library</div>
+          <div class="count" id="sum-count-library">0</div>
+        </div>
+      </div>
+
+      <div class="import-zone">
+        <h4>REMOTE SYNC</h4>
+        <div class="import-sub">
+          Fetches live <span style="color:var(--accent);">data/*.json</span> from GitHub <span style="color:var(--accent);">main</span> on load (requires PAT in Settings).<br>
+          Imported entries appear dimmed and are not editable. New entries merge on top.
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-sm" onclick="syncFromServer()">↓ Sync from GitHub</button>
+          <button class="btn btn-sm btn-ghost" onclick="clearImported()">Clear Imported</button>
+          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('import-file-input').click()">↑ Manual Import</button>
+          <button class="btn btn-sm btn-ghost" id="purge-r2-btn" onclick="drainOrphanedR2Deletes()" style="display:none;">⚠ Purge Queued R2</button>
+          <input type="file" id="import-file-input" style="display:none;" multiple accept=".json" onchange="handleImportFiles(this.files)">
+        </div>
+        <div id="sync-status" class="import-status"></div>
+        <div id="upload-queue-status" style="display:none; margin-top:6px; font-size:0.62rem; color:var(--accent); letter-spacing:1.5px;"></div>
+      </div>
+
+      <div class="publish-action" style="margin-top: 12px;">
+        <h3>PUBLISH TO GITHUB</h3>
+        <div class="hint">
+          Commits updated JSON + markdown directly to <span style="color:var(--accent);">main</span>.<br>
+          <!-- Deploy copy defaults to the not-connected truth; session.js
+               applyInstancePosture() swaps in the auto-deploy line when
+               site.config.js says repoConnected — the safe failure mode is
+               telling a fork to deploy, never promising a deploy that
+               nothing performs. -->
+          <span id="publish-deploy-hint">Then run <span style="color:var(--accent);">npx wrangler deploy</span> to take it live — or connect this repo to Cloudflare Builds (see setup.md) and skip that step forever.</span>
+        </div>
+        <div class="btn-row" style="justify-content: center; gap: 12px;">
+          <button class="btn btn-primary" id="gh-publish-btn" onclick="publishToServer()">▲ Publish to GitHub</button>
+          <button class="btn btn-danger" onclick="publishClearStaged()">⌫ Clear Staged</button>
+        </div>
+        <div id="publish-receipt-slot"></div>
+        <div class="publish-log" id="publish-log"></div>
+        <div class="hint-text" style="margin-top: 18px;">
+          <span class="accent">WORKFLOW:</span> Drop photos (auto-upload to R2) → write notes → <span style="color:var(--green);">Publish → done</span>
+        </div>
+      </div>
+
+      <div class="publish-action" style="margin-top: 12px;">
+        <h3>SITE-IN-A-ZIP</h3>
+        <div class="hint">
+          Full offline mirror of the <span style="color:var(--accent);">published</span> site: rendered pages, content, and CDN media,<br>
+          all paths relative — open <span style="color:var(--accent);">index.html</span> from a thumb drive, no server, no account.<br>
+          <span style="color:var(--text-faint);">data/*.json + posts/*.md ride along, so the zip doubles as a git-restorable backup.</span>
+        </div>
+        <div class="btn-row" style="justify-content:center; gap:14px; flex-wrap:wrap;">
+          <label style="font-size:0.62rem; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; display:inline-flex; gap:6px; align-items:center;">
+            <input type="checkbox" class="bd-checkbox" id="se-tier-web" checked> web images (480/1024)
+          </label>
+          <label style="font-size:0.62rem; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; display:inline-flex; gap:6px; align-items:center;">
+            <input type="checkbox" class="bd-checkbox" id="se-tier-hires" checked> high-res (2048)
+          </label>
+          <label style="font-size:0.62rem; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; display:inline-flex; gap:6px; align-items:center;">
+            <input type="checkbox" class="bd-checkbox" id="se-tier-video" checked> video
+          </label>
+          <label style="font-size:0.62rem; letter-spacing:1.5px; text-transform:uppercase; cursor:pointer; display:inline-flex; gap:6px; align-items:center;">
+            <input type="checkbox" class="bd-checkbox" id="se-tier-full"> wallpaper originals
+          </label>
+        </div>
+        <div class="btn-row" style="justify-content:center; margin-top:10px;">
+          <button class="btn btn-primary" id="site-export-btn" onclick="exportSiteZip()">⇩ Export Site (.zip)</button>
+        </div>
+        <div id="site-export-status" class="import-status" style="text-align:center;"></div>
+      </div>
+
+      <details style="margin-top: 20px; border: 1px dashed var(--border-strong);">
+        <summary style="padding: 12px 16px; font-size: 0.62rem; color: var(--text-faint); letter-spacing: 2px; cursor: pointer; text-transform: uppercase; list-style: none;">
+          ▸ Legacy: Export ZIP Bundle
+        </summary>
+        <div style="padding: 16px; border-top: 1px solid var(--border);">
+          <div class="hint" style="text-align:left; font-size:0.65rem; margin-bottom:14px;">
+            Fallback for offline use. Generates a zip with updated JSON + markdown files.<br>
+            Drop into <span style="color:var(--accent);">your site folder</span> then <span style="color:var(--accent);">git add . &amp;&amp; git commit &amp;&amp; git push</span>.
+          </div>
+          <div class="btn-row" style="gap: 10px;">
+            <button class="btn btn-sm" onclick="publishExportBundle()">↓ Export Bundle (.zip)</button>
+            <button class="btn btn-ghost btn-sm" onclick="publishExportJSON()">↓ JSON only</button>
+          </div>
+        </div>
+      </details>
+
+      <!-- SESSION TRASH (display toggled by renderTrash) -->
+      <div id="trash-section" class="trash-section" style="display: none;">
+        <div class="trash-header">
+          <div class="trash-title">
+            ⌫ SESSION TRASH
+            <span class="entry-form-note">// RECOVERABLE UNTIL TAB CLOSE</span>
+          </div>
+          <button class="btn btn-sm btn-danger" onclick="trashClearAll()">Empty Trash</button>
+        </div>
+        <div class="list-table" id="trash-container"></div>
+      </div>
+
+      <!-- DANGER ZONE -->
+      <div class="danger-zone">
+        <div class="danger-zone-title">DANGER ZONE_</div>
+        <div class="danger-zone-row">
+          <button class="btn btn-sm btn-danger" onclick="resetConsole()">⌫ Reset All Data</button>
+          <span class="danger-zone-hint">
+            wipes localStorage + all in-memory arrays · cannot be undone
+          </span>
+        </div>
+      </div>
+    </section>
+
+
+  </main>
+</div>
+
+<!-- ============ BOTTOM TAB BAR (≤1180px / touch — primary nav) ============
+     The field loop lives here: Buffer → FN// → Archive → Publish. Everything
+     else is in the More sheet. Same data-view contract as the sidebar, so
+     showView() drives both. -->
+<nav class="tabbar" aria-label="Primary">
+  <button class="tab-btn active" data-view="buffer" onclick="showView('buffer')">
+    <span class="tab-icon">◉</span><span class="tab-label">Buffer</span>
+    <span class="tab-count" id="tab-count-buffer"></span>
+  </button>
+  <button class="tab-btn" data-view="fn" onclick="showView('fn')">
+    <span class="tab-icon">✍</span><span class="tab-label">FN//</span>
+    <span class="tab-count" id="tab-count-fn"></span>
+  </button>
+  <button class="tab-btn" data-view="archive" onclick="showView('archive')">
+    <span class="tab-icon">▦</span><span class="tab-label">Archive</span>
+    <span class="tab-count" id="tab-count-archive"></span>
+  </button>
+  <button class="tab-btn" data-view="publish" onclick="openPublishView()">
+    <span class="tab-icon">▲</span><span class="tab-label">Publish</span>
+    <span class="tab-badge zero" id="tab-publish-badge">0</span>
+  </button>
+  <button class="tab-btn" id="tab-more-btn" onclick="openMoreSheet()" aria-haspopup="menu">
+    <span class="tab-icon">⋯</span><span class="tab-label">More</span>
+  </button>
+</nav>
+
+<!-- ============ MORE SHEET (secondary surfaces) ============ -->
+<div class="sheet-overlay hidden" id="more-sheet" onclick="if(event.target===this)closeMoreSheet()">
+  <div class="sheet" role="menu" aria-label="More surfaces">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-title">Manage</div>
+    <button class="sheet-item" data-view="wall" onclick="sheetGo('wall')">
+      <span class="sheet-icon">▤</span> Wall
+      <span class="sheet-count" id="sheet-count-wall">0</span>
+    </button>
+    <button class="sheet-item" data-view="barrel" onclick="sheetGo('barrel')">
+      <span class="sheet-icon">◈</span> Barrel
+      <span class="sheet-count" id="sheet-count-barrel">0</span>
+    </button>
+    <button class="sheet-item" data-view="friends" onclick="sheetGo('friends')">
+      <span class="sheet-icon">⬡</span> Network
+      <span class="sheet-count" id="sheet-count-friends">0</span>
+    </button>
+    <button class="sheet-item" data-view="library" onclick="sheetGo('library')">
+      <span class="sheet-icon">◎</span> Library
+      <span class="sheet-count" id="sheet-count-library">0</span>
+    </button>
+    <button class="sheet-item" data-console-feature="bench" data-view="bench" onclick="sheetGo('bench')">
+      <span class="sheet-icon">▣</span> Bench
+      <span class="sheet-count" id="sheet-count-bench">0</span>
+    </button>
+    <div class="sheet-divider"></div>
+    <button class="sheet-item" onclick="closeMoreSheet(); openSettings()">
+      <span class="sheet-icon">⚙</span> Settings
+      <span class="settings-status-dot" id="sheet-settings-dot" style="margin-left:auto;"></span>
+    </button>
+  </div>
+</div>
+
+<!-- ============ ACTION SHEET (long-press context menu, touch) ============ -->
+<div class="sheet-overlay hidden" id="action-sheet" onclick="if(event.target===this)closeActionSheet()">
+  <div class="sheet" role="menu" aria-label="Frame actions">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-title" id="action-sheet-title"></div>
+    <div id="action-sheet-items"></div>
+  </div>
+</div>
+
+<!-- ============ RAW LENS (client-side RAW browser — raw-lens.js) ============
+     Full-screen overlay: dense/grid contact sheet from EXIF thumbnails, burst
+     stacks, full-frame assess layer, multi-select commit into Buffer/Archive/
+     FN hero. All reads are local File.slice ranges; nothing uploads until the
+     extracted JPEGs hand off to the standard ingest pipeline. -->
+<div class="rl-overlay hidden" id="rawlens-modal" role="dialog" aria-label="RAW Lens">
+  <!-- Primary picker: RAW extensions + Android's registered image/x-* RAW
+       MIMEs. On Android this is load-bearing — a filterless input builds a
+       */* intent and the OS offers a Camera/Camcorder/Media chooser that
+       can't browse USB storage; these MIMEs open DocumentsUI directly. -->
+  <input type="file" id="rawlens-file-input" class="dz-hidden-input" multiple
+         accept=".rw2,.rwl,.raw,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.dng,.raf,.orf,.pef,.srw,image/x-panasonic-rw2,image/x-panasonic-raw,image/x-canon-cr2,image/x-canon-cr3,image/x-canon-crw,image/x-nikon-nef,image/x-nikon-nrw,image/x-sony-arw,image/x-sony-srf,image/x-sony-sr2,image/x-adobe-dng,image/x-fuji-raf,image/x-olympus-orf,image/x-pentax-pef,image/x-samsung-srw">
+  <!-- Fallback picker: unfiltered, for pickers that grey out lesser-known
+       RAW MIMEs — the content-sniffing index sorts RAW from noise. -->
+  <input type="file" id="rawlens-file-input-any" class="dz-hidden-input" multiple>
+  <header class="rl-topbar">
+    <div class="rl-title">◇ RAW <em>LENS</em> <span class="rl-target" id="rl-target-label">→ BUFFER</span></div>
+    <div class="rl-status" id="rl-status">// 0 FRAMES</div>
+    <button class="rl-close" onclick="RawLens.close()" aria-label="Close RAW Lens">×</button>
+  </header>
+  <div class="rl-toolbar">
+    <div class="rl-seg" role="group" aria-label="Grid density">
+      <button type="button" id="rl-mode-dense" onclick="RawLens.setMode('dense')">DENSE</button>
+      <button type="button" id="rl-mode-grid" class="active" onclick="RawLens.setMode('grid')">GRID</button>
+    </div>
+    <button type="button" class="rl-tool active" id="rl-bursts-toggle" onclick="RawLens.toggleBursts()">⛓ BURSTS</button>
+    <span id="rl-multi-actions">
+      <button type="button" class="rl-tool" onclick="RawLens.selectAll()">ALL</button>
+      <button type="button" class="rl-tool" onclick="RawLens.selectNone()">NONE</button>
+    </span>
+    <button type="button" class="rl-tool" onclick="RawLens.pick()">+ ADD</button>
+  </div>
+  <div class="rl-body">
+    <div class="rl-empty" id="rl-empty">
+      <div class="rl-empty-icon">◇</div>
+      <div class="rl-empty-title">NO RAW FILES LOADED</div>
+      <div class="rl-empty-hint">
+        Plug in the card reader and pick your <span class="accent">.RW2</span> / .CR2 / .CR3 / .NEF / .ARW / .DNG / .RAF / .ORF files.
+        The camera's embedded JPEG is extracted <span class="accent">on-device</span> — no RAW decode, no upload until you commit.
+        <br><br>
+        Tip: in the picker's <span class="accent">⋮ menu → Select all</span> grabs a whole folder
+        (Android can't hand a directory to the web — file multi-select is the ceiling).
+      </div>
+      <button class="btn btn-primary" onclick="RawLens.pick()">◇ SELECT RAW FILES</button>
+      <div style="margin-top: 14px;">
+        <button class="btn btn-sm btn-ghost" onclick="RawLens.pickAny()" title="Unfiltered picker — use if RAW files appear greyed out">⊞ PICKER HIDING FILES? ALL-FILES MODE</button>
+      </div>
+    </div>
+    <div class="rl-grid grid" id="rl-grid"></div>
+  </div>
+  <!-- Picker-handoff cover: Android takes seconds to materialize a big
+       Select-all before any event reaches the page — this owns that window. -->
+  <div class="rl-handoff hidden" id="rl-handoff" role="status" aria-live="polite">
+    <div class="rl-handoff-diamond" aria-hidden="true">◇</div>
+    <div class="rl-handoff-label">READING CARD…</div>
+    <div class="rl-handoff-sub">Android is handing over your selection — a full card takes a moment</div>
+  </div>
+  <div class="rl-commitbar hidden" id="rl-commitbar">
+    <span class="rl-commit-info" id="rl-commit-info"></span>
+    <button class="btn btn-ghost btn-sm" onclick="RawLens.selectNone()">CLEAR</button>
+    <button class="btn btn-stage" id="rl-commit-btn" onclick="RawLens.commit()">EXTRACT</button>
+  </div>
+  <!-- Assess layer: one frame, full preview, swipe/arrow navigation -->
+  <div class="rl-assess hidden" id="rl-assess">
+    <header class="rl-assess-top">
+      <span class="rl-assess-pos" id="rl-assess-pos"></span>
+      <span class="rl-assess-meta" id="rl-assess-meta"></span>
+      <button class="rl-close rl-copy" onclick="RawLens.copySpec()" aria-label="Copy filename and spec" title="Copy filename + spec to clipboard">⧉</button>
+      <button class="rl-close" onclick="RawLens.closeAssess()" aria-label="Back to grid">×</button>
+    </header>
+    <div class="rl-assess-stage" ondblclick="RawLens.assessToggleSelect()">
+      <img id="rl-assess-img" alt="RAW preview">
+      <div class="rl-assess-status" id="rl-assess-status"></div>
+    </div>
+    <!-- Spec readout: gear / exposure / file — populated from the RAW's EXIF -->
+    <div class="rl-assess-spec" id="rl-assess-spec">
+      <div class="rl-spec-line rl-spec-gear" id="rl-spec-gear"></div>
+      <div class="rl-spec-line rl-spec-expo" id="rl-spec-expo"></div>
+      <div class="rl-spec-line rl-spec-file" id="rl-spec-file"></div>
+    </div>
+    <footer class="rl-assess-bar">
+      <button type="button" class="rl-nav" onclick="RawLens.assessStep(-1)" aria-label="Previous frame">‹</button>
+      <button type="button" class="rl-assess-select" id="rl-assess-select" onclick="RawLens.assessToggleSelect()">+ SELECT</button>
+      <button type="button" class="rl-nav" onclick="RawLens.assessStep(1)" aria-label="Next frame">›</button>
+    </footer>
+  </div>
+</div>
+
+<div class="toast-zone" id="toast-zone"></div>
+
+<!-- ============ UPLOAD QUEUE PANEL ============ -->
+<div id="upload-queue-panel" style="display:none;"></div>
+
+<!-- ============ SETTINGS MODAL ============ -->
+<div class="modal-overlay hidden" id="settings-modal" onclick="if(event.target===this)closeSettings()">
+  <div class="modal">
+    <div class="modal-grabber" aria-hidden="true"></div>
+    <div class="modal-header">
+      <div class="modal-title">⚙ CONSOLE SETTINGS</div>
+      <button class="modal-close" onclick="closeSettings()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <div class="modal-section-title">Session</div>
+        <div id="settings-status" style="font-size:0.65rem; letter-spacing:1.5px; line-height:2.2; color:var(--text-faint);">
+          // checking…
+        </div>
+      </div>
+      <div class="modal-section">
+        <div class="modal-section-title">Site Settings</div>
+        <div id="site-settings-card" style="font-size:0.65rem; letter-spacing:1px; line-height:2; color:var(--text-faint);">
+          // loading…
+        </div>
+        <div style="margin-top:10px; font-size:0.6rem; letter-spacing:0.5px; line-height:1.7; color:var(--text-faint);">
+          Settings live in <code>site.config.js</code>. Changes deploy with the site
+          — or hand them to your AI maintainer:
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="copySiteSettingsPrompt()">⧉ Copy prompt for AI maintainer</button>
+      </div>
+      <!-- Which build is actually running. The sidebar footer carries a version
+           too, but the sidebar is display:none below 1180px — so on the iPad,
+           where the console mostly gets used, there was no way to tell whether
+           an update had landed. Settings is reachable at every size. -->
+      <div class="modal-section">
+        <div class="modal-section-title">Build</div>
+        <div id="settings-build" style="font-size:0.65rem; letter-spacing:1px; line-height:2; color:var(--text-faint);">
+          // reading…
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeSettings()">Close</button>
+      <button class="btn btn-danger btn-sm" onclick="logout()">⏏ Log Out</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ FOCAL POINT MODAL ============ -->
+<div class="modal-overlay hidden" id="focal-modal" onclick="if(event.target===this)FocalModal.close()">
+  <div class="modal focal-modal">
+    <div class="modal-grabber" aria-hidden="true"></div>
+    <div class="modal-header">
+      <div class="modal-title" id="focal-modal-title">◎ FOCAL POINT</div>
+      <button class="modal-close" onclick="FocalModal.close()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="focal-hint" id="focal-hint">
+        Drag the <span class="accent">point</span> to choose what stays in frame when this photo is
+        cropped to a thumbnail. The full-frame view is never cropped.
+      </div>
+      <div class="focal-layout">
+        <div class="focal-stage" id="focal-stage">
+          <img id="focal-img" alt="">
+          <div class="focal-guide thumb" id="focal-guide-thumb"></div>
+          <div class="focal-guide og" id="focal-guide-og"></div>
+          <div class="focal-dot" id="focal-dot"></div>
+        </div>
+        <div class="focal-side">
+          <!-- card mode: live 1200×630 OG card preview -->
+          <div class="focal-cardwrap" id="focal-cardwrap" style="display:none">
+            <div class="focal-crop-label">OG card · 1200×630</div>
+            <canvas id="ogc-canvas" width="1200" height="630"></canvas>
+            <label class="focal-guidetoggle"><input type="checkbox" id="focal-guide-toggle" checked>
+              <span><span class="g-og">▭</span> OG crop &nbsp; <span class="g-th">▭</span> thumbnail</span></label>
+          </div>
+          <!-- thumbnail-only mode: existing crop preview -->
+          <div class="focal-thumbwrap" id="focal-thumbwrap">
+            <div class="focal-crop-label">Thumbnail crop</div>
+            <div class="focal-crop-preview" id="focal-crop-preview"><img id="focal-crop-img" alt=""></div>
+          </div>
+          <div class="focal-readout" id="focal-readout">50% / 50%</div>
+          <div class="ogc-status" id="ogc-status"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="FocalModal.reset()">↺ Center</button>
+      <span id="focal-card-actions" style="display:none">
+        <button class="btn btn-sm" id="focal-btn-copy" onclick="FocalModal.copyLink()">⧉ Copy Link</button>
+        <button class="btn btn-sm" onclick="FocalModal.download()">⤓ Download</button>
+        <button class="btn btn-stage" id="focal-btn-publish" onclick="FocalModal.publish()">▲ Publish Card</button>
+      </span>
+      <button class="btn btn-stage" onclick="FocalModal.save()">✓ Set Focal Point</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ASSET LIBRARY MODAL ============ -->
+<div class="modal-overlay hidden" id="asset-library-modal" onclick="if(event.target===this)closeAssetLibrary()">
+  <div class="modal">
+    <div class="modal-grabber" aria-hidden="true"></div>
+    <div class="modal-header">
+      <div class="modal-title">ASSET LIBRARY</div>
+      <button class="modal-close" onclick="closeAssetLibrary()">×</button>
+    </div>
+    <div class="modal-body" style="padding: 0;">
+      <!-- Toolbar: filter pills + search + sort -->
+      <div class="asset-lib-toolbar" id="asset-lib-toolbar"></div>
+      <!-- Thumbnail grid -->
+      <div class="asset-lib-grid" id="asset-lib-grid"></div>
+      <!-- Empty state -->
+      <div id="asset-lib-empty" style="display:none;"></div>
+      <!-- Multi-select insert bar (shown only in multi-select mode) -->
+      <div class="asset-lib-insert-bar" id="asset-lib-insert-bar" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ LOGIN MODAL ============ -->
+<div class="modal-overlay" id="login-modal">
+  <div class="modal" style="max-width: 360px;">
+    <div class="modal-header" style="border-bottom: 2px solid var(--accent);">
+      <div class="modal-title" data-site-wordmark="accent">SITE<span class="accent">.NAME</span></div>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="field-label">Password</label>
+        <input class="field-input" type="password" id="login-password"
+               autocomplete="current-password"
+               onkeydown="if(event.key==='Enter')loginSubmit()">
+      </div>
+      <div id="login-error" style="min-height:18px; font-size:0.62rem; color:var(--accent); letter-spacing:1.5px; margin-top:8px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary btn-full" id="login-btn" onclick="loginSubmit()">→ ENTER</button>
+    </div>
+  </div>
+</div>
+
+<!-- Module version map — the ONE place a console module's ?v= is written.
+     Modules import each other by plain path ('./console-api.js'); the browser
+     resolves that against these entries and fetches the versioned URL. Before
+     this map the version was baked into every import specifier, so bumping one
+     module meant editing every file that imported it — and editing those files
+     changed their content, which forced them to bump too. That cascade is why
+     the console-ui split needed this first: with 15 modules stacked 8 deep, a
+     one-line fix at the bottom would have re-versioned all 15 and re-shipped
+     the entire console to every installed PWA.
+
+     Relative specifiers ARE remapped (verified in Chromium): './x.js' inside
+     /js/console-ui.js and '../x.js' inside /js/console/*.js both normalise to
+     /js/x.js and match the key below.
+
+     Keep in step with dev/sw.js SHELL_ASSETS — tests/guards.test.js enforces
+     that they agree, that each version appears here only, and that a changed
+     file actually got bumped. Public pages have no import map (strict CSP), so
+     modules they load — markdown-engine.js — keep a literal ?v= at the call
+     site and must carry the same version in both places. -->
+<script type="importmap">
+{
+  "imports": {
+    "/js/console-telemetry.js": "/js/console-telemetry.js?v=1",
+    "/js/console-api.js":       "/js/console-api.js?v=8",
+    "/js/console-state.js":     "/js/console-state.js?v=7",
+    "/js/console-ui.js":        "/js/console-ui.js?v=58",
+    "/js/console/chrome.js":    "/js/console/chrome.js?v=3",
+    "/js/console/assets.js":    "/js/console/assets.js?v=3",
+    "/js/console/utils.js":     "/js/console/utils.js?v=1",
+    "/js/console/sync.js":      "/js/console/sync.js?v=1",
+    "/js/console/upload.js":    "/js/console/upload.js?v=1",
+    "/js/console/more-views.js": "/js/console/more-views.js?v=2",
+    "/js/console/archive.js":   "/js/console/archive.js?v=1",
+    "/js/console/buffer.js":    "/js/console/buffer.js?v=2",
+    "/js/console/fn-editor.js": "/js/console/fn-editor.js?v=2",
+    "/js/console/focal.js":     "/js/console/focal.js?v=2",
+    "/js/console/asset-library.js": "/js/console/asset-library.js?v=1",
+    "/js/console/publish.js":   "/js/console/publish.js?v=2",
+    "/js/console/session.js":   "/js/console/session.js?v=2",
+    "/js/console/bench.js":     "/js/console/bench.js?v=1",
+    "/js/console/init.js":      "/js/console/init.js?v=2",
+    "/js/markdown-engine.js":   "/js/markdown-engine.js?v=4",
+    "/js/jpeg-privacy.js":      "/js/jpeg-privacy.js?v=1",
+    "/js/raw-lens.js":          "/js/raw-lens.js?v=5",
+    "/js/raw-extract.js":       "/js/raw-extract.js?v=4",
+    "/js/site-export.js":       "/js/site-export.js?v=4",
+    "/js/site-export-core.js":  "/js/site-export-core.js?v=3",
+    "/js/export-manifest.js":   "/js/export-manifest.js?v=6"
+  }
+}
+</script>
+
+<script type="module">
+// ES-module bridge — the console's only inline script. All logic lives in:
+//   /js/console-telemetry.js  system lamp, toasts, progress rail, ledger
+//   /js/console-state.js      state core + localStorage persistence
+//   /js/console-api.js        session/token + every network request
+//   /js/markdown-engine.js    FN// markdown renderer (console preview + post.html)
+//   /js/console-ui.js         views, modals, dropzones, editor chrome, init()
+//   /js/raw-lens.js           RAW LENS overlay (imports /js/raw-extract.js)
+//   /js/site-export.js        site-in-a-ZIP exporter (imports /js/site-export-core.js + /js/export-manifest.js)
+// Exports are mirrored onto window for the markup's inline on*-handlers.
+// Module scripts always execute before DOMContentLoaded, so everything is in
+// place before console-ui.js's init() listener fires.
+// Versions come from the import map above — do not add ?v= here.
+import * as ConsoleTelemetry from '/js/console-telemetry.js';
+import * as ConsoleApi from '/js/console-api.js';
+import * as ConsoleState from '/js/console-state.js';
+import * as MarkdownEngine from '/js/markdown-engine.js';
+import * as ConsoleUI from '/js/console-ui.js';
+import * as RawLensMod from '/js/raw-lens.js';
+import * as SiteExport from '/js/site-export.js';
+Object.assign(window, ConsoleTelemetry, ConsoleApi, ConsoleState, MarkdownEngine, ConsoleUI, RawLensMod, SiteExport);
+</script>
+
+</body>
+</html>

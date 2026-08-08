@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>FIELD CONSOLE — LOGIN</title>
+<!--
+  The console gate. Served by the worker (with status 401) in place of the
+  Field Console document whenever the request carries no valid console-shell
+  cookie — see the shell gate in worker.js. On a successful login /api/auth
+  answers with BOTH credentials: the Set-Cookie that unlocks the document and
+  the bearer token the console API layer uses; the script below stashes the
+  token in sessionStorage (the console's SESSION_KEY) and reloads, so one
+  password entry lands the owner straight in a logged-in console.
+
+  Deliberately self-contained and identity-neutral: no site name, no shared
+  CSS/JS, no service-worker registration — an unauthenticated visitor learns
+  nothing here but "a login exists", and the page keeps working on a fork
+  before any branding is configured.
+-->
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050505;
+    color: #e0e0e0;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  form {
+    width: 100%;
+    max-width: 320px;
+    border: 1px solid #333;
+    border-top: 2px solid #ff0000;
+    padding: 28px 24px 24px;
+    background: #0a0a0a;
+  }
+  h1 {
+    font-size: 0.8rem;
+    font-weight: 400;
+    letter-spacing: 3px;
+    margin-bottom: 4px;
+  }
+  .sub {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #555;
+    margin-bottom: 22px;
+  }
+  label {
+    display: block;
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: #919191;
+    margin-bottom: 6px;
+  }
+  input[type="password"] {
+    width: 100%;
+    background: #000;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 10px 12px;
+    letter-spacing: 2px;
+  }
+  input[type="password"]:focus { outline: none; border-color: #919191; }
+  button {
+    width: 100%;
+    margin-top: 14px;
+    background: #ff0000;
+    color: #000;
+    border: none;
+    font: inherit;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    padding: 11px 0;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #gate-error {
+    min-height: 16px;
+    margin-top: 10px;
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    color: #ff0000;
+  }
+  /* Present for password-manager account matching, never shown. */
+  .pm-username { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+</style>
+</head>
+<body>
+
+<form id="gate-form" method="post" action="/api/auth">
+  <h1>FIELD CONSOLE</h1>
+  <div class="sub">RESTRICTED — AUTHENTICATION REQUIRED</div>
+  <input class="pm-username" type="text" name="username" value="console"
+         autocomplete="username" tabindex="-1" aria-hidden="true">
+  <label for="gate-password">PASSWORD</label>
+  <input type="password" name="password" id="gate-password"
+         autocomplete="current-password" required autofocus>
+  <div id="gate-error" role="alert"></div>
+  <button type="submit" id="gate-btn">→ ENTER</button>
+</form>
+
+<script>
+(function () {
+  var form = document.getElementById('gate-form');
+  var btn = document.getElementById('gate-btn');
+  var errEl = document.getElementById('gate-error');
+  var pwEl = document.getElementById('gate-password');
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var pw = pwEl.value;
+    if (!pw) return;
+    btn.disabled = true;
+    errEl.textContent = '';
+
+    fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (res.ok && data.ok && data.token) {
+          // The Set-Cookie on this response unlocked the document; hand the
+          // bearer token to the console (its SESSION_KEY) and reload into it.
+          try { sessionStorage.setItem('oaklens_session', data.token); } catch (err) {}
+          location.reload();
+          return;
+        }
+        btn.disabled = false;
+        pwEl.value = '';
+        pwEl.focus();
+        errEl.textContent = '✕ ' + (res.status === 429
+          ? 'too many attempts — wait a minute'
+          : (data.error || 'invalid credentials'));
+      });
+    }).catch(function () {
+      btn.disabled = false;
+      errEl.textContent = '✕ network error — try again';
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
