@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title data-site-title>Field Note</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" as="font" type="font/woff2" href="/fonts/syne-latin-var.woff2" crossorigin data-font-preload>
+<script>
+/* Pre-paint mode resolution: visitor override -> config default -> OS.
+   Runs before the stylesheet so there is no flash of the wrong mode. The
+   worker stamps data-theme-default on <html> and HTMLRewriter streams the
+   document top-down, so the attribute is present by the time this runs. */
+(function () {
+  var d = document.documentElement, s = null;
+  try { s = localStorage.getItem('ol-theme'); } catch (e) {}
+  var def = d.getAttribute('data-theme-default') || 'midnight';
+  var light = s ? s === 'light'
+    : def === 'auto' ? matchMedia('(prefers-color-scheme: light)').matches
+    : def === 'daylight';
+  if (light) d.setAttribute('data-theme', 'light');
+})();
+</script>
+<link rel="stylesheet" href="../css/main.css?v=17">
+<script src="/js/mode-toggle.js?v=1" defer></script>
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<!-- Marked.js for markdown rendering -->
+<!-- LightTable module for buffer embeds -->
+<script src="/js/lighttable.js?v=3"></script>
+<style>
+/* ============================================
+   FN//BLOG — SINGLE POST
+   ============================================ */
+
+.post-wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 40px 80px;
+}
+
+/* ---- POST HEADER ---- */
+
+.post-header {
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--gray-800);
+}
+
+.post-fn-id {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 2.5px;
+  color: var(--red);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  opacity: 0.8;
+}
+
+.post-title {
+  font-family: 'Syne Mono', monospace;
+  font-weight: 400;
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  color: var(--white-bright);
+  line-height: 1.2;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.post-meta {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 1.5px;
+  color: var(--gray-500);
+  text-transform: uppercase;
+}
+
+.post-meta .sep {
+  color: var(--gray-700);
+  margin: 0 8px;
+}
+
+/* ---- HERO IMAGE ---- */
+
+.post-hero {
+  margin: 24px 0 32px 0;
+  text-align: center;       /* center bounded (portrait) heroes */
+  background: #000;
+}
+
+/* The hero is a light-table panel: it ignites on load and opens the shared
+   lightbox (loupe + minimap) on click. The <button> shrink-wraps the image so
+   the HUD and click target track the photo, not the letterbox margins. */
+.hero-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  line-height: 0;
+  cursor: zoom-in;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hero-frame[disabled] { cursor: default; }
+
+/* Native aspect ratio — never cropped (mirrors the focal editor's promise
+   that "the full-frame view is never cropped"). Bounds keep a tall portrait
+   from blowing out the viewport: landscapes fill the column, portraits cap
+   at ~78vh and letterbox seamlessly against the black page. */
+.post-hero img {
+  max-width: 100%;
+  max-height: 78vh;
+  width: auto;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;               /* sits below the HUD */
+}
+
+/* ---- HERO IGNITION (red flashbulb power-on) ----
+   Reproduces the tone-mapped red snap but GPU-cheap: instead of animating five
+   filters per frame on a large image, we cross-fade two layers and animate ONLY
+   opacity (the one compositor-free property). The flash layer is a copy of the
+   photo carrying a STATIC red tone-map filter (rasterized once, not per frame),
+   so blacks stay black and lit areas glow red — depth intact. The clean base
+   rises underneath as the red layer falls: black → red-hot snap → true photo. */
+.hero-frame .hero-flash-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;               /* above the base photo, below the HUD */
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  object-fit: cover;
+  opacity: 0;
+  pointer-events: none;
+  /* static — computed once; only opacity animates */
+  filter: brightness(1.5) contrast(1.5) sepia(1) saturate(6) hue-rotate(-28deg);
+}
+
+/* Curves are paired so the snap is pure red (base hidden) and the settle keeps
+   combined coverage near-full (no mid-transition dip) as red hands off to clean. */
+@keyframes hero-base-rise {
+  0%   { opacity: 0; }
+  10%  { opacity: 0; }      /* stay dark through the snap so only the red reads */
+  22%  { opacity: 0.45; }
+  55%  { opacity: 0.85; }
+  100% { opacity: 1; }
+}
+
+@keyframes hero-flash-pop {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }      /* decisive snap to red-hot (~115ms) */
+  22%  { opacity: 0.8; }
+  55%  { opacity: 0.3; }
+  100% { opacity: 0; }
+}
+
+.hero-frame.igniting .hero-img-base    { animation: hero-base-rise 1.15s ease-out both; }
+.hero-frame.igniting .hero-flash-layer { animation: hero-flash-pop 1.15s ease-out both; }
+
+/* ---- INSPECT HUD (reticle corners + label) ---- */
+.hero-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 2;               /* above the photo + flash layer */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.hero-frame:hover .hero-hud,
+.hero-frame:focus-visible .hero-hud { opacity: 1; }
+
+.hero-hud-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--red);
+  opacity: 0.85;
+}
+.hero-hud-corner.tl { top: 10px;    left: 10px;  border-right: none; border-bottom: none; }
+.hero-hud-corner.tr { top: 10px;    right: 10px; border-left: none;  border-bottom: none; }
+.hero-hud-corner.bl { bottom: 10px; left: 10px;  border-right: none; border-top: none; }
+.hero-hud-corner.br { bottom: 10px; right: 10px; border-left: none;  border-top: none; }
+
+.hero-hud-label {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--red);
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 0, 0, 0.3);
+  padding: 4px 9px 3px;
+  white-space: nowrap;
+}
+
+/* Touch devices can't hover and the loupe is desktop-only — keep a faint,
+   persistent affordance so the tap-to-enlarge is still discoverable. */
+@media (hover: none) {
+  .hero-hud { opacity: 0.7; }
+  .hero-hud-corner { width: 11px; height: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-frame.igniting img { animation: none; }
+}
+
+/* ---- POST BODY (rendered markdown) ---- */
+
+.post-body {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  line-height: 1.75;
+  color: var(--white);
+}
+
+.post-body p {
+  margin-bottom: 1.4em;
+}
+
+.post-body strong {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.post-body em {
+  font-style: italic;
+  color: var(--white-bright);
+}
+
+/* Red highlights — use **red** convention or <r> tags */
+.post-body .red,
+.post-body r {
+  color: var(--red);
+  font-style: normal;
+}
+
+.post-body a {
+  color: var(--red);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 0, 0, 0.3);
+  transition: border-color 0.2s ease;
+}
+
+.post-body a:hover {
+  border-bottom-color: var(--red);
+}
+
+.post-body img {
+  width: 100%;
+  display: block;
+  margin: 2em 0;
+}
+
+.post-body video {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  display: block;
+  margin: 24px auto;
+  border-radius: 0;
+}
+
+/* ---- INLINE VIDEO BANNER (magazine, column-width) ---- */
+.post-body .fn-video {
+  margin: 2.4em 0;
+}
+
+.post-body .fn-video video {
+  width: 100%;
+  max-width: none;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  margin: 0;
+  background: #000;
+  border: 1px solid var(--gray-800);
+}
+
+.post-body .fn-video figcaption {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--gray-500);
+  margin-top: 8px;
+}
+
+.post-body blockquote {
+  border-left: 2px solid var(--red);
+  padding-left: 16px;
+  margin: 1.4em 0;
+  color: var(--gray-300);
+  font-style: italic;
+}
+
+.post-body h1, .post-body h2, .post-body h3 {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  color: var(--white-bright);
+  margin: 2em 0 0.8em;
+  letter-spacing: 0.5px;
+  line-height: 1.25;
+}
+
+.post-body h1 { font-size: 1.5rem; }
+
+.post-body ul, .post-body ol {
+  margin: 1em 0 1.4em 1.4em;
+  padding: 0;
+}
+
+.post-body li {
+  margin-bottom: 0.5em;
+}
+
+/* ---- APPLE MUSIC EMBED ---- */
+.apple-music-embed {
+  margin: 24px 0;
+  background: #000;
+  overflow: hidden;
+}
+
+.apple-music-embed iframe {
+  display: block;
+  width: 100%;
+  max-width: 660px;
+  margin: 0 auto;
+  border: none;
+  background: transparent;
+  border-radius: 12px !important;
+}
+
+.post-body h2 { font-size: 1.2rem; }
+.post-body h3 { font-size: 1rem; }
+
+.post-body hr {
+  border: none;
+  border-top: 1px solid var(--gray-800);
+  margin: 2em 0;
+}
+
+.post-body code {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  background: var(--gray-900);
+  padding: 2px 6px;
+  border: 1px solid var(--gray-800);
+  color: var(--red);
+}
+
+/* ---- BACK LINK ---- */
+
+.post-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 2px;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--gray-800);
+  transition: color 0.2s ease;
+}
+
+.post-back:hover {
+  color: var(--white);
+}
+
+.post-back .arrow {
+  transition: transform 0.2s ease;
+}
+
+.post-back:hover .arrow {
+  transform: translateX(-3px);
+}
+
+/* ---- LOADING / ERROR ---- */
+
+.post-loading {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--gray-500);
+  letter-spacing: 1.5px;
+  padding: 80px 0;
+  text-align: center;
+}
+
+.post-error {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--red);
+  letter-spacing: 1.5px;
+  padding: 80px 0;
+  text-align: center;
+}
+
+/* ---- RESPONSIVE ---- */
+
+@media (max-width: 900px) {
+  .post-wrap {
+    padding: 32px 16px 60px;
+  }
+
+  .post-title {
+    font-size: 1.3rem;
+  }
+
+  .post-body {
+    font-size: 0.84rem;
+  }
+
+  /* Leave more of the screen for the text on small portrait viewports */
+  .post-hero img {
+    max-height: 70vh;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="nav">
+  <a href="/" class="nav-logo" data-site-wordmark="dot-art">SITE<span class="dot-art">.NAME</span></a>
+  <div class="nav-links">
+    <a href="/" class="nav-link">Home</a>
+    <a href="/archive" class="nav-link">theArchive</a>
+    <a href="/field-notes" class="nav-link active">FN//Blog</a>
+    <a href="/wall" class="nav-link">theWall</a>
+    <a href="/about" class="nav-link">About</a>
+    <a href="/dev" class="nav-link terminal">&gt;Dev</a>
+    <a href="mailto:you@example.com" class="nav-mail" title="Contact">&#9993;</a>
+  </div>
+  <button class="nav-hamburger" id="nav-toggle" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<div class="scroll-progress" aria-hidden="true">
+  <div class="scroll-progress-bar"></div>
+</div>
+
+<div class="nav-mobile" id="nav-mobile">
+  <a href="/">Home</a>
+  <a href="/archive">theArchive</a>
+  <a href="/field-notes" class="active">FN//Blog</a>
+  <a href="/wall">theWall</a>
+  <a href="/about">About</a>
+  <a href="/dev">&gt;Dev</a>
+  <a href="mailto:you@example.com">&#9993; Contact</a>
+</div>
+
+<!-- ============ POST ============ -->
+<article class="post-wrap" id="post-wrap">
+  <div class="post-loading" id="post-loading">// LOADING FIELD NOTE…</div>
+</article>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="footer-left"><span data-site-wordmark="accent">SITE<span class="accent">.NAME</span></span> · <span data-site-location>YOUR CITY</span> · <span class="wx-telemetry"><span class="wx-label">WX</span> <span class="wx-sep">//</span> <span class="wx-data" id="wx-temp">--°</span></span> · <a href="/archive/manifest.html" class="footer-manifest">MANIFEST</a></div>
+  <div class="footer-right">WE OBSERVE. WE DO NOT CONSUME.</div>
+</footer>
+
+<script src="/js/page-fn-post.js?v=4" defer></script>
+
+</body>
+</html>

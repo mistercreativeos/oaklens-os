@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title data-site-title>FN//Blog</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" as="font" type="font/woff2" href="/fonts/syne-latin-var.woff2" crossorigin data-font-preload>
+<script>
+/* Pre-paint mode resolution: visitor override -> config default -> OS.
+   Runs before the stylesheet so there is no flash of the wrong mode. The
+   worker stamps data-theme-default on <html> and HTMLRewriter streams the
+   document top-down, so the attribute is present by the time this runs. */
+(function () {
+  var d = document.documentElement, s = null;
+  try { s = localStorage.getItem('ol-theme'); } catch (e) {}
+  var def = d.getAttribute('data-theme-default') || 'midnight';
+  var light = s ? s === 'light'
+    : def === 'auto' ? matchMedia('(prefers-color-scheme: light)').matches
+    : def === 'daylight';
+  if (light) d.setAttribute('data-theme', 'light');
+})();
+</script>
+<link rel="stylesheet" href="../css/main.css?v=17">
+<script src="/js/mode-toggle.js?v=1" defer></script>
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<style>
+/* ============================================
+   FN//BLOG — LISTING PAGE
+   ============================================ */
+
+.fn-header {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 48px 40px 0;
+}
+
+.fn-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.4rem;
+  color: var(--white-bright);
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.fn-title .accent { color: var(--red); }
+
+.fn-subtitle {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 2.5px;
+  color: var(--gray-500);
+  text-transform: uppercase;
+}
+
+/* ---- POST LIST ---- */
+
+.fn-list {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 40px 80px;
+}
+
+.fn-entry {
+  display: flex;
+  gap: 20px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--gray-800);
+  transition: background 0.2s ease;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+
+.fn-entry:first-child {
+  border-top: 1px solid var(--gray-800);
+}
+
+.fn-entry:hover {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+/* Hero thumbnail */
+.fn-entry-thumb {
+  flex-shrink: 0;
+  width: 140px;
+  height: 94px;
+  object-fit: cover;
+  background: var(--gray-900);
+  border: 1px solid var(--gray-800);
+}
+
+.fn-entry-thumb.no-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--gray-700);
+  letter-spacing: 1.5px;
+}
+
+.fn-entry-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fn-entry-id {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 2px;
+  color: var(--red);
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.fn-entry-name {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--white-bright);
+  line-height: 1.3;
+  transition: color 0.2s ease;
+}
+
+.fn-entry:hover .fn-entry-name {
+  color: var(--white);
+}
+
+.fn-entry-meta {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 1.5px;
+  color: var(--gray-500);
+  text-transform: uppercase;
+}
+
+.fn-entry-meta .sep {
+  color: var(--gray-700);
+  margin: 0 6px;
+}
+
+/* ---- COUNT ---- */
+
+.fn-count {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 40px 60px;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 2.5px;
+  color: var(--gray-700);
+  text-transform: uppercase;
+  border-top: 1px solid var(--gray-800);
+  padding-top: 20px;
+}
+
+.fn-count .accent { color: var(--red); }
+
+/* ---- RESPONSIVE ---- */
+
+@media (max-width: 900px) {
+  .fn-header { padding: 32px 16px 0; }
+  .fn-list { padding: 28px 16px 60px; }
+
+  .fn-entry {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .fn-entry-thumb {
+    width: 100%;
+    height: 180px;
+  }
+
+  .fn-count { padding: 0 16px 40px; padding-top: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="nav">
+  <a href="/" class="nav-logo" data-site-wordmark="dot-art">SITE<span class="dot-art">.NAME</span></a>
+  <div class="nav-links">
+    <a href="/" class="nav-link">Home</a>
+    <a href="/archive" class="nav-link">theArchive</a>
+    <a href="/field-notes" class="nav-link active">FN//Blog</a>
+    <a href="/wall" class="nav-link">theWall</a>
+    <a href="/about" class="nav-link">About</a>
+    <a href="/dev" class="nav-link terminal">&gt;Dev</a>
+    <a href="mailto:you@example.com" class="nav-mail" title="Contact">&#9993;</a>
+  </div>
+  <button class="nav-hamburger" id="nav-toggle" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<div class="nav-mobile" id="nav-mobile">
+  <a href="/">Home</a>
+  <a href="/archive">theArchive</a>
+  <a href="/field-notes" class="active">FN//Blog</a>
+  <a href="/wall">theWall</a>
+  <a href="/about">About</a>
+  <a href="/dev">&gt;Dev</a>
+  <a href="mailto:you@example.com">&#9993; Contact</a>
+</div>
+
+<!-- ============ HEADER ============ -->
+<header class="fn-header">
+  <h1 class="fn-title">FN<span class="accent">//</span>BLOG</h1>
+  <div class="fn-subtitle">// FIELD NOTES FROM THE STREET</div>
+</header>
+
+<!-- ============ POST LIST ============ -->
+<main class="fn-list" id="fn-list"></main>
+
+<!-- ============ COUNT ============ -->
+<div class="fn-count" id="fn-count"></div>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="footer-left"><span data-site-wordmark="accent">SITE<span class="accent">.NAME</span></span> · <span data-site-location>YOUR CITY</span> · <span class="wx-telemetry"><span class="wx-label">WX</span> <span class="wx-sep">//</span> <span class="wx-data" id="wx-temp">--°</span></span> · <a href="/archive/manifest.html" class="footer-manifest">MANIFEST</a></div>
+  <div class="footer-right">WE OBSERVE. WE DO NOT CONSUME.</div>
+</footer>
+
+<script src="/js/site-common.js?v=2"></script>
+<script src="/js/page-fn-list.js?v=4" defer></script>
+
+</body>
+</html>
