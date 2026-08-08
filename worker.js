@@ -1,0 +1,371 @@
+import {
+  createRawToken, sha256Hex, verifyShellRequest,
+} from './src/shared/auth.js';
+import siteConfig from './site.config.js';
+import { withCors, handleCORS, demoModeRes } from './src/shared/http.js';
+import { securityHeaders, withCsp } from './src/shared/csp.js';
+import { readCachedTemp, refreshLocalTemp } from './src/edge/weather.js';
+import { pageDisabled, publicPages } from './src/shared/pages.js';
+import { runArchiveCapture } from './src/cron/archive.js';
+import {
+  handlePublish, handleSync, _isEmptyJsonArray, _emptyOverwriteGuard,
+} from './src/api/publish.js';
+import {
+  handleGetBench, handleAddBenchEntries, handleUpdateBenchEntry,
+  handleDeleteBenchEntry, handleClearDoneBenchEntries, handleBenchRawDownload,
+} from './src/api/bench.js';
+import { handleGetDrafts, handlePutDraft, handleDeleteDraft } from './src/api/drafts.js';
+import { handleAuth, handleLogout } from './src/api/console-auth.js';
+import { handleSubscribe, handleExport } from './src/api/subscribers.js';
+import { handleUpload, handleDeleteAssets, handleCdnProxy, handleOgCards } from './src/api/assets.js';
+import {
+  getPostMeta, getFrameOgData, injectOg, injectSiteChrome,
+  _frameImg, _ogImage, _navLinksHtml, HERO_PRELOAD_WIDTH,
+} from './src/edge/chrome.js';
+import {
+  handleManifest, handleSitemap, handleFeed, handleBufferSummary, handleSiteSettings,
+} from './src/api/site-meta.js';
+
+// Re-exported for the public contract: tests/page-gate.test.js imports the page
+// helpers + _navLinksHtml, and tests/publish-guard.test.js imports the two pure
+// publish guards. Definitions live in the src/ modules named above.
+export { pageDisabled, publicPages };
+export { _isEmptyJsonArray, _emptyOverwriteGuard };
+export { _navLinksHtml };
+
+// Portal session cookie lifetime. Revocation is enforced per-request against the
+// originating link (see portal-worker.js), so this can stay generous for UX.
+const PORTAL_SESSION_TTL = 30 * 24 * 60 * 60; // 30 days (seconds)
+
+// One log per isolate on first request: which optional features are off, and —
+// loudly — whether a required secret is missing. Wrangler tail / observability
+// picks this up, so a misconfigured fork is diagnosable from logs alone.
+let _healthLogged = false;
+function logSecretHealth(env) {
+  if (_healthLogged) return;
+  _healthLogged = true;
+  // Each requirement can be satisfied more than one way, so this checks the
+  // *capability*, not a fixed list of names:
+  //   password  — AUTH_PASSWORD_HASH (setup.sh) or AUTH_PASSWORD (one-click)
+  //   signing   — SESSION_SECRET, or a KV namespace to generate and keep one in
+  const missingRequired = [];
+  if (!env.AUTH_PASSWORD_HASH && !env.AUTH_PASSWORD) {
+    missingRequired.push('AUTH_PASSWORD_HASH (or AUTH_PASSWORD)');
+  }
+  if (!env.SESSION_SECRET && !env.SUBSCRIBERS) {
+    missingRequired.push('SESSION_SECRET (or a SUBSCRIBERS KV binding to generate one)');
+  }
+  if (missingRequired.length) {
+    console.error(`[health] REQUIRED secrets missing: ${missingRequired.join(', ')} — console login is broken until they are set`);
+  }
+  const offFeatures = [
+    ['GitHub publish/sync', ['GITHUB_TOKEN', 'GITHUB_REPO']],
+    ['subscriber export', ['ADMIN_KEY']],
+    ['portal email notifications', ['RESEND_API_KEY']],
+    ['Wayback archive cron', ['ARCHIVE_S3_ACCESS', 'ARCHIVE_S3_SECRET']],
+    ['bench RAW cold storage', ['B2_BUCKET_NAME', 'B2_KEY_ID', 'B2_APP_KEY']],
+  ].filter(([, keys]) => keys.some((k) => !env[k]));
+  if (offFeatures.length) {
+    console.log(`[health] optional features off (secrets unset): ${offFeatures.map(([name]) => name).join(', ')}`);
+  }
+}
+
+// ---- Legacy URL redirects ----
+//
+// Old Squarespace navigation paths are still indexed by search engines (Brave,
+// Google, etc.) and surface as dead links. Map each retired path to its current
+// home with a permanent 301 so crawlers update their index and visitors who
+// click an old result land on the right page. Keys are normalised: lower-cased,
+// no trailing slash. manifest.html is intentionally left untouched.
+const LEGACY_REDIRECTS = {
+  // Map any retired URL to its new home, e.g. if your old site had /blog:
+  //   '/blog': '/field-notes',
+  // Keys are normalised: lower-cased, no trailing slash. Leave this empty and
+  // set `legacyRedirects: false` in site.config.js if you have no old URLs.
+};
+
+// ---- Exact-match route table (manual §6.7) ----
+//
+// Declarative `Map` keyed by "METHOD pathname" — the replacement for the old
+// route-7 `if` ladder. Every value is `(request, env, url) => Response`. The
+// dispatcher (fetch) wraps `/api/*` results in withCors; the rendered-page
+// GETs (manifest/sitemap/feed) deliberately carry no CORS header, exactly as
+// before. Order-sensitive routes — host redirects, legacy redirects, `/c/`,
+// preflight, and the prefix routes (`/api/bench/raw/…`, `/api/cdn/…`, `/p/…`),
+// plus the console-shell gate and asset serving — stay as ordered logic below,
+// because for them *order is behavior*. New exact API routes: add a line here.
+const EXACT_ROUTES = new Map([
+  ['GET /archive/manifest.html', (request, env) => handleManifest(request, env)],
+  ['GET /sitemap.xml', (request, env) => handleSitemap(request, env)],
+  ['GET /feed.xml', (request, env) => handleFeed(request, env)],
+  ['GET /api/buffer-summary', (request, env) => handleBufferSummary(request, env)],
+  ['GET /api/site/settings', (request, env) => handleSiteSettings(request, env)],
+  ['POST /api/auth', (request, env) => handleAuth(request, env)],
+  ['POST /api/logout', () => handleLogout()],
+  ['POST /api/upload', (request, env) => handleUpload(request, env)],
+  ['POST /api/publish', (request, env) => handlePublish(request, env)],
+  ['GET /api/sync', (request, env) => handleSync(request, env)],
+  ['POST /api/delete-assets', (request, env) => handleDeleteAssets(request, env)],
+  ['POST /api/subscribe', (request, env) => handleSubscribe(request, env)],
+  ['GET /api/subscribers/export', (request, env, url) => handleExport(request, url, env)],
+  ['GET /api/bench', (request, env) => handleGetBench(request, env)],
+  ['POST /api/bench/entries', (request, env) => handleAddBenchEntries(request, env)],
+  ['PATCH /api/bench/entries', (request, env) => handleUpdateBenchEntry(request, env)],
+  ['DELETE /api/bench/entries', (request, env) => handleDeleteBenchEntry(request, env)],
+  ['DELETE /api/bench/done', (request, env) => handleClearDoneBenchEntries(request, env)],
+  ['GET /api/drafts', (request, env) => handleGetDrafts(request, env)],
+  ['PUT /api/drafts', (request, env) => handlePutDraft(request, env)],
+  ['DELETE /api/drafts', (request, env) => handleDeleteDraft(request, env)],
+  ['GET /api/og-cards', (request, env) => handleOgCards(request, env)],
+]);
+
+// Demo mode (site.config.js → demoMode: true): every route that writes —
+// or reads subscriber PII — answers a deliberate 403 { demoMode: true }
+// (see demoModeRes). Keyed exactly like EXACT_ROUTES so the gate cannot
+// drift from the table above; checked BEFORE dispatch so no handler's own
+// auth/validation can route around it. Login/logout stay open (the demo
+// console is meant to be explored), reads stay open, and the gate is config,
+// not auth — the owner writes via a non-demo deployment on the same
+// bindings. tests/demo-mode.test.js walks this set against the real worker.
+export const DEMO_LOCKED_ROUTES = new Set([
+  'POST /api/upload',
+  'POST /api/publish',
+  'POST /api/delete-assets',
+  'POST /api/subscribe',            // a demo must not collect visitor emails
+  'GET /api/subscribers/export',    // …nor hand out any it somehow has
+  'POST /api/bench/entries',
+  'PATCH /api/bench/entries',
+  'DELETE /api/bench/entries',
+  'DELETE /api/bench/done',
+  'PUT /api/drafts',
+  'DELETE /api/drafts',
+]);
+
+// ---- Main handler ----
+
+export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runArchiveCapture(env));
+  },
+
+  async fetch(request, env, ctx) {
+    logSecretHealth(env);
+    const url = new URL(request.url);
+
+    // www → apex (universal; the apex host is whatever the rest of the
+    // hostname is, so no domain needs to be configured)
+    if (url.hostname.startsWith('www.')) {
+      url.hostname = url.hostname.slice(4);
+      return Response.redirect(url.toString(), 301);
+    }
+
+    // LEGACY SQUARESPACE PATHS → current pages (permanent). Gated behind
+    // config — template forks have no Squarespace history to redirect.
+    if (siteConfig.legacyRedirects) {
+      const legacyKey = url.pathname.replace(/\/+$/, '').toLowerCase() || '/';
+      if (legacyKey !== '/' && LEGACY_REDIRECTS[legacyKey]) {
+        url.pathname = LEGACY_REDIRECTS[legacyKey];
+        return Response.redirect(url.toString(), 301);
+      }
+    }
+
+    // Handle all /api/* preflight requests uniformly
+    if (url.pathname.startsWith('/api/') && request.method === 'OPTIONS') {
+      return withCors(handleCORS(), url.origin);
+    }
+
+    // Exact-match routes (EXACT_ROUTES table above). `/api/*` results get the
+    // per-origin CORS header; the rendered-page GETs (manifest/sitemap/feed)
+    // deliberately do not — same as the old ladder. Prefix routes below aren't
+    // in the table because their pathname varies (bench/raw filename, cdn key,
+    // shortlink code).
+    const routeKey = `${request.method} ${url.pathname}`;
+    if (siteConfig.demoMode && DEMO_LOCKED_ROUTES.has(routeKey)) {
+      return withCors(demoModeRes(routeKey.split(' ')[1]), url.origin);
+    }
+    const exactRoute = EXACT_ROUTES.get(routeKey);
+    if (exactRoute) {
+      const res = await exactRoute(request, env, url);
+      return url.pathname.startsWith('/api/') ? withCors(res, url.origin) : res;
+    }
+
+    // BENCH RAW download (prefix — filename varies)
+    if (url.pathname.startsWith('/api/bench/raw/') && request.method === 'GET') {
+      const filename = decodeURIComponent(url.pathname.slice('/api/bench/raw/'.length));
+      return withCors(await handleBenchRawDownload(request, env, filename), url.origin);
+    }
+
+    // Same-origin R2 proxy for CDN assets (src/api/assets.js) — the default
+    // serving path when no custom cdnBase is configured, the field console's
+    // canvas-safe frame source, and the sample-frame fallback on a fork.
+    // `ctx` rides along so the proxy can populate its edge cache in the
+    // background without holding the image response. HEAD matches too:
+    // GET-only routing sent `curl -I` and uptime monitors' HEAD probes past
+    // the proxy into the asset layer, which answered 404 for every real
+    // image (the runtime strips the body from a HEAD response itself).
+    if (url.pathname.startsWith('/api/cdn/')
+      && (request.method === 'GET' || request.method === 'HEAD')) {
+      return handleCdnProxy(request, env, url, ctx);
+    }
+
+    // FIELD CONSOLE SHELL GATE — secure-by-default (opt out: site.config.js →
+    // consoleShellPublic: true). The admin console *document* is served only
+    // to a valid console-shell cookie — the same posture the portal already
+    // takes for /c/* (cookie-gated template, bare page for everyone else).
+    // Unauthenticated visitors get a minimal login page (401 + no-store: the
+    // status keeps the PWA service worker from ever caching the login page
+    // over the shell — its network-first cache only stores res.ok).
+    // On successful login /api/auth sets the cookie and the page reloads into
+    // the console. API auth is unchanged (Bearer, scope 'console'); the
+    // cookie authorizes ONLY this document read, so it has no CSRF surface —
+    // mutations remain Bearer-only and reject the cookie's scope.
+    const isConsoleShell =
+      url.pathname === '/dev/field-console' || url.pathname === '/dev/field-console.html';
+    if (isConsoleShell && siteConfig.consoleShellPublic !== true) {
+      if (!(await verifyShellRequest(request, env))) {
+        const gate = await env.ASSETS.fetch(new Request(`${url.origin}/dev/console-gate.html`));
+        return new Response(gate.body, {
+          status: 401,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store',
+            // /dev surface: relaxed CSP (the gate carries an inline script).
+            // securityHeaders, not buildCsp: this Response is built from
+            // scratch, so `_headers` never touches it — X-Frame-Options was
+            // missing on the admin login page until 2026-08-07.
+            ...securityHeaders(url.origin, false),
+          },
+        });
+      }
+    }
+
+    // Config-gated page (pages{} in site.config.js): serve the site's real
+    // 404 page through the normal rewriter flow below so it gets nav chrome
+    // like any page (console-gate precedent for the alternate-asset fetch).
+    // CONSOLE_PATHS are already carved out inside pageDisabled.
+    const isGatedPage = request.method === 'GET' && pageDisabled(url.pathname);
+
+    // --- Asset serving + HTML rewriting ---
+    const response = isGatedPage
+      ? await env.ASSETS.fetch(new Request(`${url.origin}/404.html`))
+      : await env.ASSETS.fetch(request);
+
+    const contentType = response.headers.get('Content-Type') || '';
+    if (!contentType.includes('text/html')) {
+      // A miss must never outlive itself: Workers Assets applies `_headers`
+      // rules by URL pattern, status-blind — so a 404 for a missing /*.webp
+      // or /js/* URL was answering with that rule's `immutable, max-age=1y`
+      // and the edge cache kept the 404 for a year (observed live:
+      // cf-cache-status HIT on a 404). Same guard on the HTML path below.
+      if (response.status === 404) {
+        const miss = new Response(response.body, response);
+        miss.headers.set('Cache-Control', 'no-store');
+        return miss;
+      }
+      return response;
+    }
+
+    // Weather: read cache only (never block on upstream); refresh in background
+    // when the entry is cold or older than the freshness window.
+    const cachedTemp = await readCachedTemp(url.origin);
+    const temp = cachedTemp ? cachedTemp.temp : null;
+    if (!cachedTemp || cachedTemp.stale) {
+      ctx.waitUntil(refreshLocalTemp(url.origin));
+    }
+
+    // Page detection for per-frame Open Graph (manifest.html already returned).
+    const p = url.pathname;
+    const isBufferPage =
+      p === '/archive/buffer' || p === '/archive/buffer/' || p === '/archive/buffer/index.html';
+    const isArchivePage =
+      !isBufferPage && (p === '/archive' || p === '/archive/' || p === '/archive/index.html');
+    const isPostPage = p.includes('/field-notes/post');
+
+    let ogData = null;
+    let heroUrl = null;
+    if (isArchivePage) {
+      ogData = await getFrameOgData(url, env, 'archive');
+    } else if (isBufferPage) {
+      ogData = await getFrameOgData(url, env, 'buffer');
+    } else if (isPostPage) {
+      const postMeta = await getPostMeta(url, env);
+      if (postMeta) {
+        heroUrl = _frameImg(url.origin, postMeta.hero, HERO_PRELOAD_WIDTH);
+        const slug = url.searchParams.get('slug');
+        ogData = {
+          title: `${postMeta.title || 'Field Note'} — ${siteConfig.name.toUpperCase()}`,
+          description: [postMeta.location, postMeta.date].filter(Boolean).join(' · ') || `Field notes from ${siteConfig.name}.`,
+          // Prefer the stamped 1200×630 card (meta/<base>-og.webp) when the console
+          // has published one; _ogImage falls back to the raw hero otherwise.
+          image: await _ogImage(env, url.origin, postMeta.hero),
+          // Canonical post URL is the extensionless route (the .html form
+          // 307s to it), so shares and feed entries converge on one URL.
+          ogUrl: `${url.origin}/field-notes/post?slug=${encodeURIComponent(slug)}`,
+        };
+      }
+    }
+
+    // Every HTML response gets the config-driven site chrome (meta tags, nav,
+    // contact email, absolute og: URLs); weather/OG/hero rules join as needed.
+    const rewriter = new HTMLRewriter();
+    injectSiteChrome(rewriter, url);
+
+    if (temp !== null) {
+      rewriter.on('#wx-temp', {
+        element(el) {
+          el.setInnerContent(`${temp}°`);
+        },
+      });
+    }
+
+    if (heroUrl) {
+      const preloadTag = `<link rel="preload" as="image" href="${heroUrl}" fetchpriority="high">`;
+      rewriter.on('head', {
+        element(el) {
+          el.append(preloadTag, { html: true });
+        },
+      });
+    }
+
+    if (ogData) {
+      injectOg(rewriter, ogData, isBufferPage);
+    }
+
+    const transformed = rewriter.transform(response);
+    if (response.status === 404 && !isGatedPage) {
+      // The natural asset-layer 404 (404.html via not_found_handling) still
+      // gets full site chrome from the rewriter above — but its Cache-Control
+      // must not come from a `_headers` URL rule (see the non-HTML guard):
+      // a missing .webp/.css/.js URL serves this HTML page, and `immutable`
+      // stamped by pattern would cache the miss for a year.
+      const miss = new Response(transformed.body, transformed);
+      miss.headers.set('Cache-Control', 'no-store');
+      return withCsp(miss, url.origin, url.pathname);
+    }
+    if (isGatedPage) {
+      // A disabled page is a 404, and no-store so flipping the config back
+      // on isn't shadowed by a cached miss. It's a public path → strict CSP.
+      return new Response(transformed.body, {
+        status: 404,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+          ...securityHeaders(url.origin, true),
+        },
+      });
+    }
+    if (isConsoleShell) {
+      // The gated document must not outlive its session in the HTTP cache
+      // (logout would otherwise leave a servable copy behind). Offline
+      // relaunch is owned by the PWA service worker's own cache, unaffected.
+      // /dev surface → relaxed CSP (the console is inline-heavy).
+      const gated = new Response(transformed.body, transformed);
+      gated.headers.set('Cache-Control', 'no-store');
+      for (const [k, v] of Object.entries(securityHeaders(url.origin, false))) {
+        gated.headers.set(k, v);
+      }
+      return gated;
+    }
+    return withCsp(transformed, url.origin, url.pathname);
+  },
+};

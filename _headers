@@ -1,0 +1,35 @@
+# The Content-Security-Policy is now set per-response by the Worker (worker.js
+# → buildCsp), not here, so it can be config-derived (CDN host from
+# site.config.js cdnBase) and differ by surface: a strict script-src (no
+# 'unsafe-inline', pre-paint block allowed by sha256 hash) for the public site,
+# and a relaxed one (keeps 'unsafe-inline') for /dev (the Field Console) and
+# /c/ (the portal), which still carry inline logic. See docs/os-launch-plan.md.
+# The static security headers below still apply to every response.
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/css/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.webp
+  Cache-Control: public, max-age=31536000, immutable
+
+# Versioned JS (loaded as /js/file.js?v=N) — safe to cache forever; bump ?v= on change.
+/js/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Self-hosted fonts — content-stable; cache forever.
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Content JSON changes only on publish — short freshness window, then serve
+# stale instantly while revalidating in the background (avoids re-downloading
+# buffer.json/archive.json on every repeat visit).
+/data/*.json
+  Cache-Control: public, max-age=300, stale-while-revalidate=86400
+
+/dev/*
+  X-Robots-Tag: noindex

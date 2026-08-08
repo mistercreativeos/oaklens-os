@@ -1,0 +1,64 @@
+.git
+.wrangler
+node_modules
+.dev.vars
+wrangler.jsonc
+worker.js
+# Imported into worker.js at build (identity is injected into pages at the edge),
+# so the raw file must never be fetchable — it carries contact/coords and, in
+# comments, pre-launch repo names (the `oaklens-os` sameAs line).
+site.config.js
+site.config.example.js
+.aider*
+audit/
+.DS_Store
+
+# Server source is bundled into worker.js at deploy time — never serve it raw.
+src
+scripts
+# SQL schemas / one-off migration artifacts that may land in the repo root.
+*.sql
+# D1 wrangler migrations (console tables) — applied by setup.sh / the deploy
+# script, never served.
+migrations
+# Local build/patch helpers (e.g. patch_html.py) — dev tooling, never web assets.
+# The assets dir is the repo root and serves by default, so a loose script in
+# the root would otherwise be publicly fetchable.
+*.py
+*.sh
+bench.json
+bench-remote.json
+# Git housekeeping files. They carry nothing secret, but they were being
+# uploaded and served as web assets — `/.gitignore` and `/archive/.gitkeep`
+# were in the deploy list of a real fork. Placeholders for empty directories
+# are not part of anybody's site.
+.gitignore
+.gitkeep
+
+# Project metadata, not web assets. README + docs describe repo internals
+# (including pre-launch repo names) and must not be fetchable on the site.
+package.json
+package-lock.json
+setup.md
+README.md
+LICENSE
+CONTRIBUTING.md
+SECURITY.md
+# AI-agent working agreement — repo-only (visible on GitHub, never a web asset).
+CLAUDE.md
+AGENTS.md
+# Open-source template/example config — never served on a live instance.
+*.example.jsonc
+docs
+# Internal engineering docs under /dev/ (manual, architecture, audit rules,
+# UX spec) — repo-only reading. posts/*.md stays served (post.html fetches it).
+dev/*.md
+# Analysis output under /dev/ (e.g. console-callgraph.json) — internal structure,
+# never a web asset. dev/manifest.webmanifest is a different extension and still
+# serves; nothing under dev/ fetches a .json.
+dev/*.json
+# Tooling / build output / CI — never served.
+tests
+vitest.config.js
+dist
+.github
