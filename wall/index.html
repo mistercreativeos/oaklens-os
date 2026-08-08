@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title data-site-title>theWall</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" as="font" type="font/woff2" href="/fonts/syne-latin-var.woff2" crossorigin data-font-preload>
+<script>
+/* Pre-paint mode resolution: visitor override -> config default -> OS.
+   Runs before the stylesheet so there is no flash of the wrong mode. The
+   worker stamps data-theme-default on <html> and HTMLRewriter streams the
+   document top-down, so the attribute is present by the time this runs. */
+(function () {
+  var d = document.documentElement, s = null;
+  try { s = localStorage.getItem('ol-theme'); } catch (e) {}
+  var def = d.getAttribute('data-theme-default') || 'midnight';
+  var light = s ? s === 'light'
+    : def === 'auto' ? matchMedia('(prefers-color-scheme: light)').matches
+    : def === 'daylight';
+  if (light) d.setAttribute('data-theme', 'light');
+})();
+</script>
+<link rel="stylesheet" href="../css/main.css?v=17">
+<script src="/js/mode-toggle.js?v=1" defer></script>
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<style>
+/* ============================================
+   theWALL — WALLPAPER GALLERY + PHOTO LAB
+   ============================================ */
+
+/* ---- HEADER ---- */
+
+.wall-header {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 48px 40px 8px;
+}
+
+.wall-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.4rem;
+  color: var(--white-bright);
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.wall-title .accent { color: var(--red); }
+
+.wall-tagline {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--gray-300);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.wall-version {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--gray-700);
+  letter-spacing: 2px;
+}
+
+/* ---- GRID ---- */
+
+.wall-grid-wrap {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 32px 40px 80px;
+}
+
+.wall-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+/* ---- WALL CARD ---- */
+
+.wall-card {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: #0a0a0a;
+  cursor: pointer;
+}
+
+.wall-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.5s ease, filter 0.4s ease;
+}
+
+.wall-card:hover img {
+  transform: scale(1.03);
+}
+
+/* Sibling desaturation — JS-driven */
+.wall-grid.is-hovering .wall-card:not(.is-active) img {
+  filter: saturate(0.15) brightness(0.7);
+}
+
+/* NEW badge */
+.wall-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 100%;
+  background: var(--red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.wall-badge span {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--black);
+  text-transform: uppercase;
+}
+
+/* Title overlay on hover */
+.wall-card-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 10px;
+  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.wall-card:hover .wall-card-info { opacity: 1; }
+
+.wall-card-info-title {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--white);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* ---- PHOTO LAB (modal) ---- */
+
+.lab {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(5, 5, 5, 0.97);
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.lab.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Lab — image side */
+.lab-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  position: relative;
+  overflow: hidden;
+  /* Checkered background to show transparency */
+  background-image: linear-gradient(45deg, #080808 25%, transparent 25%),
+    linear-gradient(-45deg, #080808 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #080808 75%),
+    linear-gradient(-45deg, transparent 75%, #080808 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+
+.lab-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: filter 0.4s ease;
+}
+
+.lab-image-specs {
+  position: absolute;
+  bottom: 16px;
+  left: 20px;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: var(--gray-700);
+  letter-spacing: 1px;
+}
+
+/* Lab — controls side */
+.lab-controls {
+  padding: 40px 32px;
+  border-left: 1px solid var(--gray-800);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 24px;
+  background: var(--gray-900);
+  position: relative;
+}
+
+.lab-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: var(--gray-500);
+  font-family: var(--font-mono);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 8px;
+  transition: color 0.2s ease;
+  line-height: 1;
+}
+
+.lab-close:hover { color: var(--white); }
+
+.lab-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.6rem;
+  color: var(--white-bright);
+  text-transform: uppercase;
+  letter-spacing: -0.5px;
+  line-height: 1.05;
+}
+
+.lab-desc {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--gray-300);
+  border-left: 2px solid var(--red);
+  padding-left: 12px;
+  line-height: 1.4;
+}
+
+/* Lab sections */
+.lab-section-label {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 2.5px;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.lab-process-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.lab-process-btn {
+  background: transparent;
+  border: 1px solid var(--gray-700);
+  color: var(--gray-300);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 1.5px;
+  padding: 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+}
+
+.lab-process-btn:hover {
+  border-color: var(--gray-500);
+  color: var(--white);
+}
+
+.lab-process-btn.active {
+  background: var(--white-bright);
+  border-color: var(--white-bright);
+  color: var(--black);
+  font-weight: 700;
+}
+
+/* Lab actions */
+.lab-download {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--red);
+  border: 1px solid var(--red);
+  color: var(--black);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 14px;
+  cursor: pointer;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+}
+
+.lab-download:hover {
+  background: var(--white-bright);
+  border-color: var(--white-bright);
+}
+
+.lab-actions-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.lab-action-btn {
+  background: transparent;
+  border: 1px solid var(--gray-700);
+  color: var(--gray-300);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 1.5px;
+  padding: 12px;
+  cursor: pointer;
+  text-align: center;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.lab-action-btn:hover {
+  border-color: var(--gray-500);
+  color: var(--white);
+}
+
+.lab-nav-hint {
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  color: var(--gray-700);
+  letter-spacing: 1.5px;
+  text-align: center;
+  margin-top: 8px;
+}
+
+/* ---- COUNT ---- */
+
+.wall-count {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 40px 60px;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 2.5px;
+  color: var(--gray-700);
+  text-transform: uppercase;
+  border-top: 1px solid var(--gray-800);
+  padding-top: 20px;
+}
+
+.wall-count .accent { color: var(--red); }
+
+/* ---- RESPONSIVE ---- */
+
+@media (max-width: 1100px) {
+  .wall-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .wall-header { padding: 32px 16px 8px; }
+  .wall-grid-wrap { padding: 24px 16px 60px; }
+  .wall-grid { grid-template-columns: repeat(2, 1fr); gap: 4px; }
+
+  .lab {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  .lab-image { padding: 20px; }
+
+  .lab-controls {
+    border-left: none;
+    border-top: 1px solid var(--gray-800);
+    padding: 24px 20px;
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+
+  .wall-count { padding: 0 16px 40px; padding-top: 16px; }
+}
+
+@media (max-width: 560px) {
+  .wall-grid { grid-template-columns: 1fr; gap: 4px; }
+  .wall-card { aspect-ratio: 16 / 9; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="nav">
+  <a href="/" class="nav-logo" data-site-wordmark="dot-art">SITE<span class="dot-art">.NAME</span></a>
+  <div class="nav-links">
+    <a href="/" class="nav-link">Home</a>
+    <a href="/archive" class="nav-link">theArchive</a>
+    <a href="/field-notes" class="nav-link">FN//Blog</a>
+    <a href="/wall" class="nav-link active">theWall</a>
+    <a href="/about" class="nav-link">About</a>
+    <a href="/dev" class="nav-link terminal">&gt;Dev</a>
+    <a href="mailto:you@example.com" class="nav-mail" title="Contact">&#9993;</a>
+  </div>
+  <button class="nav-hamburger" id="nav-toggle" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<div class="nav-mobile" id="nav-mobile">
+  <a href="/">Home</a>
+  <a href="/archive">theArchive</a>
+  <a href="/field-notes">FN//Blog</a>
+  <a href="/wall" class="active">theWall</a>
+  <a href="/about">About</a>
+  <a href="/dev">&gt;Dev</a>
+  <a href="mailto:you@example.com">&#9993; Contact</a>
+</div>
+
+<!-- ============ HEADER ============ -->
+<header class="wall-header">
+  <h1 class="wall-title">the<span class="accent">Wall</span></h1>
+  <div class="wall-tagline">My Desktop. Yours if you want it.</div>
+  <div class="wall-version"><span data-site-wordmark>SITE.NAME</span> // v3.14</div>
+
+  <!-- GET THE DROP -->
+  <div class="gtd-wall" id="gtd-wall">
+    <div class="gtd-wall-form" id="gtd-wall-form">
+      <div class="gtd-wall-label">
+        <span class="gtd-dot"></span>
+        <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px;color:#E0E0E0;letter-spacing:0.08em;text-transform:uppercase;">GET THE DROP</span>
+      </div>
+      <div class="gtd-wall-fields">
+        <div class="gtd-hp"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
+        <input class="gtd-input" type="email" inputmode="email" autocomplete="email" placeholder="your@email.com" id="gtd-wall-email">
+        <button class="gtd-submit" aria-label="Submit email">→</button>
+      </div>
+      <div class="gtd-error" id="gtd-wall-err"></div>
+    </div>
+    <div class="gtd-wall-ok" id="gtd-wall-ok" style="display:none;">
+      <span class="gtd-dot gtd-dot--solid"></span>
+      <span class="gtd-success">you're on the list. // next drop incoming.</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ GRID ============ -->
+<main class="wall-grid-wrap">
+  <div class="wall-grid" id="wall-grid"></div>
+</main>
+
+<!-- ============ COUNT ============ -->
+<div class="wall-count" id="wall-count"></div>
+
+<!-- ============ PHOTO LAB ============ -->
+<div class="lab" id="lab">
+  <div class="lab-image">
+    <img id="lab-img" src="" alt="">
+    <div class="lab-image-specs" id="lab-specs"></div>
+  </div>
+  <div class="lab-controls">
+    <button class="lab-close" id="lab-close">×</button>
+    <div>
+      <div class="lab-title" id="lab-title"></div>
+      <div class="lab-desc" id="lab-desc"></div>
+    </div>
+
+    <div>
+      <div class="lab-section-label">PROCESS</div>
+      <div class="lab-process-grid">
+        <button class="lab-process-btn active" data-filter="none" data-process="color">COLOR</button>
+        <button class="lab-process-btn" data-filter="grayscale(100%) contrast(1.1)" data-process="noir">NOIR</button>
+        <button class="lab-process-btn" data-filter="brightness(0.55) contrast(1.15) saturate(0.8)" data-process="dim">DIM</button>
+      </div>
+    </div>
+
+    <div>
+      <a class="lab-download" id="lab-download" href="" download>
+        DOWNLOAD FULL
+      </a>
+      <div class="lab-actions-row" style="margin-top:6px;">
+        <button class="lab-action-btn" id="lab-share">SHARE</button>
+        <a class="lab-action-btn" href="/support" target="_blank">SUPPORT</a>
+        <button class="lab-action-btn" id="gtd-lab-btn">THE DROP</button>
+      </div>
+    </div>
+
+    <!-- THE DROP — lab panel -->
+    <div class="gtd-lab-panel" id="gtd-lab-panel" style="display:none;">
+      <div class="gtd-lab-form" id="gtd-lab-form">
+        <div class="gtd-hp"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
+        <input class="gtd-input" type="email" inputmode="email" autocomplete="email" placeholder="your@email.com" id="gtd-lab-email">
+        <button class="gtd-submit" aria-label="Submit email">→</button>
+      </div>
+      <div class="gtd-error" id="gtd-lab-err"></div>
+      <div class="gtd-lab-ok" id="gtd-lab-ok" style="display:none;">
+        <span class="gtd-dot gtd-dot--solid"></span>
+        <span class="gtd-success">locked in.</span>
+      </div>
+    </div>
+
+    <div class="lab-nav-hint">← → Navigate · ESC Close</div>
+  </div>
+</div>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="footer-left"><span data-site-wordmark="accent">SITE<span class="accent">.NAME</span></span> · <span data-site-location>YOUR CITY</span> · <span class="wx-telemetry"><span class="wx-label">WX</span> <span class="wx-sep">//</span> <span class="wx-data" id="wx-temp">--°</span></span> · <a href="/archive/manifest.html" class="footer-manifest">MANIFEST</a></div>
+  <div class="footer-right">WE OBSERVE. WE DO NOT CONSUME.</div>
+</footer>
+
+<script src="/js/site-common.js?v=2"></script>
+<script src="/js/page-wall.js?v=5" defer></script>
+
+</body>
+</html>

@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title data-site-title>The Rolling Buffer</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" as="font" type="font/woff2" href="/fonts/syne-latin-var.woff2" crossorigin data-font-preload>
+<script>
+/* Pre-paint mode resolution: visitor override -> config default -> OS.
+   Runs before the stylesheet so there is no flash of the wrong mode. The
+   worker stamps data-theme-default on <html> and HTMLRewriter streams the
+   document top-down, so the attribute is present by the time this runs. */
+(function () {
+  var d = document.documentElement, s = null;
+  try { s = localStorage.getItem('ol-theme'); } catch (e) {}
+  var def = d.getAttribute('data-theme-default') || 'midnight';
+  var light = s ? s === 'light'
+    : def === 'auto' ? matchMedia('(prefers-color-scheme: light)').matches
+    : def === 'daylight';
+  if (light) d.setAttribute('data-theme', 'light');
+})();
+</script>
+<link rel="stylesheet" href="../../css/main.css?v=17">
+<script src="/js/mode-toggle.js?v=1" defer></script>
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<style>
+/* ============================================
+   ROLLING BUFFER — PAGE-SPECIFIC STYLES
+   Contact sheet · Day blocks · Raw feed
+   ============================================ */
+
+/* ---- HERO ---- */
+
+.buffer-hero {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 48px 40px 40px;
+  text-align: center;
+}
+
+.buffer-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 3px;
+  color: var(--red);
+  margin-bottom: 24px;
+  opacity: 0.85;
+}
+
+.buffer-title {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: clamp(1.8rem, 4.5vw, 3.2rem);
+  color: var(--white-bright);
+  letter-spacing: 4px;
+  margin-bottom: 14px;
+  line-height: 1;
+}
+
+.buffer-subtitle {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--gray-500);
+  letter-spacing: 5px;
+  margin-bottom: 32px;
+}
+
+.buffer-meta-line {
+  display: inline-flex;
+  gap: 14px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--gray-700);
+  letter-spacing: 2px;
+  border-top: 1px solid var(--gray-800);
+  border-bottom: 1px solid var(--gray-800);
+  padding: 8px 18px;
+}
+
+.buffer-meta-line .sep {
+  color: var(--red);
+  opacity: 0.4;
+}
+
+/* ---- BINDER (day blocks container) ---- */
+
+.binder {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 40px 40px;
+  padding-right: calc(40px + 54px); /* room for month rail */
+}
+
+/* ---- MONTH RAIL ---- */
+
+.month-rail {
+  position: fixed;
+  right: 18px;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  width: 54px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.rail-line {
+  position: absolute;
+  top: 12%;
+  bottom: 12%;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(to bottom,
+    transparent 0%, var(--gray-800) 12%,
+    var(--gray-800) 88%, transparent 100%);
+}
+
+.rail-marks {
+  display: flex;
+  flex-direction: column;
+  gap: 56px;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 2.5px;
+  color: var(--gray-700);
+  align-items: center;
+}
+
+.rail-mark {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  padding: 4px 0;
+  background: var(--black);
+}
+
+.rail-mark.current {
+  color: var(--red);
+}
+
+/* ---- BUFFER FOOTER ---- */
+
+.buffer-end {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 40px 60px;
+  padding-right: calc(40px + 54px);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--gray-700);
+  letter-spacing: 2px;
+  text-align: center;
+}
+
+.buffer-end .accent { color: var(--red); }
+
+/* ---- EMPTY STATE ---- */
+/* Now the shared `.page-empty` idiom in main.css — every public surface says
+   "nothing here yet" the same way. */
+
+/* ---- RESPONSIVE ---- */
+
+@media (max-width: 768px) {
+  .month-rail { display: none; }
+
+  .binder {
+    padding: 0 16px 40px;
+  }
+
+  .buffer-end {
+    padding-right: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .buffer-hero { padding: 32px 16px 28px; }
+  .buffer-title { letter-spacing: 2px; }
+  .buffer-subtitle { letter-spacing: 3px; }
+}
+
+/* ---- FRAME SEARCH ---- */
+
+.frame-search-wrap {
+  text-align: center;
+  padding: 16px 16px 8px;
+}
+
+.frame-search-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.frame-search-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 2px;
+  color: var(--gray-500);
+  text-transform: uppercase;
+}
+
+.frame-search-sep {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--red);
+  opacity: 0.7;
+}
+
+.frame-search-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--gray-800);
+  color: var(--white-bright);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  width: 80px;
+  padding: 10px 6px;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s;
+  min-height: 44px;
+}
+
+.frame-search-input::placeholder {
+  color: var(--gray-700);
+}
+
+.frame-search-input:focus {
+  border-bottom-color: var(--red);
+}
+
+.frame-search-input.shake {
+  border-bottom-color: var(--red);
+  animation: frame-shake 0.32s ease;
+}
+
+@keyframes frame-shake {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-3px); }
+  40%       { transform: translateX(3px); }
+  60%       { transform: translateX(-3px); }
+  80%       { transform: translateX(3px); }
+}
+
+.frame-search-btn {
+  background: none;
+  border: none;
+  color: var(--gray-500);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 8px;
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+  line-height: 1;
+}
+
+.frame-search-btn:hover {
+  color: var(--white);
+}
+
+@media (max-width: 768px) {
+  .frame-search-wrap {
+    padding: 14px 16px 6px;
+  }
+}
+
+/* ---- MOBILE LIGHTBOX NAV ---- */
+
+.lightbox-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.lb-nav-btn {
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  color: var(--gray-300);
+  cursor: pointer;
+  padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lb-nav-btn:active {
+  color: var(--white-bright);
+}
+
+.lb-nav-sep {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--red);
+  opacity: 0.4;
+  letter-spacing: 1px;
+}
+
+@media (hover: hover) {
+  .lightbox-nav { display: none; }
+}
+</style>
+<!-- Open Graph -->
+<meta property="og:title" content="The Rolling Buffer" data-site-suffix>
+<meta property="og:description" content="Capture first. Process later." data-site-suffix="tagline">
+<meta property="og:image" content="/api/cdn/meta/buffer-og.png">
+<meta property="og:url" content="/archive/buffer/">
+<meta property="og:type" content="website">
+
+<!-- Twitter/Bluesky -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Rolling Buffer" data-site-suffix>
+<meta name="twitter:description" content="Capture first. Process later." data-site-suffix="tagline">
+<meta name="twitter:image" content="/api/cdn/meta/buffer-og.png">
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="nav">
+  <a href="/" class="nav-logo" data-site-wordmark="dot-art">SITE<span class="dot-art">.NAME</span></a>
+  <div class="nav-links">
+    <a href="/" class="nav-link">Home</a>
+    <a href="/archive" class="nav-link active">theArchive</a>
+    <a href="/field-notes" class="nav-link">FN//Blog</a>
+    <a href="/wall" class="nav-link">theWall</a>
+    <a href="/about" class="nav-link">About</a>
+    <a href="/dev" class="nav-link terminal">&gt;Dev</a>
+    <a href="mailto:you@example.com" class="nav-mail" title="Contact">&#9993;</a>
+  </div>
+  <button class="nav-hamburger" id="nav-toggle" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<div class="nav-mobile" id="nav-mobile">
+  <a href="/">Home</a>
+  <a href="/archive" class="active">theArchive</a>
+  <a href="/field-notes">FN//Blog</a>
+  <a href="/wall">theWall</a>
+  <a href="/about">About</a>
+  <a href="/dev">&gt;Dev</a>
+  <a href="mailto:you@example.com">&#9993; Contact</a>
+</div>
+
+<!-- ============ HERO ============ -->
+<section class="buffer-hero">
+  <div class="buffer-kicker">// VIEW_RAW_FEED</div>
+  <h1 class="buffer-title">THE ROLLING BUFFER</h1>
+  <p class="buffer-subtitle">CAPTURE FIRST. PROCESS LATER.</p>
+  <div class="buffer-meta-line" id="buffer-stats">
+    <span id="stat-frames">—</span>
+    <span class="sep">//</span>
+    <span id="stat-days">—</span>
+    <span class="sep">//</span>
+    <span id="stat-month">—</span>
+  </div>
+</section>
+
+<!-- ============ FRAME SEARCH ============ -->
+<div class="frame-search-wrap">
+  <div class="frame-search-row">
+    <span class="frame-search-label">FRAME</span>
+    <span class="frame-search-sep">//</span>
+    <input
+      type="text"
+      inputmode="numeric"
+      pattern="[0-9]*"
+      class="frame-search-input"
+      id="frame-search-input"
+      placeholder="###"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      aria-label="Jump to frame number">
+    <button class="frame-search-btn" id="frame-search-btn" aria-label="Go to frame" type="button">→</button>
+  </div>
+</div>
+
+<!-- ============ BINDER ============ -->
+<main class="binder" id="binder"></main>
+
+<!-- ============ END LINE ============ -->
+<div class="buffer-end" id="buffer-end"></div>
+
+<!-- ============ MONTH RAIL ============ -->
+<aside class="month-rail" aria-hidden="true" id="month-rail">
+  <div class="rail-line"></div>
+  <div class="rail-marks" id="rail-marks"></div>
+</aside>
+
+<!-- ============ LIGHTBOX ============ -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true">
+  <img class="lightbox-img" id="lightbox-img" src="" alt="">
+  <p class="lightbox-meta" id="lightbox-meta"></p>
+  <div class="lightbox-nav" id="lightbox-nav">
+    <button class="lb-nav-btn lb-nav-prev" id="lb-nav-prev" aria-label="Previous frame" type="button">‹</button>
+    <span class="lb-nav-sep">//</span>
+    <button class="lb-nav-btn lb-nav-next" id="lb-nav-next" aria-label="Next frame" type="button">›</button>
+  </div>
+  <div class="lightbox-counter" id="lightbox-counter"></div>
+  <div class="minimap-hud" id="minimap">
+    <img class="minimap-thumb" id="minimap-thumb" src="" alt="">
+    <div class="minimap-reticle" id="minimap-reticle"></div>
+  </div>
+</div>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="footer-left"><span data-site-wordmark="accent">SITE<span class="accent">.NAME</span></span> · <span data-site-location>YOUR CITY</span> · <span class="wx-telemetry"><span class="wx-label">WX</span> <span class="wx-sep">//</span> <span class="wx-data" id="wx-temp">--°</span></span> · <a href="/archive/manifest.html" class="footer-manifest">MANIFEST</a></div>
+  <div class="footer-right">WE OBSERVE. WE DO NOT CONSUME.</div>
+</footer>
+
+<script src="/js/lighttable.js?v=3"></script>
+<script src="/js/page-buffer.js?v=3" defer></script>
+
+</body>
+</html>
