@@ -1,0 +1,101 @@
+{
+  // Example Worker config for an OAKLENS OS instance.
+  //
+  // Copy this to `wrangler.jsonc` and replace every placeholder with the IDs
+  // printed by `scripts/setup.sh` (or by the `wrangler kv/d1/r2 create`
+  // commands). Real IDs are not secret, but they're instance-specific — keep
+  // your filled-in `wrangler.jsonc` in your own repo, not in a public fork.
+  //
+  // TWO PLACEHOLDER SHAPES, and the difference is load-bearing. Wrangler
+  // FORMAT-VALIDATES `name` and `bucket_name` on every command — including
+  // `login` and `whoami` — so an uppercase `YOUR_*` token there made every
+  // wrangler command in a fresh fork fail before it ran. That deadlocked
+  // first-run setup completely: you could not log in, and setup.sh could not
+  // check whether you were logged in. So those two use lowercase-and-dashes
+  // (valid to wrangler, still obviously unfilled); everything wrangler does
+  // not format-check keeps the louder `YOUR_*`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "your-worker-name", // e.g. "my-photo-site"
+  "main": "worker.js",
+  "compatibility_date": "2026-05-05",
+  "observability": {
+    "enabled": true
+  },
+  // Your site's free URL: <name>.<your-subdomain>.workers.dev. This is how a
+  // fork is reachable on day one, with no domain and no DNS — a custom domain
+  // is attached later in the Cloudflare dashboard and needs no change here.
+  // Stated explicitly because wrangler warns on every single deploy when it is
+  // absent, and a warning you are meant to ignore trains you to ignore warnings.
+  "workers_dev": true,
+  // Off by default: with Preview URLs on, EVERY deployed version also gets its
+  // own public address. Harmless for a portfolio, but this site ships an admin
+  // console, and extra public front doors nobody asked for is the wrong default
+  // to hand a stranger. Set true if you want per-version preview links.
+  "preview_urls": false,
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": true, // the Worker intercepts every request first
+    "not_found_handling": "404-page" // unknown paths serve /404.html (status 404)
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  // ---- One-click "Deploy to Cloudflare" -----------------------------------
+  // Cloudflare reads this file to work out what your Worker needs, provisions
+  // the KV / D1 / R2 below automatically, and can prompt whoever clicks the
+  // button for secrets listed here.
+  //
+  // The engine supports two ways to set your console password:
+  //
+  //   AUTH_PASSWORD_HASH   a bcrypt hash — what `scripts/setup.sh` writes.
+  //                        The recommended form if you are using the CLI.
+  //   AUTH_PASSWORD        the password itself — for one-click installs, where
+  //                        a deploy dialog cannot ask you to produce a hash.
+  //
+  // If AUTH_PASSWORD_HASH is set it always wins, so the two never conflict.
+  // SESSION_SECRET needs no dialog at all: leave it unset and the Worker
+  // generates a proper 32-byte key on first boot and keeps it in the KV
+  // namespace below.
+  //
+  // UNCOMMENT THE LINE BELOW if you publish this repo behind a deploy button.
+  // It makes the dialog ask for a password — but note that a name listed in
+  // "secrets" is also *required* to deploy, so leaving it on would block a
+  // CLI install that set AUTH_PASSWORD_HASH instead. One or the other.
+  // "secrets": ["AUTH_PASSWORD"],
+  // KV: email subscribers + auth/subscribe rate-limit counters.
+  // Create: `npx wrangler kv namespace create SUBSCRIBERS`
+  "kv_namespaces": [
+    {
+      "binding": "SUBSCRIBERS",
+      "id": "YOUR_KV_NAMESPACE_ID",
+      "preview_id": "YOUR_KV_PREVIEW_ID"
+    }
+  ],
+  // D1: cloud drafts + bench queue (and, instance-only, the portal tables).
+  // Create: `npx wrangler d1 create YOUR_DB_NAME`. The tables themselves are
+  // wrangler migrations (migrations/): setup.sh applies them, and the
+  // package.json `deploy` script applies them on every deploy — including the
+  // one-click Deploy path, which runs that script (see setup.md).
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "YOUR_DB_NAME",
+      "database_id": "YOUR_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // R2: image/video variants, OG cards, bench previews, portal proofs.
+  // Create: `npx wrangler r2 bucket create your-bucket-name`
+  "r2_buckets": [
+    {
+      "binding": "CDN",
+      "bucket_name": "your-bucket-name"
+    }
+  ],
+  // Optional: the daily Wayback-archive cron. Remove this block if you don't
+  // want it (the handler no-ops without a canonical `url` in site.config.js).
+  "triggers": {
+    "crons": ["0 11 * * *"]
+  }
+}
