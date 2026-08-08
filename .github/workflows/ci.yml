@@ -13,7 +13,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      # persist-credentials matters here: checkout writes its job token into
+      # .git/config by default, and the leak scan's §4 reads exactly that file
+      # — in the extracted fork, where the scan runs in CI, the default made
+      # every fork's first push red on GitHub's own checkout machinery. CI
+      # only reads (permissions above), so the token has no reason to persist.
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v5
         with:
