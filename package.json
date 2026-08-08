@@ -1,0 +1,34 @@
+{
+  "name": "oaklens-os",
+  "version": "1.0.0",
+  "description": "OAKLENS OS — a photography site, field-notes blog, and print-drop storefront on a single Cloudflare Worker.",
+  "main": "worker.js",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "wrangler d1 migrations apply DB --remote",
+    "deploy": "npm run db:migrate && wrangler deploy"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oaklensart/oaklens-os.git"
+  },
+  "keywords": [
+    "photography",
+    "cloudflare-workers",
+    "self-hosted",
+    "static-site",
+    "portfolio"
+  ],
+  "author": "OakLens.art",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^3.0.3"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.11.1",
+    "vitest": "^4.1.9",
+    "wrangler": "^4.103.0"
+  }
+}

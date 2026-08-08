@@ -1,0 +1,208 @@
+// @vitest-environment happy-dom
+//
+// Pins the exact output of buildBundle().
+//
+// buildBundle() serialises every data/*.json from in-memory state through an
+// explicit field whitelist and commits the result atomically to GitHub. Because
+// each surface is written as a hand-listed object literal, a field that stops
+// being copied does not throw — it simply stops existing in the published JSON,
+// and the live site quietly loses that data on the next publish. Per CLAUDE.md
+// that has already shipped twice.
+//
+// The whitelists are also the single most dangerous thing to move during the
+// console-ui.js decomposition: nothing else in the codebase would notice a
+// dropped line. So this asserts the emitted key set for every surface, rather
+// than only spot-checking values.
+
+import { describe, it, expect, beforeAll } from 'vitest';
+import { STATE } from '../js/console-state.js';
+
+let buildBundle;
+let bundle;
+
+/** One entry per surface with every optional field populated, plus the cases
+ *  buildBundle is supposed to filter out. */
+function seedState() {
+  STATE.buffer = [
+    {
+      id: 'buf-1', filename: 'f1.jpg', captured_at: '2026-01-02', published_at: '2026-01-03',
+      added_at: '2026-01-01', archived: false, hash: 'h1',
+      burst_id: 'burst-2026-01-02-001', focus: '50% 40%', cardFocus: '50% 30%', featured: true,
+      image: 'data:image/jpeg;base64,AAAA', _imported: true,
+    },
+    // minimal: every optional field absent
+    { id: 'buf-2', filename: 'f2.jpg', captured_at: '2026-01-04', published_at: null, added_at: '2026-01-04', archived: true },
+    { id: 'buf-err', filename: 'bad.jpg', _uploadError: true },       // filtered
+    { id: 'buf-up', filename: 'busy.jpg', _uploading: true },         // filtered
+  ];
+  STATE.archive = [
+    {
+      id: 'arc-1', filename: 'a1.jpg', slug: 'a-one', title: 'T', sub: 'S', location: 'L',
+      camera: 'C', lens: 'Le', medium: 'M', hash: 'ah1', added_at: '2026-02-01',
+      focus: '10% 20%', cardFocus: '30% 40%',
+    },
+    { id: 'arc-2', filename: 'a2.jpg', slug: 'a-two', title: 'T2', sub: '', location: '', camera: '', lens: '', medium: '', added_at: '2026-02-02' },
+    { id: 'arc-err', _uploadError: true },                            // filtered
+  ];
+  STATE.posts = [
+    {
+      id: 'p-1', fn_id: 'fn-001', title: 'Post One', location: 'Loc', date: '2026-03-01',
+      hero_filename: 'hero.jpg', body: 'Body text', buffer_dates: '2026-01-02', added_at: '2026-03-01',
+      focus: '50% 50%', status: 'published',
+    },
+    // no status at all is treated as published; hero comes from `hero` when it
+    // is not an inline data: URL
+    { id: 'p-2', fn_id: 'fn-002', title: 'Post Two', location: '', date: '2026-03-02', hero: 'h2.jpg', body: '', added_at: '2026-03-02' },
+    { id: 'p-3', fn_id: 'fn-003', title: 'Draft', location: '', date: '2026-03-03', body: 'x', status: 'draft' }, // filtered
+    // a data: hero must not be published as a filename
+    { id: 'p-4', fn_id: 'fn-004', title: 'Inline Hero', location: '', date: '2026-03-04', hero: 'data:image/png;base64,AAA', body: '', added_at: '2026-03-04' },
+  ];
+  STATE.wallpapers = [
+    { id: 'w-1', filename: 'w1.jpg', fullres: 'w1-full.jpg', title: 'W1', desc: 'D', isNew: true, added_at: '2026-04-01', hash: 'wh1', focus: '0% 0%' },
+    { id: 'w-2', title: 'W2', added_at: '2026-04-02' },
+    { id: 'w-err', _uploading: true },                                // filtered
+  ];
+  STATE.barrel = [{ id: 'b-1', date: '2026-05-01', title: 'B1', url: 'https://example.test/1', _imported: true }];
+  STATE.friends = [
+    { id: 'fr-1', name: 'N1', tag: 'T', location: 'L', url: 'https://example.test/f', added_at: '2026-06-01' },
+    { id: 'fr-2', name: 'N2' },
+  ];
+  STATE.library = [
+    { id: 'l-1', filename: 'l1.jpg', kind: 'video', hash: 'lh1', added_at: '2026-07-01' },
+    { id: 'l-2', filename: 'l2.jpg' },
+    { id: 'l-err', _uploadError: true },                              // filtered
+  ];
+  STATE.staged = { buffer: 1, archive: 1, posts: 1, wallpapers: 0, barrel: 0, friends: 0, library: 0 };
+}
+
+const parse = (name) => JSON.parse(bundle[name]);
+const keysOf = (name, i = 0) => Object.keys(parse(name)[i]).sort();
+
+beforeAll(async () => {
+  globalThis.fetch = async () => new Response('[]', { status: 200 });
+  ({ buildBundle } = await import('../js/console-ui.js'));
+  seedState();
+  bundle = buildBundle();
+});
+
+describe('buildBundle()', () => {
+  it('emits exactly the expected files', () => {
+    expect(Object.keys(bundle).sort()).toEqual([
+      'MANIFEST.txt',
+      'data/archive.json',
+      'data/barrel.json',
+      'data/buffer.json',
+      'data/friends.json',
+      'data/library.json',
+      'data/posts.json',
+      'data/wallpapers.json',
+      'posts/fn-001.md',
+      'posts/fn-002.md',
+      'posts/fn-004.md',
+    ]);
+  });
+
+  // ---- field whitelists: a dropped line in any of these fails here ----
+
+  it('buffer keeps every whitelisted field', () => {
+    expect(keysOf('data/buffer.json')).toEqual([
+      'added_at', 'archived', 'burst_id', 'captured_at', 'cardFocus',
+      'featured', 'filename', 'focus', 'hash', 'id', 'published_at',
+    ]);
+  });
+
+  it('archive keeps every whitelisted field', () => {
+    expect(keysOf('data/archive.json')).toEqual([
+      'added_at', 'camera', 'cardFocus', 'filename', 'focus', 'hash', 'id',
+      'lens', 'location', 'medium', 'slug', 'sub', 'title',
+    ]);
+  });
+
+  it('posts keep every whitelisted field', () => {
+    expect(keysOf('data/posts.json')).toEqual([
+      'added_at', 'body', 'buffer_dates', 'date', 'fn_id', 'focus', 'hero', 'id', 'location', 'title',
+    ]);
+  });
+
+  it('wallpapers keep every whitelisted field', () => {
+    expect(keysOf('data/wallpapers.json')).toEqual([
+      'added_at', 'desc', 'filename', 'focus', 'fullres', 'hash', 'id', 'isNew', 'title',
+    ]);
+  });
+
+  it('friends keep every whitelisted field', () => {
+    expect(keysOf('data/friends.json')).toEqual(['added_at', 'id', 'location', 'name', 'tag', 'url']);
+  });
+
+  it('library keeps every whitelisted field', () => {
+    expect(keysOf('data/library.json')).toEqual(['added_at', 'filename', 'hash', 'id', 'kind']);
+  });
+
+  it('barrel passes entries through, minus the _imported marker', () => {
+    expect(keysOf('data/barrel.json')).toEqual(['date', 'id', 'title', 'url']);
+  });
+
+  // ---- filters ----
+
+  it('never publishes a frame whose upload failed or is still running', () => {
+    // A committed frame pointing at a CDN object that does not exist renders blank.
+    expect(parse('data/buffer.json').map((b) => b.id)).toEqual(['buf-1', 'buf-2']);
+    expect(parse('data/archive.json').map((a) => a.id)).toEqual(['arc-1', 'arc-2']);
+    expect(parse('data/wallpapers.json').map((w) => w.id)).toEqual(['w-1', 'w-2']);
+    expect(parse('data/library.json').map((l) => l.id)).toEqual(['l-1', 'l-2']);
+  });
+
+  it('publishes only posts that are published or have no status', () => {
+    expect(parse('data/posts.json').map((p) => p.id)).toEqual(['p-1', 'p-2', 'p-4']);
+    expect(bundle['posts/fn-003.md']).toBeUndefined();
+  });
+
+  // ---- conditional fields ----
+
+  it('omits optional fields rather than emitting null', () => {
+    const [, minimal] = parse('data/buffer.json');
+    for (const k of ['burst_id', 'focus', 'cardFocus', 'featured']) {
+      expect(k in minimal, `${k} should be absent, not null`).toBe(false);
+    }
+    expect(minimal.hash).toBeNull(); // hash is explicitly nulled, not omitted
+    expect('focus' in parse('data/archive.json')[1]).toBe(false);
+    expect('kind' in parse('data/library.json')[1]).toBe(false);
+  });
+
+  it('resolves hero to a filename and never to an inline data: URL', () => {
+    const posts = parse('data/posts.json');
+    expect(posts[0].hero).toBe('hero.jpg');   // hero_filename wins
+    expect(posts[1].hero).toBe('h2.jpg');     // plain hero string passes through
+    expect(posts[2].hero).toBeNull();         // data: URL is dropped
+  });
+
+  // ---- markdown ----
+
+  it('writes post markdown with exact frontmatter', () => {
+    expect(bundle['posts/fn-001.md']).toBe(
+      '---\nid: fn-001\ntitle: Post One\nlocation: Loc\ndate: 2026-03-01\n' +
+      'hero: hero.jpg\nfocus: "50% 50%"\nbuffer_dates: "2026-01-02"\n---\n\nBody text',
+    );
+    // optional frontmatter lines vanish entirely when unset
+    expect(bundle['posts/fn-002.md']).toBe(
+      '---\nid: fn-002\ntitle: Post Two\nlocation: \ndate: 2026-03-02\nhero: h2.jpg\n---\n\n',
+    );
+  });
+
+  // ---- manifest ----
+
+  it('reports per-surface counts in the manifest', () => {
+    const m = bundle['MANIFEST.txt'];
+    expect(m).toMatch(/^OAKLENS BUNDLE · \d{4}-\d{2}-\d{2}T/);
+    expect(m).toMatch(/data\/buffer\.json\s+4 entries \(1 imported \+ 3 new\)/);
+    expect(m).toMatch(/data\/archive\.json\s+3 entries/);
+    expect(m).toMatch(/data\/friends\.json\s+2 nodes/);
+    expect(m).toMatch(/data\/library\.json\s+3 entries/);
+  });
+
+  it('emits valid JSON for every data file', () => {
+    for (const name of Object.keys(bundle).filter((k) => k.endsWith('.json'))) {
+      expect(() => JSON.parse(bundle[name]), `${name} is not valid JSON`).not.toThrow();
+    }
+  });
+});
