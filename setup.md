@@ -77,6 +77,12 @@ npx wrangler deploy     # go live
 `setup.sh` creates the same resources and never asks you to copy an ID out of
 your terminal. Everything below is the manual version of what it does.
 
+> **On Windows, run these in Git Bash** — the terminal that comes with
+> [Git for Windows](https://git-scm.com/downloads), not PowerShell and not
+> Command Prompt. `setup.sh` and `doctor.sh` are shell scripts; PowerShell will
+> say it doesn't recognise `bash` and stop there. WSL works too if you already
+> have it. Everything else in this file is the same on every platform.
+
 After you're live, do one more thing when you're ready: **connect your repo**
 (section below) so publishing from the console updates your site on its own.
 

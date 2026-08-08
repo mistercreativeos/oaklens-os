@@ -30,8 +30,13 @@ else derives from the request origin at runtime. Keep that boundary intact:
   ops), large binary in R2, versioned content in git. Never add a new
   "JSON file as a database" blob.
 - **Cache discipline.** `css/*` and `js/*` are served immutable. If you edit a
-  module or the stylesheet, bump its `?v=` everywhere it's referenced (HTML
-  tags, cross-module `import` specifiers, and the service worker's asset list).
+  module or the stylesheet, bump its `?v=` everywhere it's referenced — the
+  `<link>`/`<script>` tags in every page that loads it, the console's import
+  map in `dev/field-console.html`, and the service worker's asset list — then
+  bump the service worker's `CACHE` name once for the whole change.
+  **Not** on a cross-module `import` specifier: versions live in the import map
+  precisely so bumping one module doesn't cascade edits up through everything
+  that imports it, and `tests/guards.test.js` fails if one appears.
 - **Security is load-bearing.** Privileged routes verify a scoped token; keep
   secrets in Worker bindings, never in the browser. Any new gate ships with a
   test for it.
@@ -48,3 +53,10 @@ else derives from the request origin at runtime. Keep that boundary intact:
 
 Please don't open a public issue for vulnerabilities — see
 [`SECURITY.md`](SECURITY.md).
+
+## Code of conduct
+
+Taking part here means agreeing to the [Code of Conduct](CODE_OF_CONDUCT.md).
+The part specific to this project: most people opening an issue are
+photographers, writers and artists, not developers. A step that confused
+someone is a bug in the docs, not a failure of the person who got stuck on it.

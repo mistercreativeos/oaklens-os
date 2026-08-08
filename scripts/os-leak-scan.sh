@@ -37,6 +37,10 @@ IDENTITY_PATTERNS=(
 ALLOWLIST_FILES=(
   'README.md'
   'docs/oaklens-os-readme-draft.md'
+  # The fork's README in source form: os-extract.mjs writes this file out as
+  # the fork's README.md verbatim, so it earns README.md's exemption above one
+  # step upstream.
+  'docs/fork-readme.md'
   # This file necessarily spells out every pattern it hunts for. Exempt by path,
   # which is also why scripts/os-extract.mjs runs its verification copy AT this
   # path rather than beside it.
