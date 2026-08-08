@@ -1,0 +1,25 @@
+.DS_Store
+# No trailing slash on purpose: `node_modules/` matches a DIRECTORY only, and
+# `os-extract.mjs --verify` puts a node_modules *symlink* in the tree it builds
+# (borrowing this repo's packages so the extracted suite can run offline). A
+# symlink is a file, so the slashed form let it show up as untracked — and an
+# absolute-path symlink committed into a fork would point at a directory on
+# somebody else's machine. This form covers both shapes.
+node_modules
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
+.aider*
+audit/
+
+# bench -> D1 migration scratch files (never commit / never deploy)
+bench.json
+bench-remote.json
+bench-migrate.sql
+
+# wrangler dry-run build output
+dist/
