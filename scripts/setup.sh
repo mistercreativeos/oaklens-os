@@ -1,0 +1,432 @@
+#!/usr/bin/env bash
+# setup.sh — first-run setup for a new OAKLENS OS site.
+#
+# Written for the person this engine is actually for: a photographer or writer
+# who wants their own site and does not want a lecture about edge computing.
+# Three rules it tries to keep:
+#
+#   1. Say what is about to happen, in words, BEFORE doing it.
+#   2. Never ask someone to copy a 36-character ID out of their terminal.
+#      We read every ID out of the command's own output and write it into the
+#      placeholder ourselves. NOT `--update-config`: that flag APPENDS a fresh
+#      binding block rather than filling the template's, so the config ended up
+#      with the same binding twice — "SUBSCRIBERS assigned to multiple KV
+#      Namespace bindings" — which is a parse error, so every wrangler command
+#      after it failed. The script VERIFIES the config after each step instead
+#      of assuming, and asks for help only when the automatic path genuinely
+#      failed.
+#   3. Fail early and in plain English. Stopping before anything is created
+#      beats leaving half-made resources on someone's account.
+#
+# Safe to stop (Ctrl-C) and re-run — it skips whatever is already done.
+# Covered by tests/setup-script.test.js, which runs it end to end against a
+# fake wrangler.
+set -uo pipefail
+cd "$(dirname "$0")/.." || exit 1
+
+# ---- output helpers -------------------------------------------------------
+bold()  { printf '\033[1m%s\033[0m\n' "$1"; }
+step()  { printf '\n\033[1m[%s of 6] %s\033[0m\n' "$1" "$2"; }
+info()  { printf '  %s\n' "$1"; }
+good()  { printf '  \033[32m✓\033[0m %s\n' "$1"; }
+warn()  { printf '  \033[33m!\033[0m %s\n' "$1"; }
+oops()  { printf '\n\033[31m%s\033[0m\n' "$1"; }
+ask()   { local p="$1" d="${2:-}" v; read -r -p "  $p${d:+ [$d]}: " v; printf '%s' "${v:-$d}"; }
+
+# Run a command, show it, keep its output for parsing.
+CAPTURED=""
+capture() { printf '  \033[2m$ %s\033[0m\n' "$*"; CAPTURED="$("$@" 2>&1)"; local rc=$?; printf '%s\n' "$CAPTURED" | sed 's/^/    /'; return $rc; }
+
+# True if PLACEHOLDER is still an unfilled *value*. Comments are ignored —
+# the example config explains itself in prose that names the placeholders, and
+# matching those is how doctor.sh used to tell a finished setup it wasn't.
+# The `|| true` is load-bearing under `set -o pipefail`: config-check exits 1
+# when placeholders remain, which is the case we care about, and pipefail would
+# otherwise fail the whole pipeline even though grep matched.
+placeholder_left() { { node scripts/lib/config-check.mjs wrangler.jsonc 2>/dev/null || true; } | grep -qx "$1"; }
+any_placeholder_left() { ! node scripts/lib/config-check.mjs wrangler.jsonc >/dev/null 2>&1; }
+sub() { # sub PLACEHOLDER VALUE — targeted, no JS/JSON parser hand-rolled
+  [ -n "${2:-}" ] || return 1
+  sed -i.bak "s|$1|$2|g" wrangler.jsonc && rm -f wrangler.jsonc.bak
+}
+
+# ---- saying what happened ---------------------------------------------------
+#
+# The script talks plenty about what it is ABOUT to do and almost nothing about
+# what it just did, which is fine until something recovers. On a real run the
+# screen read:
+#
+#     ✘ [ERROR] A KV namespace with the title "demo-subscribers" already exists.
+#     ...
+#     ✓ Subscriber list ready.
+#
+# A red error, then a green tick, and nothing in between saying which one won.
+# The person cannot tell whether their existing list was adopted, ignored, or
+# quietly overwritten — and "quietly overwritten" is the one that would matter.
+# So: every recovery narrates itself, and the end recaps what was made versus
+# what was already there.
+
+SUMMARY_LINES=""
+made()   { SUMMARY_LINES="${SUMMARY_LINES}made|$1
+"; }
+reused() { SUMMARY_LINES="${SUMMARY_LINES}reused|$1
+"; }
+
+# Called after a failed `create`, BEFORE the lookup, so wrangler's red error has
+# a sentence next to it instead of a bare tick two lines later.
+explain_create_failure() {
+  case "$CAPTURED" in
+    *"already exists"*|*"already taken"*)
+      info "That name is already on your account — checking whether it's yours to reuse…" ;;
+    *)
+      info "That didn't create. Checking whether it already exists…" ;;
+  esac
+}
+
+# Ask for an ID by hand — only ever reached when the automatic path failed.
+# Rejects the things people actually type, so a stray "y" never lands in the
+# config and breaks the deploy an hour later.
+ask_id_manually() { # ask_id_manually PLACEHOLDER LABEL
+  local ph="$1" label="$2" v
+  warn "Couldn't read the $label automatically."
+  info "It's in the output just above — the long string of letters and numbers."
+  while :; do
+    v="$(ask "Paste the $label (or press Enter to skip and finish by hand)")"
+    [ -z "$v" ] && { warn "Skipped. You'll need to put the $label into wrangler.jsonc yourself."; return 1; }
+    if node scripts/lib/id-check.mjs "$v" 2>/dev/null; then sub "$ph" "$v"; good "Saved."; return 0; fi
+    info "That doesn't look like an ID — it should be a long run of letters, numbers and dashes."
+  done
+}
+
+# ---- 0. prerequisites -----------------------------------------------------
+bold "Setting up your OAKLENS OS site"
+echo
+info "This creates the storage your site needs on your Cloudflare account,"
+info "sets your console password, and gets you ready to go live."
+info "Nothing here is destructive, and you can stop with Ctrl-C at any point."
+
+if ! command -v node >/dev/null 2>&1 || ! command -v npx >/dev/null 2>&1; then
+  oops "Node.js isn't installed."
+  info "It's the toolkit this site is built with. Grab the LTS version from:"
+  info "  https://nodejs.org"
+  info "Then run this again."
+  exit 1
+fi
+
+step 1 "Checking you're signed in to Cloudflare"
+
+# Install BEFORE the first wrangler call, not after. `npx wrangler` with no
+# node_modules downloads whatever version is newest on npm — so the very first
+# command ran on a different wrangler than the one this project pins and tests
+# against, and cost a minute doing it. With the install first, every `npx
+# wrangler` below resolves to the pinned local copy.
+[ -d node_modules ] || { info "Installing the project's tools (one time, takes a minute)…"; npm install >/dev/null 2>&1 && good "Done." || { oops "npm install failed — run 'npm install' and see what it says."; exit 1; }; }
+
+if ! npx wrangler whoami >/dev/null 2>&1; then
+  oops "You're not signed in to Cloudflare yet."
+  info "Run this, finish signing in in the browser window it opens, then run"
+  info "this script again:"
+  echo
+  info "    npx wrangler login"
+  echo
+  exit 1
+fi
+good "Signed in."
+
+# ---- 2. worker config -----------------------------------------------------
+step 2 "Naming your site"
+# Gate on the PLACEHOLDER, not on the file existing. A fork ships a ready-made
+# wrangler.jsonc (os-extract.mjs installs the example as the real config), so
+# "the file is here" meant "already named" and this step silently skipped —
+# leaving the worker called `your-worker-name` and failing the final check at
+# the very end, after every resource had already been created. Every other step
+# in this script asks the placeholder; this one now does too.
+[ -f wrangler.jsonc ] || cp wrangler.example.jsonc wrangler.jsonc
+if placeholder_left your-worker-name; then
+  info "This is the name Cloudflare uses internally. Lowercase letters,"
+  info "numbers and dashes. It is not your domain — you can add that later."
+  worker_name="$(ask 'Site name' 'my-photo-site')"
+  sub your-worker-name "$worker_name"
+  good "Named: $worker_name"
+else
+  good "Already named — leaving your existing settings alone."
+fi
+
+# ---- 3. storage -----------------------------------------------------------
+step 3 "Creating your storage"
+info "Three pieces, all on Cloudflare's free tier:"
+info "  • a place for photos and video   (R2)"
+info "  • a small database for your notes and client portal   (D1)"
+info "  • a list for email subscribers   (KV)"
+echo
+info "Two things you'll see and can ignore: wrangler asking whether it should"
+info "edit your config (this script fills it in itself, more reliably), and an"
+info "\"already exists\" error if something here is already on your account —"
+info "that one gets reused, and this script says so when it happens."
+echo
+
+# Recover the id of a resource that already exists. `create` fails outright
+# when the name is taken, and that is not an edge case: it happens on any
+# account already running an instance of this engine (the demo beside a live
+# site is exactly that), and on every RE-RUN after a partial setup — which this
+# script's own header promises is safe. Without this, "already exists" dead-ends
+# into asking a photographer to find a 32-character id in a wall of output.
+lookup_id() { # lookup_id kv|d1 NAME -> prints the id, or nothing
+  local kind="$1" name="$2" out
+  if [ "$kind" = "kv" ]; then
+    out="$(npx wrangler kv namespace list 2>&1)"
+  else
+    out="$(npx wrangler d1 list --json 2>&1)"
+  fi
+  printf '%s' "$out" | node scripts/lib/wrangler-parse.mjs "find-$kind" "$name" 2>/dev/null
+}
+
+# --- KV. Wrangler can write this into the config itself; we verify it did.
+if placeholder_left YOUR_KV_NAMESPACE_ID; then
+  info "Subscriber list…"
+  # The TITLE is asked for, like the database and the bucket below. It used to
+  # be hardcoded to the binding name, "SUBSCRIBERS" — and titles are unique per
+  # account, so the second site on an account could never create one. The
+  # binding stays SUBSCRIBERS (the Worker reads env.SUBSCRIBERS); only the
+  # title varies.
+  kv_title="$(ask 'Subscriber list name' 'photo-subscribers')"
+  capture npx wrangler kv namespace create "$kv_title"
+  if placeholder_left YOUR_KV_NAMESPACE_ID; then
+    # Read the id out of the output, then fall back to looking up one that
+    # already exists under this title.
+    kv_id="$(printf '%s' "$CAPTURED" | node scripts/lib/wrangler-parse.mjs kv 2>/dev/null)"
+    if [ -n "$kv_id" ]; then
+      made "Subscriber list  $kv_title"
+    else
+      explain_create_failure
+      kv_id="$(lookup_id kv "$kv_title")"
+      if [ -n "$kv_id" ]; then
+        good "Found it — reusing \"$kv_title\". Nothing was created or overwritten."
+        reused "Subscriber list  $kv_title"
+      fi
+    fi
+    if [ -n "$kv_id" ]; then sub YOUR_KV_NAMESPACE_ID "$kv_id"; good "Subscriber list ready."
+    else ask_id_manually YOUR_KV_NAMESPACE_ID "subscriber list ID"; fi
+  else
+    good "Subscriber list ready."
+    made "Subscriber list  $kv_title"
+  fi
+fi
+if placeholder_left YOUR_KV_PREVIEW_ID; then
+  # A second, throwaway namespace used only when previewing locally. Wrangler
+  # titles it "<title>_preview".
+  capture npx wrangler kv namespace create "${kv_title:-photo-subscribers}" --preview
+  if placeholder_left YOUR_KV_PREVIEW_ID; then
+    kv_prev="$(printf '%s' "$CAPTURED" | node scripts/lib/wrangler-parse.mjs kv 2>/dev/null)"
+    if [ -z "$kv_prev" ]; then
+      explain_create_failure
+      kv_prev="$(lookup_id kv "${kv_title:-photo-subscribers}_preview")"
+      [ -n "$kv_prev" ] && good "Found it — reusing the existing preview copy."
+    fi
+    if [ -n "$kv_prev" ]; then
+      sub YOUR_KV_PREVIEW_ID "$kv_prev"
+      good "Local-preview copy ready."
+    else
+      # Not worth stopping for: it is only used by `wrangler dev`, never live.
+      sub YOUR_KV_PREVIEW_ID "${kv_id:-}"
+      warn "Couldn't set up the local-preview copy — harmless unless you run \`wrangler dev\`."
+    fi
+  fi
+fi
+
+# --- D1. Same shape as the others: parse the id, then look it up if need be.
+if placeholder_left YOUR_D1_DATABASE_ID; then
+  echo
+  info "Database…"
+  db_name="$(ask 'Database name' 'photo-portal')"
+  sub YOUR_DB_NAME "$db_name"
+  capture npx wrangler d1 create "$db_name"
+  db_id="$(printf '%s' "$CAPTURED" | node scripts/lib/wrangler-parse.mjs d1 2>/dev/null)"
+  # "already taken" is the normal re-run case — the previous attempt created it
+  # and stopped before the id reached the config. Adopt it rather than asking.
+  if [ -n "$db_id" ]; then
+    made "Database         $db_name"
+  else
+    explain_create_failure
+    db_id="$(lookup_id d1 "$db_name")"
+    if [ -n "$db_id" ]; then
+      good "Found it — reusing \"$db_name\". Your existing data is untouched."
+      reused "Database         $db_name"
+    fi
+  fi
+  if [ -n "$db_id" ]; then sub YOUR_D1_DATABASE_ID "$db_id"; good "Database ready."
+  else ask_id_manually YOUR_D1_DATABASE_ID "database ID"; fi
+fi
+
+# --- R2.
+if placeholder_left your-bucket-name; then
+  echo
+  info "Photo and video storage…"
+  bucket="$(ask 'Storage name' 'photo-cdn')"
+  # A bucket is addressed by NAME, so there is no id to read back — the name
+  # the person just chose is the answer, and "already exists" is harmless here.
+  if capture npx wrangler r2 bucket create "$bucket"; then
+    made "Photo storage    $bucket"
+  else
+    explain_create_failure
+    good "Reusing \"$bucket\". Your photos are untouched."
+    reused "Photo storage    $bucket"
+  fi
+  placeholder_left your-bucket-name && sub your-bucket-name "$bucket"
+  good "Photo storage ready."
+fi
+
+# ---- 4. database tables ---------------------------------------------------
+# On a re-run step 3 is skipped, so recover the name from the config rather
+# than relying on a variable that was never set this time around.
+if [ -z "${db_name:-}" ]; then
+  db_name="$(grep -oE '"database_name":[[:space:]]*"[^"]+"' wrangler.jsonc | head -1 | sed 's/.*:[[:space:]]*"//;s/"$//')"
+fi
+
+step 4 "Setting up the database tables"
+if [ -z "${db_name:-}" ] || [ "$db_name" = "YOUR_DB_NAME" ]; then
+  warn "Couldn't tell which database to use, so this step was skipped."
+  info "Once wrangler.jsonc has a database name in it, re-run this script."
+else
+  # Console tables (fn_drafts + bench_entries) are wrangler migrations
+  # (migrations/), so this is the same idempotent command the one-click
+  # Deploy path runs from the package.json `deploy` script. --remote matters:
+  # without it the tables are written to a local file that the live site
+  # never reads, and everything looks fine until it isn't.
+  if npx wrangler d1 migrations apply "$db_name" --remote >/dev/null 2>&1; then
+    good "Console tables ready (migrations applied)."
+  else
+    warn "Couldn't apply the D1 migrations — re-run this script to retry."
+  fi
+fi
+
+# ---- 5. look + identity ---------------------------------------------------
+step 5 "Choosing your look"
+if [ ! -f site.config.js ]; then
+  cp site.config.example.js site.config.js
+fi
+info "You can change this any time — it's one line in site.config.js."
+echo
+info "  1) aperture       cool and architectural, contemporary studio"
+info "  2) passe-partout  warm paper and museum labels, fine-art gallery"
+info "  3) noir           black, white and red — high-contrast, terminal feel"
+echo
+preset_choice="$(ask 'Pick one [1-3]' '1')"
+case "$preset_choice" in
+  2) preset="passe-partout" ;;
+  3) preset="noir" ;;
+  *) preset="aperture" ;;
+esac
+# Targeted value swap — never hand-roll a JS parser over the config.
+node -e "
+const fs = require('fs');
+const src = fs.readFileSync('site.config.js', 'utf8');
+const out = src.replace(/preset:\s*'[^']*'/, \"preset: '$preset'\");
+if (out !== src) fs.writeFileSync('site.config.js', out);
+" && good "Look set to $preset."
+
+# ---- 6. secrets -----------------------------------------------------------
+step 6 "Setting your password"
+info "Two things get stored securely on Cloudflare — never in your code,"
+info "never in your repo, and not visible to anyone who clones your site."
+echo
+session_secret="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+printf '%s' "$session_secret" | npx wrangler secret put SESSION_SECRET >/dev/null 2>&1 \
+  && good "Signing key generated." || warn "Couldn't save the signing key — check you're online."
+
+info "Now your console password. This is what you'll use to sign in and post"
+info "photos. It's scrambled before it's stored, so nobody — including you —"
+info "can read it back. Pick something you'll remember, or save it in a"
+info "password manager now."
+echo
+while :; do
+  read -r -s -p "  Password: " pw; echo
+  [ ${#pw} -ge 8 ] && break
+  info "A bit longer, please — at least 8 characters."
+done
+hash="$(node -e "require('bcryptjs').hash(process.argv[1],12).then(h=>process.stdout.write(h))" "$pw")"
+printf '%s' "$hash" | npx wrangler secret put AUTH_PASSWORD_HASH >/dev/null 2>&1 \
+  && good "Password saved." || warn "Couldn't save the password — check you're online."
+unset pw hash
+
+# ---- final check ----------------------------------------------------------
+echo
+if any_placeholder_left; then
+  oops "Almost there — a couple of settings didn't fill in."
+  info "These are still blank in wrangler.jsonc:"
+  node scripts/lib/config-check.mjs wrangler.jsonc | sed 's/^/    /'
+  info "Re-running this script will try them again."
+  exit 1
+fi
+
+# What ended up where. This exists because a real run showed a red "already
+# exists" error immediately followed by a green tick, and the person running it
+# had no way to tell whether their existing list had been adopted or clobbered.
+# Naming each piece — and whether it was made or reused — is the answer to the
+# question they were actually asking.
+if [ -n "$SUMMARY_LINES" ]; then
+  echo
+  bold "What your site is using"
+  printf '%s' "$SUMMARY_LINES" | while IFS='|' read -r kind what; do
+    [ -n "$what" ] || continue
+    case "$kind" in
+      made)   good "$what  (created just now)" ;;
+      reused) good "$what  (already on your account — reused, not changed)" ;;
+    esac
+  done
+fi
+
+bold "Done. Your site is ready to go live."
+cat <<'EOF'
+
+  Next, in order:
+
+  1. Put your name on it
+     Open site.config.js and fill in your name, tagline, email and
+     location. That's the only file with your details in it.
+
+  2. Check everything
+     bash scripts/doctor.sh
+
+  3. Go live
+     npx wrangler deploy
+
+  Then sign in at  <your-site>/dev/field-console  with the password you
+  just set, and start posting.
+
+  4. Worth doing soon: connect your GitHub repo to Cloudflare
+     Right now, publishing from the console saves your changes to GitHub,
+     but your live site only picks them up when you run `npx wrangler
+     deploy`. Connect the repo once and that last step disappears —
+     publish, and the site updates itself in about a minute:
+        Cloudflare dashboard -> Workers & Pages -> your Worker
+        -> Settings -> Build -> Connect a repository
+     Leave the build command empty (there is nothing to build), set the
+     deploy command to `npx wrangler deploy`, and switch off builds for
+     non-production branches. Then set  repoConnected: true  in
+     site.config.js so the console describes the new flow, and from that
+     point on go live with `git push` — not `npx wrangler deploy`, which
+     the next automatic build would quietly undo.
+     Full walkthrough in setup.md, "Connect your repo".
+
+  Optional extras — each one is off until you set it, and nothing breaks
+  while it's off:
+     GITHUB_TOKEN + GITHUB_REPO   save your posts to GitHub automatically
+                                  (setup.md walks through making the token —
+                                   it is the fiddliest step here)
+     RESEND_API_KEY               email notifications for client messages
+     ADMIN_KEY                    export your subscriber list
+     B2_*                         cold storage for RAW files
+     ARCHIVE_S3_*                 daily backup to the Internet Archive
+
+  Turn one on with:
+     echo -n 'the-value' | npx wrangler secret put NAME
+
+  A note on locking the door
+  Your admin console is already private — it asks for the password you just
+  set before it will even load. If your site will hold client photos or a
+  subscriber list, you can add a second lock at Cloudflare's edge so the
+  page never even reaches your site without an approved sign-in:
+     Cloudflare dashboard -> Cloudflare One -> Access controls -> Applications
+  Free for up to 50 people. Full walkthrough in setup.md, "Optional hardening".
+EOF
