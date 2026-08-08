@@ -27,7 +27,7 @@ import { renderFN, fnHeroIngest, fnHeroClear, fnSetupEnhancements, _applyFnFront
 import { FocalModal, bufferFocal, loadOgCards } from './focal.js';
 import { closeAssetLibrary } from './asset-library.js';
 import { renderPublish, syncFromServer } from './publish.js';
-import { checkAuth, closeSettings, _updateSettingsDots, _checkSessionExpiry, _initOfflineIndicator, applyInstancePosture } from './session.js';
+import { checkAuth, closeSettings, _updateSettingsDots, _checkSessionExpiry, _initOfflineIndicator, applyInstancePosture, _wireRingJoin } from './session.js';
 import { renderBench } from './bench.js';
 
 // ============== INIT ==============
@@ -125,6 +125,7 @@ export function init() {
 
   let _lastFocusSync = 0;
   checkAuth();
+  _wireRingJoin();          // ring join mailto; must be built at runtime, not markup
   applyInstancePosture();   // demo badge + truthful deploy copy; async, cosmetic
   if (isLoggedIn()) {
     setTimeout(syncFromServer, 400);

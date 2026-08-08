@@ -130,6 +130,56 @@ export async function applyInstancePosture() {
   if (hint && s.repoConnected) {
     hint.textContent = 'Cloudflare rebuilds from the repo — live in about a minute. No ZIP, no terminal, no cleanup.';
   }
+  applyRingPosture(s.webring);
+}
+
+// ---- ANALOGS.NETWORK: the ring card in the NETWORK view ----
+//
+// Mirrors analogs.network's own join overlay. The two constants below are
+// duplicated from src/shared/webring.js — the source of truth — because this
+// is browser code and cannot import from the Worker's src/ tree. The
+// duplication is pinned by tests/webring.test.js so the two cannot drift.
+//
+// ORDER IS PART OF THE CONTRACT: the email asks the applicant to pick a
+// discipline BY NUMBER, so renumbering this list changes what they are asking
+// for. It is the ring's palette order (nodes/node.schema.json).
+const RING_DISCIPLINES = [
+  'Photography', 'Digital Art', 'Writing', 'Code', 'Music', 'Design', 'Architecture',
+];
+const RING_HOST = 'analogs.network';
+
+// Assembled at runtime, never a literal in the markup. The console document
+// goes through the same HTMLRewriter as every public page, and its
+// `a[href^="mailto:"]` handler would rewrite a literal ring address to this
+// site's own contact address — silently, and only in production.
+export function _wireRingJoin() {
+  const cta = document.getElementById('ring-join-cta');
+  if (!cta) return;
+  const body = [
+    'my site: ',
+    'my name (or studio): ',
+    'my discipline (pick a number): ',
+    ...RING_DISCIPLINES.map((m, i) => `  [${i + 1}] ${m.toLowerCase()}`),
+    '',
+  ].join('\r\n');
+  cta.href = 'mailto:' + ['themonitor', RING_HOST].join('@')
+    + '?subject=' + encodeURIComponent('add me')
+    + '&body=' + encodeURIComponent(body);
+}
+
+// Upgrade the card from the join pitch to the membership state. The markup's
+// default is the fork truth ("not on the ring yet"), so a failed settings
+// fetch leaves an honest card rather than a wrong one.
+export function applyRingPosture(webring) {
+  if (!webring) return;
+  const id = String(webring.node).padStart(3, '0');
+  const status = document.getElementById('ring-status');
+  if (status) status.textContent = `// on the ring · node ${id} · ${webring.slug}`;
+  const cta = document.getElementById('ring-join-cta');
+  if (cta) {
+    cta.href = `https://${RING_HOST}/#/${webring.slug}`;
+    cta.textContent = 'View your node ↗';
+  }
 }
 
 export function copySiteSettingsPrompt() {

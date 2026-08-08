@@ -65,10 +65,18 @@ five, every time:
    red or unrun suite.
 
 2. **Cache-bust if you touched `js/*` or `css/*`.** These are served
-   `immutable`. Bump that file's `?v=` **everywhere it is referenced**: the HTML
-   `<link>`/`<script>` tag, every cross-module `import` specifier (e.g.
-   `'./console-state.js?v=N'`), **and** `dev/sw.js` `SHELL_ASSETS` **plus the SW
-   `CACHE` name**.
+   `immutable`. Bump that file's `?v=` **everywhere it is referenced** — which
+   depends on what kind of file it is:
+   - **A public-page script or stylesheet:** its `<link>`/`<script src>` tag in
+     **every** HTML file that loads it, **and** `dev/sw.js` `SHELL_ASSETS`.
+   - **A console module (`js/console/*`, `js/console-*.js`):** the import map in
+     `dev/field-console.html`, **and** `dev/sw.js` `SHELL_ASSETS`.
+     ⚠️ **Do NOT put a `?v=` on a cross-module `import` specifier.**
+     `tests/guards.test.js` ("no js/ module imports another with a `?v=`")
+     **fails** if you do — versions live in the import map precisely so that
+     bumping one module doesn't edit its importers and cascade up the stack.
+   - **Either way:** bump the `dev/sw.js` `CACHE` name **once** for the whole
+     change, not once per file.
    > ⚠️ **The #1 silent miss.** `tests/guards.test.js` only checks that a file's
    > `?v=` is *consistent* across references — **not** that you bumped it when the
    > content changed. So a forgotten bump **passes CI** and then ships stale
@@ -210,6 +218,18 @@ Keep commits focused on one change; write a message that explains *why*, not jus
   instance turned both on, so don't restate the claim as "this site loads no
   third-party JS". New third-party surface follows that shape or doesn't ship:
   off by default, config-gated, widening exactly what it needs.
+- **Outward-facing membership is opt-in too, and costs the CSP nothing.**
+  `webring: { node, slug }` (`src/shared/webring.js`) joins an instance to
+  ANALOGS.NETWORK: a footer chip and `/.well-known/analogs.txt`. It is **not** a
+  third-party-JS exception — it adds no script, no iframe, no image host, and
+  **widens no directive** (`tests/webring-route.test.js` pins that). It stays
+  off by default for a different reason: *a fork must never inherit a link into
+  someone else's network*. That default is load-bearing — it is the whole
+  argument for shipping this in the engine at all, so don't flip it, and don't
+  let a fork's config carry a seat. Same posture for the `OS` attribution chip
+  (`poweredBy: false` removes it): quiet, one page, and removable.
+  ⚠️ **Seat numbers start at 0 and 0 is falsy** — guard with
+  `Number.isInteger(n) && n >= 0`, never `if (!n)`.
 
 ---
 
@@ -217,7 +237,7 @@ Keep commits focused on one change; write a message that explains *why*, not jus
 
 | Area | Modules |
 |------|---------|
-| `src/shared/` | `http` (CORS/JSON + `notConfigured` 501), `csp` (per-surface CSP + pre-paint hash), `pages` (public-page list + config gating), `text` (escapeHtml/baseName/localDay), `auth` (JWT HS256 + scopes + cookies), `site` (config-derived meta/cdnBase/entity JSON-LD) |
+| `src/shared/` | `http` (CORS/JSON + `notConfigured` 501), `csp` (per-surface CSP + pre-paint hash), `pages` (public-page list + config gating), `text` (escapeHtml/baseName/localDay), `auth` (JWT HS256 + scopes + cookies), `site` (config-derived meta/cdnBase/entity JSON-LD), `webring` (ANALOGS seat guard + token/href builders) |
 | `src/edge/` | `chrome` (HTMLRewriter: OG + nav + heroes + `injectSiteChrome`), `data` (edge-cached data-JSON loader), `weather` (Open-Meteo SWR) |
 | `src/api/` | `publish` (GitHub publish/sync + guards), `bench` (D1 queue + Backblaze RAW proxy), `drafts` (FN cloud drafts), `console-auth` (`/api/auth`·`/api/logout` + rate limit), `subscribers` (subscribe/export), `assets` (R2 upload/delete + `/api/cdn` proxy + `/api/og-cards`), `site-meta` (manifest/sitemap/feed/buffer-summary/site-settings) |
 | `src/cron/` | `archive` (daily Wayback Save-Page-Now) |

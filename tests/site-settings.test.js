@@ -42,10 +42,24 @@ describe('GET /api/site/settings', () => {
     for (const v of Object.values(body.pages)) expect(typeof v).toBe('boolean');
   });
 
-  it('leaks no unexpected keys — the response is ONLY ok/name/theme/pages + the two posture flags', async () => {
+  it('leaks no unexpected keys — the response is ONLY ok/name/theme/pages + the posture flags', async () => {
     const { body } = await getSettings();
-    expect(Object.keys(body).sort()).toEqual(['demoMode', 'name', 'ok', 'pages', 'repoConnected', 'theme']);
+    expect(Object.keys(body).sort()).toEqual(
+      ['demoMode', 'name', 'ok', 'pages', 'repoConnected', 'theme', 'webring']);
     expect(Object.keys(body.theme).sort()).toEqual(['defaultMode', 'preset', 'toggle']);
+  });
+
+  // The webring seat is public by construction — the footer chip renders it and
+  // /.well-known/analogs.txt serves it — so it belongs here. What must NOT
+  // happen is the whole config block leaking through: only the two validated
+  // fields travel, and a non-member answers null rather than {} or undefined.
+  it('carries the webring seat as null or exactly {node, slug}', async () => {
+    const { body } = await getSettings();
+    if (body.webring === null) return;
+    expect(Object.keys(body.webring).sort()).toEqual(['node', 'slug']);
+    expect(Number.isInteger(body.webring.node)).toBe(true);
+    expect(body.webring.node).toBeGreaterThanOrEqual(0);
+    expect(typeof body.webring.slug).toBe('string');
   });
 
   it('reports the posture flags as booleans (absent config = false)', async () => {

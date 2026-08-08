@@ -13,6 +13,7 @@
 import siteConfig from '../../site.config.js';
 import { cdnBase, siteMetaTags, entityJsonLd, wordmark, wordmarkHtml, locationLabel } from '../shared/site.js';
 import { pageDisabled } from '../shared/pages.js';
+import { webringNode, ringNodeId, ringHref } from '../shared/webring.js';
 import { escapeHtml, localDay } from '../shared/text.js';
 import { loadDataJson } from './data.js';
 
@@ -372,6 +373,69 @@ export function injectSupport(rewriter, support = siteConfig.support || {}) {
   });
 }
 
+// ---- Footer chips: attribution + webring membership ----
+//
+// Two small hairline chips in the homepage footer, both edge-injected from a
+// single `<span data-site-chips>` hook so the served markup carries neither.
+//
+// One hook, not two, and not a `.footer-right` handler: that class exists on
+// every page in the tree, so keying off it would silently widen a one-page
+// feature to nine. Placement is the scope. It also keeps the pair as one unit —
+// one handler owns the ordering, the spacing and the both-off case.
+//
+// The OS chip is the template's only self-promotion, and it is deliberately two
+// letters: enough for someone who wonders what this site runs on to click,
+// quiet enough that nobody else's site reads as an advertisement. `poweredBy:
+// false` removes it — MIT never required it, and a fork should not feel stuck
+// carrying it.
+//
+// Both reuse `.powered-chip` verbatim (css/main.css), so the ring chip is the
+// same object as the attribution chip and the footer reads as one system —
+// and no stylesheet change means no cache-bust across every page.
+const OS_PROJECT_URL = 'https://github.com/oaklensart';
+
+// Takes the whole config rather than reading it, so on/off/both-off are
+// drivable against a frozen object (same reason as _supportTiersHtml).
+export function _footerChipsHtml(config = siteConfig) {
+  const chips = [];
+
+  if (config.poweredBy !== false) {
+    chips.push(
+      `<a class="powered-chip" href="${OS_PROJECT_URL}" rel="noopener"`
+      + ` title="Built with Oaklens OS" aria-label="Built with Oaklens OS">OS</a>`);
+  }
+
+  // webringNode() returns null for any half-filled block, so a config that is
+  // mid-edit renders nothing rather than a chip pointing at a seat that isn't
+  // yours. Note node 0 is a real seat — see the guard in shared/webring.js.
+  const node = webringNode(config.webring);
+  if (node) {
+    const id = ringNodeId(node.node);
+    const label = `Member of the ANALOGS network — node ${id}`;
+    chips.push(
+      `<a class="powered-chip" href="${escapeHtml(ringHref(node))}" rel="noopener"`
+      + ` title="${label}" aria-label="${label}">ANALOGS <strong>//${id}</strong></a>`);
+  }
+
+  return chips.join('');
+}
+
+// Registered on every HTML response like the nav and the support hooks. The
+// placeholder lives only in the homepage footer, so this is inert everywhere
+// else — including on the 404 document served in a gated page's place.
+export function injectFooterChips(rewriter, config = siteConfig) {
+  const html = _footerChipsHtml(config);
+  rewriter.on('[data-site-chips]', {
+    element(el) {
+      // Nothing configured: take the placeholder out rather than leave an
+      // empty span trailing the footer text (same posture as [data-support-note]).
+      if (!html) return el.remove();
+      el.setInnerContent(html, { html: true });
+      el.removeAttribute('data-site-chips');
+    },
+  });
+}
+
 // ---- The Field Console's optional surfaces ----
 //
 // A console surface can be real, working, auth-gated code and still be useless
@@ -565,6 +629,9 @@ export function injectSiteChrome(rewriter, url) {
 
   // The support page's tiers + copy (selectors exist only on that page).
   injectSupport(rewriter);
+
+  // The footer's OS + webring chips (the hook exists only on the homepage).
+  injectFooterChips(rewriter);
 
   // Config-gated console surfaces. Registered unconditionally like the rest:
   // the data-console-feature hook exists only in the console shell, so this is

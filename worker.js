@@ -24,6 +24,7 @@ import {
 } from './src/edge/chrome.js';
 import {
   handleManifest, handleSitemap, handleFeed, handleBufferSummary, handleSiteSettings,
+  handleAnalogsToken,
 } from './src/api/site-meta.js';
 
 // Re-exported for the public contract: tests/page-gate.test.js imports the page
@@ -100,6 +101,7 @@ const EXACT_ROUTES = new Map([
   ['GET /feed.xml', (request, env) => handleFeed(request, env)],
   ['GET /api/buffer-summary', (request, env) => handleBufferSummary(request, env)],
   ['GET /api/site/settings', (request, env) => handleSiteSettings(request, env)],
+  ['GET /.well-known/analogs.txt', () => handleAnalogsToken()],
   ['POST /api/auth', (request, env) => handleAuth(request, env)],
   ['POST /api/logout', () => handleLogout()],
   ['POST /api/upload', (request, env) => handleUpload(request, env)],

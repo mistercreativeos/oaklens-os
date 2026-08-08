@@ -7,10 +7,12 @@
 //   GET /sitemap.xml           — every enabled public page
 //   GET /feed.xml              — Atom syndication of published field notes
 //   GET /api/buffer-summary    — ~120-byte precomputed buffer counts
+//   GET /.well-known/analogs.txt — webring ownership claim (config-gated)
 
 import siteConfig from '../../site.config.js';
 import { cdnBase } from '../shared/site.js';
 import { PAGE_ROUTES, pageDisabled, publicPages } from '../shared/pages.js';
+import { configuredNode, analogsToken } from '../shared/webring.js';
 import { escapeHtml, baseName, localDay } from '../shared/text.js';
 import { CORS_HEADERS, jsonRes } from '../shared/http.js';
 import { loadDataJson } from '../edge/data.js';
@@ -41,7 +43,47 @@ export function handleSiteSettings(request, env) {
     // cannot detect Cloudflare git integration itself, so config carries it).
     demoMode: siteConfig.demoMode === true,
     repoConnected: siteConfig.repoConnected === true,
+    // Webring seat, or null when this instance has not joined. Both values are
+    // already public by design — the footer chip renders them and
+    // /.well-known/analogs.txt serves them as a deliberately readable claim —
+    // so this exposes nothing new. It lets the console's ring card show the
+    // real state without a second request.
+    webring: configuredNode(),
   }, 200);
+}
+
+// ---- GET /.well-known/analogs.txt ----
+//
+// The ANALOGS.NETWORK ownership claim: one line naming this site's seat on the
+// ring. It is a claim, not a key — anyone can copy the text, but only the
+// domain's operator can serve it at this URL, which is the whole point. It buys
+// a member self-service listing changes without accounts, and protects a seat
+// if the domain ever lapses (the token stops answering, so the ring can dim
+// the listing instead of pointing at whoever picked the domain up).
+//
+// 404 when the instance is not a member, which is every fork by default.
+export function handleAnalogsToken() {
+  const token = analogsToken();
+  if (!token) {
+    // no-store, not the usual max-age: joining the ring is a config edit and a
+    // redeploy, and a cached miss must not shadow the seat for an hour after.
+    return new Response('Not found\n', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+  }
+  return new Response(`${token}\n`, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+      // Set literally rather than through withCors: this is a public claim
+      // meant to be fetched cross-origin by the ring, and withCors reflects a
+      // per-request origin and is only applied on /api/*.
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
 }
 
 // ---- GET /archive/manifest.html ----

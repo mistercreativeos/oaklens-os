@@ -84,11 +84,11 @@ export default Object.freeze({
   },
   // Public-page switches — false turns a page off end to end (route 404s,
   // sitemap drops it, nav filters it). The starter ships the minimal trio;
-  // theWall (wallpapers + Photo Lab), the /dev and /os pages, and the
-  // support page are one-line enables when you want them.
+  // theWall (wallpapers + Photo Lab) and the support page are one-line enables
+  // when you want them.
   pages: {
     archive: true, fieldNotes: true, about: true,
-    wall: false, dev: false, os: false, support: false,
+    wall: false, support: false,
   },
   // Field Console surfaces that are opt-in. Unlike pages{} above, a missing or
   // false key here means OFF — nothing in this block is needed for a working
@@ -132,6 +132,27 @@ export default Object.freeze({
   // unconnected ones keep the honest "run npx wrangler deploy" instruction.
   // The Worker can't detect the connection itself, so this flag carries it.
   // repoConnected: true,
+  // The small "OS" chip in the homepage footer — one quiet link back to the
+  // engine this site runs on, for a visitor who decides they want one too. It
+  // is the only self-promotion in the template, it is deliberately unbranded,
+  // and it is on one page, not nine. Set this to remove it entirely; the
+  // licence never required it.
+  // poweredBy: false,
+  // ANALOGS.NETWORK — a webring of independent, creative-run sites. OFF by
+  // default, and this default is load-bearing: your site must never inherit a
+  // link into someone else's ring just because you forked the code. Nothing
+  // renders and no route exists until you have actually joined and been given
+  // a seat of your own.
+  // To join: email themonitor@analogs.network, or open a pull request adding
+  // your node file to github.com/oaklensart/analogs.network. A maintainer
+  // merges it by hand — that merge is the moderation gate, and it is how you
+  // get your number. Numbers are permanent and never reused (they start at 0).
+  // Then put your seat here. The footer grows a matching ANALOGS //<n> chip
+  // next to the OS one, and the site serves your ownership claim as plain text
+  // at /.well-known/analogs.txt — which is optional, but it is what lets you
+  // change or remove your listing later without an email round-trip, and what
+  // protects your seat if the domain ever lapses.
+  // webring: { node: 7, slug: 'your-slug' },
   // Search-engine entity (Organization + WebSite JSON-LD on the homepage).
   // sameAs: only live, crawlable profile URLs — an empty list is fine.
   entity: {

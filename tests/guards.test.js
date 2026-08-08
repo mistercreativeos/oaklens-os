@@ -115,6 +115,21 @@ describe('contact addresses stay neutral placeholders', () => {
   });
 });
 
+describe('footer attribution stays edge-injected', () => {
+  // The homepage footer's OS + webring chips are built by _footerChipsHtml and
+  // injected into a neutral <span data-site-chips> hook. Before that, the chip
+  // was static markup carrying a github.com URL — the last identity-shaped
+  // string in served HTML, and the reason a fork's index.html differed from
+  // the engine's. Keeping it injected means every fork serves the same bytes
+  // and `poweredBy: false` can actually remove it.
+  it('index.html carries the hook and no hardcoded chip', () => {
+    const html = read('index.html');
+    expect(html, 'the injection hook').toContain('data-site-chips');
+    expect(html, 'chip markup belongs in src/edge/chrome.js').not.toContain('powered-chip');
+    expect(html, 'no project URL in served markup').not.toContain('github.com');
+  });
+});
+
 describe('?v= cache discipline', () => {
   // One scanner, shared with tests/version-bump.test.js. This file used to
   // carry its own copy whose character class was [\w-]+ — blind to any path

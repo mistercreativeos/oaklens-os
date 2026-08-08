@@ -199,6 +199,56 @@ Publish) — and you should **stop running `npx wrangler deploy` by hand**. A
 hand deploy isn't saved in the repo, so the next publish-triggered rebuild
 quietly puts things back the way the repo has them, undoing it.
 
+## Join a webring (optional)
+
+Webrings are the old-web way of finding good work: a set of independent sites
+that link to each other, so a visitor to one can wander to the rest. No feed, no
+algorithm, no company in the middle.
+
+**ANALOGS.NETWORK** ([analogs.network](https://analogs.network)) is one, for
+people who run their own sites — photographers, writers, artists, coders. This
+engine has built-in support for it, switched **off**. Nothing appears on your
+site, and nothing links anywhere, until you decide to join. That is deliberate:
+forking someone's code should never sign you up to their network.
+
+**If you want in:**
+
+1. Email `themonitor@analogs.network` with your site, your name, and what you
+   make — or open a pull request adding your node file to the registry at
+   [github.com/oaklensart/analogs.network](https://github.com/oaklensart/analogs.network).
+   Either way a person reads it and adds you by hand.
+2. When you're merged you get a **permanent node number** and a slug.
+3. Put them in `site.config.js`:
+
+   ```js
+   webring: { node: 7, slug: 'your-slug' },
+   ```
+
+That's it. Your footer grows a small `ANALOGS //007` chip next to the `OS` one,
+and your site starts serving a one-line ownership claim at
+`/.well-known/analogs.txt`. The claim is optional but worth having: because only
+you can serve a file at your own domain, it's what lets you change or remove
+your listing later without an email round-trip, and what protects your number if
+the domain ever lapses.
+
+You are never required to display anything. Remove the `webring` line and
+everything goes away again.
+
+### The `OS` chip
+
+Your homepage footer carries a small `OS` chip linking to the project this site
+runs on. It's two letters on one page, it loads nothing, and it's there so a
+visitor who likes your site can find out how to make their own.
+
+If you'd rather not have it, remove it:
+
+```js
+poweredBy: false,
+```
+
+No hard feelings and no licence problem — the MIT licence never asked for
+attribution on your pages.
+
 ## Console access (secure by default)
 
 The Field Console document (`/dev/field-console`) is served only to an

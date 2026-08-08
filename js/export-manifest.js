@@ -74,7 +74,6 @@ export const EXPORT_MANIFEST = {
     // Per-page render scripts — externalized from inline <script> blocks for a
     // strict script-src (no 'unsafe-inline'). Copied verbatim.
     'js/page-index.js',
-    'js/page-os.js',
     'js/page-about.js',
     'js/page-archive.js',
     'js/page-buffer.js',

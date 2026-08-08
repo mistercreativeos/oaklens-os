@@ -489,6 +489,28 @@ Capture first. Process later."></textarea>
         </div>
       </div>
 
+      <!-- The ring card. Deliberately NOT part of "Friends of" below: that is a
+           content surface that stages and publishes to data/friends.json, and
+           this one mutates nothing — its outcome is an email and a one-line
+           site.config.js edit. The CTA ships with NO href; session.js sets it at
+           boot, because a literal mailto here would be rewritten to this site's
+           own address by the edge chrome that runs on this document too. -->
+      <div class="entry-form-card" id="ring-card">
+        <div class="entry-form-title">
+          ⬡ ANALOGS // THE RING
+          <span class="entry-form-note">// A WEBRING OF INDEPENDENT, CREATIVE-RUN SITES</span>
+        </div>
+        <div class="hint-text" id="ring-status">// this site is not on the ring yet</div>
+        <div class="hint-text">
+          ANALOGS.NETWORK links sites run by photographers, writers, artists and
+          coders — the old-web idea that you find good work by following someone
+          else's link, not a feed. Joining is free and entirely optional: send a
+          note and a maintainer adds you by hand. You get a permanent number,
+          and your site shows a small chip in the footer. Nothing else changes.
+        </div>
+        <a class="btn btn-stage" id="ring-join-cta" target="_blank" rel="noopener">Email the monitor →</a>
+      </div>
+
       <div class="entry-form-card">
         <div class="entry-form-title">
           ⬡ ADD NODE
@@ -1074,9 +1096,9 @@ Capture first. Process later."></textarea>
     "/js/console/focal.js":     "/js/console/focal.js?v=2",
     "/js/console/asset-library.js": "/js/console/asset-library.js?v=1",
     "/js/console/publish.js":   "/js/console/publish.js?v=2",
-    "/js/console/session.js":   "/js/console/session.js?v=2",
+    "/js/console/session.js":   "/js/console/session.js?v=3",
     "/js/console/bench.js":     "/js/console/bench.js?v=1",
-    "/js/console/init.js":      "/js/console/init.js?v=2",
+    "/js/console/init.js":      "/js/console/init.js?v=3",
     "/js/markdown-engine.js":   "/js/markdown-engine.js?v=4",
     "/js/jpeg-privacy.js":      "/js/jpeg-privacy.js?v=1",
     "/js/raw-lens.js":          "/js/raw-lens.js?v=5",
