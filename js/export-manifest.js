@@ -11,6 +11,14 @@
 // image variants — edit the lists and rules below; the exporter itself never
 // hardcodes a path. It pairs with site.config.js the same way: config for
 // identity, manifest for structure.
+//
+// ⚠️ This file is REWRITTEN BY os-extract.mjs on the way to a fork (the /os
+// entries come out). So its `?v=` has to be bumped whenever *that transform*
+// changes, even though nothing here moved — the fork's copy changed, and a
+// fork's installed console would otherwise keep serving the cached old one
+// from the service worker. That is not hypothetical: the ?v=6 → 7 bump exists
+// because the fork's copy still listed js/page-os.js, a file forks do not
+// have, and site-export throws on the first asset it cannot fetch.
 
 // ---- image-key helpers (mirror the public pages' CDN URL construction) ----
 
