@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title data-site-title="brand">Photography</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" as="font" type="font/woff2" href="/fonts/syne-latin-var.woff2" crossorigin data-font-preload>
+<script>
+/* Pre-paint mode resolution: visitor override -> config default -> OS.
+   Runs before the stylesheet so there is no flash of the wrong mode. The
+   worker stamps data-theme-default on <html> and HTMLRewriter streams the
+   document top-down, so the attribute is present by the time this runs. */
+(function () {
+  var d = document.documentElement, s = null;
+  try { s = localStorage.getItem('ol-theme'); } catch (e) {}
+  var def = d.getAttribute('data-theme-default') || 'midnight';
+  var light = s ? s === 'light'
+    : def === 'auto' ? matchMedia('(prefers-color-scheme: light)').matches
+    : def === 'daylight';
+  if (light) d.setAttribute('data-theme', 'light');
+})();
+</script>
+<link rel="stylesheet" href="css/main.css?v=17">
+<script src="/js/mode-toggle.js?v=1" defer></script>
+<script src="/js/recent-index.js?v=5" defer></script>
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<!-- Split-hero LCP image is preloaded by the worker from site.config.js splitHero. -->
+<style>
+/* ============================================
+   HOMEPAGE-ONLY STYLES
+   Everything shared lives in css/main.css
+   ============================================ */
+
+/* The homepage scrolls now: the recent-work grid is taller than one screen.
+   The hero is deliberately SHORTER than the viewport (all widths) so the top of
+   the recent-work grid peeks above the fold on load — the page announces there's
+   more without a scroll cue, and the folio hero reads as a wide banner (the
+   preview.html proportion). It reserves a fixed band below the hero for the
+   grid's top edge, so the peek stays ~consistent as the viewport height
+   changes. --home-hero-h is the single knob a fork tunes; robust via clamp. */
+.page--home {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  --home-hero-h: clamp(340px, calc(100svh - var(--nav-h) - 290px), 800px);
+}
+
+/* Mobile: the hero runs taller here — the reserve below it is just the grid
+   header + the peek. */
+@media (max-width: 900px) {
+  .page--home { --home-hero-h: clamp(340px, 68svh, 640px); }
+}
+
+/* ---- FOLIO HERO ----
+   Photography-first: the photograph is the only loud thing. All color
+   through tokens; the media scrim is on-media and therefore
+   theme-independent (identical in Midnight and Daylight). */
+.folio-hero {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: var(--home-hero-h);
+  display: flex;
+  align-items: flex-end;
+}
+
+.folio-hero-media,
+.folio-hero-media img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.folio-hero-media::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.18) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,.55) 100%);
+}
+
+.folio-hero-copy {
+  position: relative;
+  z-index: 1;
+  padding: 48px clamp(24px, 5vw, 64px);
+  /* 44ch is a READING measure, and it used to sit here — which also capped the
+     <h1> at ~448px while the title renders at 64px. Any site name longer than
+     about four characters therefore wrapped, including the shipped default
+     ("Your Studio"), so every fork opened with a broken-looking two-line hero.
+     Measured across 1440px and 390px: this keeps names up to ~15 characters on
+     one line and lets a genuinely long one wrap, which is correct rather than
+     broken. The measure moves to the prose below, where it belongs. */
+  max-width: min(90vw, 52rem);
+}
+
+.folio-eyebrow,
+.folio-tagline { max-width: 44ch; }
+
+.folio-eyebrow {
+  font-family: var(--font-meta);
+  font-size: 0.7rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  margin-bottom: 14px;
+}
+
+.folio-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: #fff;
+  font-size: clamp(2.2rem, 5.5vw, 4rem);
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45);
+}
+
+.folio-tagline {
+  color: rgba(255, 255, 255, 0.82);
+  margin: 10px 0 22px;
+  font-size: 0.98rem;
+}
+
+.folio-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.88rem;
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 12px 22px;
+  border-radius: var(--r-chip);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.folio-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+@media (max-width: 640px) {
+  .folio-hero-copy { padding: 32px 20px; }
+}
+
+/* ---- PRESET GATE ----
+   The folio hero is the template default (aperture, passe-partout). Noir shows
+   the two-panel split hero below, but only when site.config.js provides a
+   splitHero block — the worker stamps [data-split-hero] and edge-injects the
+   panel images, headlines and CTAs (worker.js injectSplitHero), so the markup
+   below carries no identity. A noir fork that omits splitHero falls back to the
+   folio hero. Both heroes ship in the DOM; the preset + config pick which
+   paints. */
+.split-hero { display: none; }
+/* Noir shows the split hero only when site.config.js provides splitHero (the
+   worker stamps [data-split-hero]); otherwise noir falls back to the folio hero. */
+:root[data-preset="noir"][data-split-hero] .folio-hero { display: none; }
+:root[data-preset="noir"][data-split-hero] .split-hero { display: grid; }
+
+/* ---- SPLIT HERO (noir) ---- */
+
+.split-hero {
+  flex: 0 0 auto;
+  min-height: var(--home-hero-h);
+  grid-template-columns: 1fr 1fr;
+  position: relative;
+}
+
+.split-hero::after {
+  content: '';
+  position: absolute;
+  top: 12%;
+  bottom: 12%;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(180deg,
+    transparent 0%, var(--gray-700) 20%,
+    var(--gray-500) 50%, var(--gray-700) 80%,
+    transparent 100%);
+  z-index: 2;
+}
+
+.hero-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  overflow: hidden;
+}
+
+.hero-panel-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  z-index: 0;
+}
+
+/* Left — terminal */
+.hero-panel--code::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* Lighter than the old flat 0.6 so the console/OS photo reads; darker top
+     and bottom keep the headline + button legible without hiding the subject */
+  background: linear-gradient(180deg,
+    rgba(0, 0, 0, 0.58) 0%,
+    rgba(0, 0, 0, 0.32) 48%,
+    rgba(0, 0, 0, 0.58) 100%);
+  z-index: 1;
+}
+
+.hero-panel--code::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg,
+    transparent, transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px, rgba(0, 0, 0, 0.06) 4px);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Right — photo: anchor subject low */
+.hero-panel--photo .hero-panel-bg {
+  background-position: 50% 78%;
+}
+
+.hero-panel--photo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 1;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+.hero-headline {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(1.6rem, 3vw, 3.2rem);
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  text-align: center;
+  /* On-media text: theme-independent white, like the folio hero copy. The
+     photo scrims are dark in both modes, so the headline stays light even when
+     a noir visitor toggles to Daylight (the shimmed --white-bright would flip
+     dark and sink into the scrim). */
+  color: #fff;
+}
+
+/* Frosted-glass label instead of a hard black rectangle — legible over the
+   photo, but reads premium and lets the image glow through */
+.hero-headline--labeled {
+  background: rgba(8, 8, 8, 0.5);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  padding: 8px 22px;
+  display: inline-block;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+.hero-headline--open {
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+}
+
+.hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 12px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  transition: all 0.25s ease;
+  opacity: 0.8;
+}
+
+.hero-cta:hover {
+  opacity: 1;
+  transform: translateY(-2px);
+}
+
+.hero-cta--gallery {
+  background: rgba(255, 0, 0, 0.15);
+  color: #fff;
+  border-color: rgba(255, 0, 0, 0.35);
+  border-radius: 2px;
+}
+
+.hero-cta--gallery:hover {
+  background: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 24px var(--red-glow);
+}
+
+/* CODE-panel CTA — dark glass chip; the label (site.config.js splitHero
+   code.cta.label, edge-injected into .os-cta-badge) renders in the crimson
+   accent with an arrow beside it. */
+.hero-cta--os {
+  background: rgba(0, 0, 0, 0.5);
+  border-color: rgba(255, 70, 60, 0.38);
+  border-radius: 3px;
+  padding: 9px 24px;
+  gap: 12px;
+  opacity: 1;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.hero-cta--os:hover {
+  border-color: var(--red);
+  box-shadow: 0 0 26px rgba(255, 40, 40, 0.28);
+}
+
+.os-cta-badge {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.2rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  background: linear-gradient(135deg, #ff544c 0%, #ff2a20 32%, #cf121b 66%, #7a060c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.os-cta-arrow {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--red);
+  transition: transform 0.25s ease;
+}
+
+.hero-cta--os:hover .os-cta-arrow { transform: translateX(3px); }
+
+/* ---- SPLIT HERO MOBILE ---- */
+
+@media (max-width: 900px) {
+  .split-hero {
+    flex: 0 0 auto;
+    min-height: var(--home-hero-h);
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+  }
+
+  .split-hero::after { display: none; }
+
+  .hero-panel--code { display: none; }
+
+  .hero-panel--photo {
+    padding: 40px 20px;
+  }
+
+  .hero-panel--photo .hero-panel-bg {
+    background-position: 50% 85%;
+  }
+
+  .mobile-hero-stack { display: none; }
+
+  .hero-headline {
+    font-size: clamp(1.6rem, 7vw, 2.4rem);
+  }
+}
+
+@media (max-width: 900px) {
+  /* Headlines are INTENTIONALLY hidden on mobile (owner decision): the single
+     hero image + the CTAs carry the section, and the stacked titles never fit
+     cleanly. The descendant selector hides the .mobile-hero-stack titles too,
+     on purpose — do not "fix" this to a child combinator to show them. */
+  .hero-panel--photo .hero-content .hero-headline { display: none; }
+  .mobile-hero-stack { display: flex !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="page--home">
+
+  <!-- ============ NAV ============ -->
+  <nav class="nav">
+    <a href="/" class="nav-logo" data-site-wordmark="dot-art">SITE<span class="dot-art">.NAME</span></a>
+    <div class="nav-links">
+      <a href="/" class="nav-link active">Home</a>
+      <a href="/archive" class="nav-link">theArchive</a>
+      <a href="/field-notes" class="nav-link">FN//Blog</a>
+      <a href="/wall" class="nav-link">theWall</a>
+      <a href="/about" class="nav-link">About</a>
+      <a href="/dev" class="nav-link terminal">&gt;Dev</a>
+      <a href="mailto:you@example.com" class="nav-mail" title="Contact">&#9993;</a>
+    </div>
+    <button class="nav-hamburger" id="nav-toggle" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <div class="nav-mobile" id="nav-mobile">
+    <a href="/" class="active">Home</a>
+    <a href="/archive">theArchive</a>
+    <a href="/field-notes">FN//Blog</a>
+    <a href="/wall">theWall</a>
+    <a href="/about">About</a>
+    <a href="/dev">&gt;Dev</a>
+    <a href="mailto:you@example.com">&#9993; Contact</a>
+  </div>
+
+  <!-- ============ HERO (folio) ============ -->
+  <section class="folio-hero">
+    <div class="folio-hero-media" role="img" aria-label="Featured photograph">
+      <!-- Neutral placeholder; the worker injects site.config.js folioHero.image. -->
+      <img src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1024'%20height='683'%3E%3Crect%20width='100%25'%20height='100%25'%20fill='%230a0a0a'/%3E%3C/svg%3E" alt="" fetchpriority="high">
+    </div>
+    <div class="folio-hero-copy">
+      <p class="folio-eyebrow reveal reveal-d1">Selected work</p>
+      <h1 class="folio-title reveal reveal-d2"><span data-site-name>Your site name</span></h1>
+      <p class="folio-tagline reveal reveal-d2" data-site-tagline>Photography portfolio</p>
+      <a class="folio-cta reveal reveal-d3" href="/archive">Enter the archive <span aria-hidden="true">&rarr;</span></a>
+    </div>
+  </section>
+
+  <!-- ============ HERO (split — noir only) ============
+       Neutral markup: the worker fills the panel images, headlines and CTAs
+       from site.config.js splitHero (worker.js injectSplitHero). The empty / #
+       values below are placeholders it overwrites; a fork that omits splitHero
+       falls back to the folio hero. Both heroes live in the DOM; preset +
+       config pick which paints. -->
+  <section class="split-hero">
+    <div class="hero-panel hero-panel--code">
+      <div class="hero-panel-bg"></div>
+      <div class="hero-content">
+        <h1 class="hero-headline reveal reveal-d1">
+          <span class="hero-headline--labeled"></span>
+        </h1>
+        <a href="#" class="hero-cta hero-cta--os reveal reveal-d3">
+          <span class="os-cta-badge"></span><span class="os-cta-arrow">&rarr;</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="hero-panel hero-panel--photo">
+      <div class="hero-panel-bg"></div>
+      <div class="hero-content">
+        <h1 class="hero-headline hero-headline--open reveal reveal-d2"></h1>
+        <div class="mobile-hero-stack" style="display:none; flex-direction:column; align-items:center; gap:20px;">
+          <h1 class="hero-headline reveal reveal-d1">
+            <span class="hero-headline--labeled"></span>
+          </h1>
+          <h1 class="hero-headline hero-headline--open reveal reveal-d2"></h1>
+        </div>
+        <div style="display:flex; gap:16px; flex-wrap:wrap; justify-content:center;">
+          <a href="#" class="hero-cta hero-cta--os reveal reveal-d3" style="display:none;">
+            <span class="os-cta-badge"></span><span class="os-cta-arrow">&rarr;</span>
+          </a>
+          <a href="#" class="hero-cta hero-cta--gallery reveal reveal-d4"></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ RECENT WORK ============
+       Replaces the barrel ticker (decision 2). Archive frames render as photo
+       cards, Field Notes as typographic text cards — newest first, rendered by
+       js/recent-index.js into #recent-index. Shows on all presets. barrel.json
+       stays for the console/manifest; the homepage just no longer renders it. -->
+  <section class="cl-work">
+    <div class="cl-head">
+      <span class="cl-eyebrow">Recent work</span>
+      <a class="cl-more" href="/archive">All work &rarr;</a>
+    </div>
+    <div class="cl-workgrid" id="recent-index"></div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="footer-left"><span data-site-wordmark="accent">SITE<span class="accent">.NAME</span></span> · <span data-site-location>YOUR CITY</span> · <a href="/archive/manifest.html" class="footer-manifest">MANIFEST</a></div>
+    <div class="footer-right">WE OBSERVE. WE DO NOT CONSUME.
+      <a class="powered-chip" href="https://github.com/oaklensart" rel="noopener">Powered by <strong>Oaklens&nbsp;OS</strong></a>
+    </div>
+  </footer>
+
+</div>
+
+<script src="/js/site-common.js?v=2"></script>
+<script src="/js/page-index.js?v=2" defer></script>
+
+</body>
+</html>

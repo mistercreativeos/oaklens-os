@@ -1,0 +1,2533 @@
+/* ============================================
+   OAKLENS OS — SHARED STYLES
+   main.css · Every page imports this
+   ============================================
+
+   Design system: three presets × two modes, all through L2 semantic tokens
+   (design-spec: docs/starter-template/design-spec.md — palette source of
+   truth). The preset is stamped on <html> by the worker from site.config.js.
+   - aperture       contemporary studio (cobalt) — starter default
+   - passe-partout  fine-art gallery (oxblood on warm paper)
+   - noir           the original tech-noir DNA (#000 / #E0E0E0 / #FF0000)
+   New styles use semantic tokens (--bg, --fg, --accent, …) — never raw hex;
+   legacy names (--black, --red, --gray-*) resolve via the compat shim below.
+
+   ============================================ */
+
+/* ---- SELF-HOSTED FONTS ----
+   Latin subset, served from /fonts/ on our own origin — replaces the
+   render-blocking Google Fonts request (no third-party DNS/TLS in the critical
+   path). Syne is a variable font: one file covers weights 400–800.
+   font-display: swap keeps text visible during load. */
+@font-face {
+  font-family: 'Syne';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/fonts/syne-latin-var.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Syne Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/syne-mono-latin.woff2') format('woff2');
+}
+/* Preset faces (starter template). All declared unconditionally — a browser
+   only downloads faces the active preset's font-family stacks actually use. */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url('/fonts/archivo-latin-var.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 300 600;
+  font-display: swap;
+  src: url('/fonts/sora-latin-var.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/fraunces-latin-var.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/hanken-grotesk-latin-var.woff2') format('woff2');
+}
+
+/* ---- RESET ---- */
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ---- L2 SEMANTIC TOKENS ----
+   The preset owns the values; components reference only these names. The
+   worker stamps data-preset + data-theme-default on <html> per request
+   (injectSiteChrome), so first paint is already in the configured preset.
+   Default preset: aperture. Mode: Midnight default, Daylight via
+   :root[data-theme="light"] — the same attribute convention the Field
+   Console already uses. Palette values are design-spec §3 literals — do not
+   re-derive them. --accent-rgb carries the accent's raw channels so
+   alpha-composited effects (glows, washes at odd opacities) re-theme with
+   the preset instead of staying hardwired red. */
+:root {
+  /* aperture · Midnight */
+  --bg: #0C0E13;
+  --bg-rgb: 12, 14, 19;
+  --surface: #141821;
+  --surface-2: #1B2233;
+  --line: #242B37;
+  --line-2: #2F3A4C;
+  --fg: #E7EBF2;
+  --fg-strong: #F4F7FC;
+  --muted: #838C9C;
+  --faint: #5A6272;
+  --accent: #5680FF;
+  --accent-rgb: 86, 128, 255;
+  --accent-text: #8FA8FF;
+  --on-accent: #080D1C;
+  --accent-wash: rgba(86, 128, 255, 0.10);
+  --font-display: 'Archivo', system-ui, sans-serif;
+  --font-body: 'Sora', system-ui, sans-serif;
+  --font-meta: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --r-card: 10px;
+  --r-chip: 7px;
+  --nav-h: 52px;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  /* aperture · Daylight */
+  --bg: #EBEEF3;
+  --bg-rgb: 235, 238, 243;
+  --surface: #FFFFFF;
+  --surface-2: #F3F5F9;
+  --line: #DBE1EA;
+  --line-2: #C6CEDC;
+  --fg: #0D1017;
+  --fg-strong: #06080C;
+  --muted: #58616F;
+  --faint: #7A8290;
+  --accent: #1E3FDB;
+  --accent-rgb: 30, 63, 219;
+  --accent-text: #1E3FDB;
+  --on-accent: #FFFFFF;
+  --accent-wash: rgba(30, 63, 219, 0.08);
+  color-scheme: light;
+}
+
+:root[data-preset="passe-partout"] {
+  /* passe-partout · Midnight — the matted print on a gallery wall */
+  --bg: #17130F;
+  --bg-rgb: 23, 19, 15;
+  --surface: #201A14;
+  --surface-2: #2A221A;
+  --line: #332B20;
+  --line-2: #453A2C;
+  --fg: #EEE7DA;
+  --fg-strong: #FBF6EA;
+  --muted: #A99B85;
+  --faint: #7E735F;
+  --accent: #C4604F;
+  --accent-rgb: 196, 96, 79;
+  --accent-text: #E08A75;
+  --on-accent: #17130F;
+  --accent-wash: rgba(196, 96, 79, 0.12);
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-meta: 'Hanken Grotesk', system-ui, sans-serif;
+  --r-card: 4px;
+  --r-chip: 3px;
+}
+:root[data-preset="passe-partout"][data-theme="light"] {
+  /* passe-partout · Daylight */
+  --bg: #EFE9DE;
+  --bg-rgb: 239, 233, 222;
+  --surface: #F8F4EC;
+  --surface-2: #FFFDF8;
+  --line: #E0D7C7;
+  --line-2: #CBBFA9;
+  --fg: #211C15;
+  --fg-strong: #14100B;
+  --muted: #6F6455;
+  --faint: #8D8271;
+  --accent: #963A30;
+  --accent-rgb: 150, 58, 48;
+  --accent-text: #963A30;
+  --on-accent: #FFFFFF;
+  --accent-wash: rgba(150, 58, 48, 0.08);
+}
+
+:root[data-preset="noir"] {
+  /* noir · Midnight — the legacy DNA, exactly today's literals */
+  --bg: #000000;
+  --bg-rgb: 0, 0, 0;
+  --surface: #0A0A0A;
+  --surface-2: #1A1A1A;
+  --line: #1A1A1A;
+  --line-2: #333333;
+  --fg: #E0E0E0;
+  --fg-strong: #F0F0F0;
+  --muted: #919191;
+  --faint: #555555;
+  --accent: #FF0000;
+  --accent-rgb: 255, 0, 0;
+  --accent-text: #FF4646;
+  --on-accent: #000000;
+  --accent-wash: rgba(255, 0, 0, 0.12);
+  --font-display: 'Syne', sans-serif;
+  --font-body: 'Syne Mono', monospace;
+  --font-meta: 'Syne Mono', monospace;
+  --r-card: 0;
+  --r-chip: 2px;
+}
+:root[data-preset="noir"][data-theme="light"] {
+  /* noir · Daylight — the console's proven DAYLIGHT palette (paper + ink +
+     red stamp), lifted as-is */
+  --bg: #F4F1EA;
+  --bg-rgb: 244, 241, 234;
+  --surface: #FBF9F4;
+  --surface-2: #FFFFFF;
+  --line: #E3DED2;
+  --line-2: #D3CEC2;
+  --fg: #3D3A34;
+  --fg-strong: #131210;
+  --muted: #6B675F;
+  --faint: #8B867C;
+  --accent: #C41111;
+  --accent-rgb: 196, 17, 17;
+  --accent-text: #C41111;
+  --on-accent: #FFFFFF;
+  --accent-wash: rgba(196, 17, 17, 0.07);
+}
+
+/* ---- COMPAT SHIM ----
+   Legacy names re-resolve against the active preset/mode because the
+   referenced properties change on the same (root) element — the exact trick
+   field-console.css already uses. Page-local <style> blocks keep working
+   untouched. --red-dim/--red-glow keep their original alphas via
+   --accent-rgb (not --accent-wash) so noir/Midnight stays pixel-identical
+   to the pre-template site while the other presets still re-theme. */
+:root {
+  --black: var(--bg);
+  --white: var(--fg);
+  --white-bright: var(--fg-strong);
+  --red: var(--accent);
+  --red-dim: rgba(var(--accent-rgb), 0.2);
+  --red-glow: rgba(var(--accent-rgb), 0.35);
+  --gray-300: var(--muted);
+  --gray-500: var(--faint);
+  --gray-700: var(--line-2);
+  --gray-800: var(--line);
+  --gray-900: var(--surface);
+  --font-mono: var(--font-meta);
+}
+
+/* ---- BASE ---- */
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+/* Prevent pinch-to-zoom on mobile */
+html {
+  touch-action: pan-x pan-y;
+}
+
+/* ============================================
+   NAVIGATION
+   Shared across all pages
+   ============================================ */
+
+.nav {
+  position: sticky;
+  top: 0;
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--gray-800);
+  background: rgba(var(--bg-rgb), 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 100;
+}
+
+/* Homepage overrides sticky → part of flex column */
+.page--home .nav {
+  position: relative;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--black);
+}
+
+.nav-logo {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.82rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.nav-logo .dot-art {
+  color: var(--red);
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.nav-link {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 1.2px;
+  color: var(--gray-300);
+  padding: 6px 14px;
+  transition: color 0.2s ease;
+}
+
+.nav-link:hover {
+  color: var(--white-bright);
+}
+
+.nav-link.active {
+  color: var(--red);
+}
+
+.nav-link.terminal {
+  color: var(--gray-500);
+}
+
+.nav-link.terminal:hover {
+  color: var(--red);
+}
+
+.nav-mail {
+  font-size: 0.82rem;
+  color: var(--gray-500);
+  padding: 6px 10px;
+  transition: color 0.2s ease;
+}
+
+.nav-mail:hover {
+  color: var(--white);
+}
+
+/* ---- MODE TOGGLE (Midnight/Daylight) ----
+   Rendered into the nav by the worker only when theme.toggle is enabled;
+   behavior in js/mode-toggle.js. Sized to a ≥40px hit area even though the
+   glyph is small. */
+.mode-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--faint);
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.mode-toggle:hover {
+  color: var(--fg);
+  transform: rotate(180deg);
+}
+
+.mode-toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+  color: var(--fg);
+}
+
+/* Mobile menu: match the nav-link rows, not the icon button */
+.nav-mobile .mode-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-meta);
+  font-size: 0.78rem;
+  letter-spacing: 1.5px;
+  padding: 12px 24px;
+  min-height: 44px;
+}
+
+/* ---- HAMBURGER (mobile) ---- */
+
+.nav-hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.nav-hamburger span {
+  display: block;
+  width: 100%;
+  height: 1.5px;
+  background: var(--gray-300);
+  transition: all 0.3s ease;
+}
+
+.nav-hamburger.is-open span:nth-child(1) {
+  transform: translateY(6.5px) rotate(45deg);
+}
+
+.nav-hamburger.is-open span:nth-child(2) {
+  opacity: 0;
+}
+
+.nav-hamburger.is-open span:nth-child(3) {
+  transform: translateY(-6.5px) rotate(-45deg);
+}
+
+/* ============================================
+   SCROLL PROGRESS — blog posts + /dev
+   ============================================ */
+
+.scroll-progress {
+  position: fixed;
+  top: var(--nav-h);
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--gray-800);
+  z-index: 99;
+  pointer-events: none;
+}
+
+.scroll-progress-bar {
+  width: 100%;
+  height: 100%;
+  background: var(--red);
+  transform-origin: left;
+  transform: scaleX(0);
+  animation: scroll-fill linear;
+  animation-timeline: scroll(root);
+}
+
+@keyframes scroll-fill {
+  to { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-progress {
+    display: none;
+  }
+}
+
+/* ---- MOBILE NAV PANEL ---- */
+
+.nav-mobile {
+  display: none;
+  position: fixed;
+  top: var(--nav-h);
+  left: 0;
+  right: 0;
+  background: rgba(var(--bg-rgb), 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--gray-800);
+  padding: 16px 0;
+  z-index: 99;
+  transform: translateY(-100%);
+  opacity: 0;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.25s ease;
+}
+
+.nav-mobile.is-open {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.nav-mobile a {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 1.5px;
+  color: var(--gray-300);
+  padding: 12px 24px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.nav-mobile a:hover {
+  color: var(--white-bright);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.nav-mobile a.active {
+  color: var(--red);
+}
+
+/* ============================================
+   RECENT WORK — homepage 3-up grid (replaces the barrel ticker)
+   Archive frames render as photo cards, Field Notes as typographic text cards.
+   4:5 tiles, 9px radius — proportions match docs/starter-template/preview.html.
+   Filled at runtime by js/recent-index.js; themes across presets via tokens.
+   ============================================ */
+
+.cl-work {
+  flex-shrink: 0;
+  padding: 18px 0 26px;
+  border-top: 1px solid var(--line);
+}
+
+.cl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 26px 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 14px;
+}
+
+.cl-work .cl-eyebrow {
+  font-family: var(--font-meta);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cl-more {
+  font-family: var(--font-meta);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.cl-workgrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  padding: 0 26px;
+}
+
+/* Hide 4th card on desktop to maintain a perfect 3-up row */
+.cl-workgrid .wk-card:nth-child(n+4) {
+  display: none;
+}
+
+/* ---- shared card shell ---- */
+.wk-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Hover border only on pointer devices — touch fires :hover on tap and
+   the sticky state interferes with smooth scrolling on mobile. */
+@media (hover: hover) {
+  .wk-card:hover {
+    border-color: var(--accent);
+  }
+}
+
+/* ---- photo card (archive frame) ---- */
+.wk-img {
+  position: relative;
+  aspect-ratio: 4/5;
+  display: block;
+  background-size: cover;
+  background-position: center;
+}
+
+/* On-media tag: theme-independent, like the folio-hero copy — it sits over
+   the photograph, whose scrim is dark in every preset/mode. */
+.wk-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--font-meta);
+  font-size: 0.5rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.34);
+  padding: 3px 7px;
+  border-radius: 5px;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.wk-body {
+  padding: 12px 13px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.wk-title {
+  font-family: var(--font-display);
+  font-weight: 640;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  font-size: 0.8rem;
+  line-height: 1.15;
+  color: var(--fg-strong);
+}
+
+.wk-meta {
+  font-family: var(--font-meta);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- text card (Field Note) — the writer-audience hook ---- */
+.wk-text {
+  padding: 16px 16px 14px;
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+  /* The tease is short by design, so centre the block — kicker, title,
+     pull-quote, meta — and the leftover space splits evenly top and bottom,
+     reading as a deliberate card rather than text stranded at the top. */
+  justify-content: center;
+}
+
+.wk-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-meta);
+  font-size: 0.56rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.wk-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.wk-t-title {
+  font-family: var(--font-display);
+  font-weight: 680;
+  font-size: 1.18rem;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  color: var(--fg-strong);
+}
+
+/* The excerpt is a glanceable tease, not a summary — the words are the design.
+   No line-clamp: it's pre-truncated at render on a sentence boundary, so it
+   ends on a finished thought and the caret is never clipped. Size steps DOWN
+   per tier below as the tease gets longer, so every card fills the tile at a
+   readable scale. This default is the `standard` (longest) tease. */
+.wk-snip {
+  font-family: var(--font-body);
+  font-size: 1.55rem;
+  line-height: 1.36;
+  letter-spacing: -0.005em;
+  color: var(--fg);
+}
+
+.wk-t-meta {
+  margin-top: 16px;
+  font-family: var(--font-meta);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+/* Drop cap — first grapheme wrapped in a <span> at render (never
+   ::first-letter, which breaks on a leading quote / number / emoji). A bold
+   graphic initial in the accent; opens feature + standard. */
+.wk-dropcap {
+  float: left;
+  font-family: var(--font-display);
+  font-weight: 720;
+  font-size: 3em;
+  line-height: 0.62;
+  margin: 6px 10px -2px 0;
+  color: var(--accent);
+}
+
+/* Adaptive tiers — type steps DOWN as the tease gets longer so every card fills
+   the tile at a readable scale. data-tier is stamped from the tease length by
+   js/recent-index.js. (.wk-snip default above is the standard/longest tease.)
+   A one-line tease becomes a bold display pull-quote (statement, no drop cap);
+   a short one a large one (feature); a two/three-line one the standard size. */
+.wk-text[data-tier="statement"] .wk-snip {
+  font-family: var(--font-display);
+  font-weight: 560;
+  font-size: clamp(2.2rem, 1.3rem + 3.1vw, 3.2rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: var(--fg-strong);
+}
+.wk-text[data-tier="feature"] .wk-snip {
+  font-size: 1.95rem;
+  line-height: 1.26;
+  letter-spacing: -0.01em;
+}
+.wk-text[data-tier="feature"] .wk-dropcap {
+  font-size: 3.3em;
+}
+
+/* Blinking editor caret — the note is "still being written." Text cards only. */
+.ed-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.02em;
+  margin-left: 3px;
+  vertical-align: -2px;
+  background: var(--accent);
+  border-radius: 1px;
+  animation: ed-blink 1.15s ease-in-out infinite;
+}
+@keyframes ed-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ed-caret { animation: none; opacity: 0.9; }
+}
+
+@media (max-width: 900px) {
+  .cl-workgrid { grid-template-columns: 1fr 1fr; }
+  /* Show 4th card on tablet to form a perfect 2x2 grid */
+  .cl-workgrid .wk-card:nth-child(4) { display: flex; }
+}
+@media (max-width: 560px) {
+  .cl-workgrid { grid-template-columns: 1fr; }
+  /* Hide 4th card on mobile to keep vertical scroll height down */
+  .cl-workgrid .wk-card:nth-child(4) { display: none; }
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  border-top: 1px solid var(--gray-800);
+  padding: 10px 32px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(var(--bg-rgb), 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Homepage: footer stays in flex column, not fixed */
+.page--home .footer {
+  position: relative;
+  background: var(--black);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  z-index: auto;
+}
+
+.footer-left {
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  letter-spacing: 2px;
+  color: var(--gray-700);
+  text-transform: uppercase;
+}
+
+.footer-left .accent {
+  color: var(--red);
+}
+
+.footer-right {
+  font-family: var(--font-mono);
+  font-size: 0.48rem;
+  letter-spacing: 2px;
+  color: var(--gray-800);
+  text-transform: uppercase;
+}
+
+/* "Powered by Oaklens OS" — the template's only self-promotion (spec §5).
+   Small, mono, hairline chip; brightens on hover, never louder than that. */
+.powered-chip {
+  display: inline-block;
+  margin-left: 14px;
+  font-family: var(--font-meta);
+  font-size: 0.52rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+  padding: 3px 8px;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.powered-chip strong { font-weight: 600; }
+
+.powered-chip:hover {
+  color: var(--fg);
+  border-color: var(--line-2);
+}
+
+.wx-telemetry {
+  display: inline;
+}
+
+.wx-label {
+  color: #444;
+}
+
+.wx-sep {
+  color: #444;
+}
+
+.wx-data {
+  color: #777;
+}
+
+/* Archive manifest link: blends into the footer telemetry readout.
+   Inherits font/size/letter-spacing/text-transform from .footer-left;
+   one shade darker than the surrounding text, and visually static (no hover). */
+.footer-manifest,
+.footer-manifest:hover {
+  color: var(--gray-900);
+  text-decoration: none;
+}
+
+/* ============================================
+   SECTION HEADERS
+   Reusable across archive, blog, wall, etc.
+   ============================================ */
+
+.section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 40px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--gray-800);
+}
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--gray-500);
+}
+
+.section-label .accent {
+  color: var(--red);
+}
+
+.section-count {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 2px;
+  color: var(--gray-700);
+}
+
+/* Reserve space before JS injects count text — prevents CLS (0.12 score on both) */
+#wall-count,
+#archive-count-line {
+  min-height: 1.5em; /* ~13px at font-size: 0.55rem; covers one text line + leading */
+}
+
+/* ============================================
+   PAGE CONTAINER — for scrollable pages
+   Archive, blog, wall, about, dev
+   ============================================ */
+
+.page-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 60px 40px 80px;
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-group(main-nav),
+::view-transition-group(nav-logo),
+::view-transition-group(main-footer) {
+  animation-duration: 0.28s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+.nav {
+  view-transition-name: main-nav;
+}
+
+.nav-logo {
+  view-transition-name: nav-logo;
+}
+
+.footer {
+  view-transition-name: main-footer;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: revealUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes revealUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reveal-d1 { animation-delay: 0.1s; }
+.reveal-d2 { animation-delay: 0.25s; }
+.reveal-d3 { animation-delay: 0.35s; }
+.reveal-d4 { animation-delay: 0.5s; }
+.reveal-d5 { animation-delay: 0.65s; }
+
+.blink {
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* ============================================
+   RESPONSIVE — MOBILE
+   ============================================ */
+
+@media (max-width: 900px) {
+  .nav {
+    padding: 0 16px;
+  }
+
+  .nav-links {
+    display: none;
+  }
+
+  .nav-hamburger {
+    display: flex;
+  }
+
+  .nav-mobile {
+    display: block;
+  }
+
+  /* The homepage scrolls on mobile now, so its nav has to stick like every
+     other page's. The mobile menu panel is position:fixed at top:var(--nav-h);
+     with a nav that scrolls away, the panel stayed pinned to the viewport and
+     visibly detached from the header. (The desktop `position: relative`
+     override is left alone — the links live inline in the bar there.) */
+  .page--home .nav {
+    position: sticky;
+    top: 0;
+  }
+
+  .footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 10px 16px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
+  }
+
+  /* Homepage mobile: footer stays fixed at the bottom of the viewport so it
+     is always visible while scrolling the recent-work grid. */
+  .page--home .footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+  }
+
+  /* Homepage mobile — scrolls now (the recent-work grid is taller than one
+     screen); the hero still fills the first viewport. */
+  .page--home {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Clear the fixed footer so the last card isn't clipped behind it */
+  .page--home .cl-work {
+    padding-bottom: 52px;
+  }
+
+  .footer-right {
+    display: none;
+  }
+
+  .wx-telemetry {
+    display: none;
+  }
+
+  .page-content {
+    padding: 40px 16px 60px;
+  }
+}
+
+/* ========================================
+   GET THE DROP — Email Subscription
+   ======================================== */
+
+/* Pulsing red dot */
+.gtd-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  opacity: 0.6;
+  box-shadow: 0 0 6px 2px rgba(var(--accent-rgb), 0.3);
+  animation: gtd-pulse 3.5s ease-in-out infinite;
+  margin-right: 10px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+@keyframes gtd-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0.4; }
+}
+.gtd-dot--solid {
+  animation: none;
+  opacity: 0.8;
+  box-shadow: 0 0 6px 2px rgba(var(--accent-rgb), 0.3);
+}
+
+/* Email input */
+.gtd-input {
+  background-color: var(--bg);
+  border: 1px solid #222;
+  color: var(--fg);
+  font-family: 'Syne Mono', monospace;
+  font-size: 16px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  border-radius: 0;
+  -webkit-text-fill-color: var(--fg);
+  -webkit-opacity: 1;
+  box-sizing: border-box;
+}
+.gtd-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.gtd-input::placeholder {
+  color: #444;
+  font-family: 'Syne Mono', monospace;
+  -webkit-text-fill-color: #444;
+  opacity: 1;
+}
+
+/* Submit arrow */
+.gtd-submit {
+  background: transparent;
+  color: var(--accent);
+  border: none;
+  font-family: 'Syne Mono', monospace;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  transition: color 0.2s;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  border-radius: 0;
+  padding: 0;
+}
+.gtd-submit:hover { color: var(--accent-text); }
+.gtd-submit:disabled { color: var(--faint); cursor: not-allowed; }
+
+/* Success + error text */
+.gtd-success {
+  font-family: 'Syne Mono', monospace;
+  font-size: 13px;
+  color: rgba(var(--accent-rgb), 0.7);
+  letter-spacing: 0.02em;
+}
+.gtd-error {
+  font-family: 'Syne Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 6px;
+}
+
+/* Honeypot */
+.gtd-hp {
+  position: absolute;
+  left: -9999px;
+  opacity: 0;
+  height: 0;
+  width: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* --- theWall placement --- */
+.gtd-wall {
+  margin: 20px 0 30px 0;
+}
+.gtd-wall-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.gtd-wall-label {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.gtd-wall-label span:last-child {
+  font-family: 'Syne Mono', monospace;
+  font-weight: 400;
+  font-size: 12px;
+  color: #888;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.gtd-wall-fields {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+.gtd-wall-fields .gtd-input {
+  width: 260px;
+}
+.gtd-wall-ok {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+@media (max-width: 600px) {
+  .gtd-wall-form {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .gtd-wall-fields {
+    width: 100%;
+  }
+  .gtd-wall-fields .gtd-input {
+    width: 100%;
+    flex: 1;
+  }
+}
+
+/* --- Photo lab placement --- */
+.gtd-lab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 0;
+  animation: gtd-slide 0.2s ease-out;
+}
+@keyframes gtd-slide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.gtd-lab-form {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+}
+.gtd-lab-form .gtd-input {
+  flex: 1;
+  min-width: 200px;
+}
+.gtd-lab-ok {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- About sidebar placement --- */
+.gtd-about-panel {
+  margin-top: 8px;
+  animation: gtd-slide 0.2s ease-out;
+  max-width: 100%;
+}
+.gtd-about-form {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.gtd-about-form .gtd-input {
+  flex: 1;
+  font-size: 14px;
+}
+.gtd-about-form .gtd-submit {
+  font-size: 16px;
+}
+
+/* ============================================
+   LIGHTTABLE COMPONENTS
+   Shared: buffer page + blog post embeds
+   ============================================ */
+
+/* ---- DAY BLOCK ---- */
+
+.day-block {
+  margin-bottom: 48px;
+  position: relative;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: ltRevealUp 0.6s ease forwards;
+}
+
+.day-block:nth-child(1) { animation-delay: 0ms; }
+.day-block:nth-child(2) { animation-delay: 80ms; }
+.day-block:nth-child(3) { animation-delay: 160ms; }
+.day-block:nth-child(4) { animation-delay: 240ms; }
+.day-block:nth-child(5) { animation-delay: 320ms; }
+
+@keyframes ltRevealUp {
+  to { opacity: 1; transform: none; }
+}
+
+/* ---- DAY HEADER ---- */
+
+.day-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 1.5px;
+  margin-bottom: 10px;
+  padding-left: 2px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.2s ease;
+}
+
+.day-header:active {
+  opacity: 0.6;
+}
+
+.day-mark {
+  color: var(--red);
+  font-weight: 700;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+
+.day-date {
+  color: var(--white);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.day-dots {
+  flex: 1;
+  height: 1px;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--gray-800) 0px, var(--gray-800) 3px,
+    transparent 3px, transparent 7px
+  );
+}
+
+.day-count {
+  color: var(--gray-700);
+  font-size: 0.68rem;
+  letter-spacing: 2px;
+  text-transform: lowercase;
+  flex-shrink: 0;
+}
+
+/* ---- RED END-OF-DAY MARK ---- */
+
+.day-end-mark {
+  width: 20px;
+  height: 1.5px;
+  background: var(--red);
+  margin-top: 6px;
+  opacity: 0.7;
+}
+
+/* ---- CONTACT GRID ---- */
+
+.contact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 5px;
+}
+
+/* ---- FRAME ---- */
+
+.frame {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  background: var(--surface);
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: border-color 150ms ease;
+}
+
+.frame:hover {
+  border-color: var(--red);
+}
+
+/* ---- EMULSION (light table) ---- */
+
+.emulsion {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background-color: #121212;
+  transition: background-color 0.7s ease-out;
+}
+
+.day-block.lit .emulsion {
+  background-color: #ffffff;
+}
+
+.emulsion img {
+  width: 100%;
+  height: 100%;
+  margin: 0 !important;
+  object-fit: cover;
+  display: block;
+  opacity: 0.98;
+  filter: brightness(0.25) contrast(1.4) saturate(0.8);
+  transition: opacity 0.7s ease-out, filter 0.7s ease-out;
+}
+
+/* Burst cells participate in the light table like regular .emulsion frames */
+.day-block.igniting .burst-img {
+  animation: flicker-warmup 0.8s ease-in-out forwards;
+}
+
+.day-block.lit .burst-img {
+  opacity: 0.88;
+  filter: brightness(1.1) contrast(1.15) saturate(1.1);
+}
+
+.day-block.lit .burst-cell:hover .burst-img {
+  opacity: 0.92;
+  filter: brightness(1.15) contrast(1.1) saturate(1.15);
+}
+
+
+.post-body .emulsion img {
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  max-width: none;
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes flicker-warmup {
+  0%   { opacity: 0.98; filter: brightness(0.25) contrast(1.4) saturate(0.8); }
+  10%  { opacity: 0.88; filter: brightness(1.2) contrast(1.15) saturate(1.1); }
+  20%  { opacity: 0.98; filter: brightness(0.3) contrast(1.3) saturate(0.8); }
+  40%  { opacity: 0.88; filter: brightness(1.1) contrast(1.15) saturate(1.1); }
+  50%  { opacity: 0.95; filter: brightness(0.5) contrast(1.2) saturate(0.9); }
+  100% { opacity: 0.88; filter: brightness(1.1) contrast(1.15) saturate(1.1); }
+}
+
+.day-block.igniting .emulsion img {
+  animation: flicker-warmup 0.8s ease-in-out forwards;
+}
+
+.day-block.lit .emulsion img {
+  opacity: 0.88;
+  filter: brightness(1.1) contrast(1.15) saturate(1.1);
+}
+
+.day-block.lit .frame:hover .emulsion img {
+  opacity: 0.92;
+  filter: brightness(1.15) contrast(1.1) saturate(1.15);
+}
+
+/* ---- IGNITE BUTTON ---- */
+
+.ignite-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 3px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 200ms ease, transform 150ms ease;
+  opacity: 0.25;
+}
+
+.ignite-btn svg {
+  width: 10px;
+  height: 13px;
+  fill: var(--fg);
+  transition: fill 200ms ease, filter 200ms ease;
+}
+
+.ignite-btn:hover {
+  opacity: 0.6;
+  transform: scale(1.15);
+}
+
+.ignite-btn.lit {
+  opacity: 1;
+}
+
+.ignite-btn.lit svg {
+  fill: var(--fg);
+  filter: drop-shadow(0 0 3px rgba(224, 224, 224, 0.3));
+}
+
+@keyframes ignite-pulse {
+  0%, 100% { opacity: 0.18; }
+  50%      { opacity: 0.38; }
+}
+
+.ignite-btn.pulsing {
+  animation: ignite-pulse 3s ease-in-out infinite;
+}
+
+.ignite-btn.pulsing:hover {
+  animation: none;
+  opacity: 0.6;
+}
+
+/* ---- FRAME TAG ---- */
+
+.frame-tag {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  z-index: 3;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 0px 3px 1px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.frame-tag .tag-id {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 1.5px;
+  color: var(--red);
+  opacity: 0.8;
+}
+
+.frame:hover .frame-tag {
+  background: rgba(0, 0, 0, 0.9);
+  border-color: var(--red-dim);
+}
+
+.frame:hover .frame-tag .tag-id {
+  opacity: 1;
+}
+
+/* ARCHIVED badge */
+.frame.archived::after {
+  content: '▲ ARCHIVED';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  color: var(--red);
+  letter-spacing: 2px;
+  padding: 3px 6px 2px;
+  background: rgba(0, 0, 0, 0.78);
+  border: 1px solid var(--red);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ---- FRAME REFS (f#234 citations in FN// bodies — manual §5.20) ----
+   The markdown engine emits <a class="frame-ref" data-frame="234">; the post
+   page resolves the number against buffer.json at hydrate time. Resolved refs
+   deep-link into the buffer; unresolvable ones degrade to a plain span. */
+.post-body a.frame-ref {
+  font-family: var(--font-mono);
+  color: var(--red);
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(var(--accent-rgb), 0.45);
+  white-space: nowrap;
+}
+
+.post-body a.frame-ref:hover,
+.post-body a.frame-ref:focus-visible {
+  border-bottom-style: solid;
+  border-bottom-color: var(--red);
+}
+
+.post-body .frame-ref-missing {
+  font-family: var(--font-mono);
+  color: var(--gray-500);
+  border-bottom: 1px dotted var(--gray-700);
+  cursor: help;
+  white-space: nowrap;
+}
+
+/* The hover card: a slide-film mount holding a 480w thumb (or the dark '//'
+   cell for retired frames). One singleton element, positioned by the link;
+   dependency-free — shown/hidden by the post page's hydration script. */
+.frame-ref-card {
+  position: absolute;
+  z-index: 400;
+  width: 240px;
+  padding: 10px 10px 8px;              /* the slide mount's cardboard border */
+  background: #161616;
+  border: 1px solid var(--gray-800);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.65);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s;
+  pointer-events: none;
+}
+
+.frame-ref-card.is-open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.frame-ref-card .frc-window {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  background: var(--surface);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frame-ref-card .frc-window img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  margin: 0;
+}
+
+.frame-ref-card .frc-window .dark-glyph {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  color: #2b2b2b;
+  letter-spacing: 2px;
+}
+
+.frame-ref-card .frc-dark-label {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 2px;
+  color: var(--gray-500);
+}
+
+.frame-ref-card .frc-caption {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 2px;
+  color: var(--gray-300);
+  text-transform: uppercase;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.frame-ref-card .frc-caption .accent { color: var(--red); }
+
+.frame-ref-card .frc-open {
+  display: none;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 2px;
+  color: var(--red);
+  text-decoration: none;
+  text-align: center;
+  margin-top: 8px;
+  padding: 6px 0 5px;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+}
+
+/* Touch: no hover — the first tap opens the card, the explicit action inside
+   navigates. (The post script gates taps; this only reveals the button.) */
+@media (hover: none) {
+  .frame-ref-card .frc-open { display: block; }
+}
+
+/* ---- DARK FRAME (retired tombstone — manual §5.20) ----
+   Holds a retired frame's positional slot forever: same grid footprint, same
+   frame tag, no image, no interaction. The '//' glyph sits one shade above
+   black — the imgError placeholder palette (#2b2b2b on #0a0a0a). It stays
+   dark even when its day-block is lit: the light table has nothing to show. */
+.frame-dark {
+  cursor: default;
+}
+
+.frame-dark:hover {
+  border-color: transparent;
+}
+
+.frame-dark .emulsion,
+.day-block.lit .frame-dark .emulsion,
+.day-block.igniting .frame-dark .emulsion {
+  background-color: #0a0a0a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frame-dark .dark-glyph,
+.strip-frame-dark .dark-glyph {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: #2b2b2b;
+  letter-spacing: 2px;
+  user-select: none;
+}
+
+/* Dark slot inside a burst contact strip: inert, same footprint. */
+.strip-frame-dark {
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---- LIGHTBOX ---- */
+
+.lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.94);
+  cursor: zoom-out;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.lightbox.is-open {
+  display: flex;
+}
+
+/* Closing: dissolve the overlay while the image zooms back out (.lightbox-img
+   transition) so it recedes into the page — the mirror of the open push-in,
+   instead of a hard cut. JS removes is-open only after this finishes. */
+.lightbox.is-closing {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Return-to-shelf (field-note hero): the photo FLIPs back onto its hero spot
+   (JS-driven transform on .lightbox-img) while the backdrop dissolves around
+   it. We fade the BACKGROUND alpha — not the whole overlay's opacity — so the
+   flying photo stays fully opaque and lands solidly on the page hero behind it.
+   The mini-map, counter and × drop out instantly so only the photo travels. */
+.lightbox.is-returning {
+  background: rgba(0, 0, 0, 0) !important;
+  pointer-events: none;
+  transition: background 0.44s ease;
+}
+
+.lightbox.is-returning .lightbox-close,
+.lightbox.is-returning .lightbox-counter,
+.lightbox.is-returning .minimap-hud {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.lightbox-img {
+  max-width: 90vw;
+  max-height: 82vh;
+  object-fit: contain;
+  display: block;
+  cursor: zoom-in;
+  transition: transform 0.3s cubic-bezier(0.2, 0, 0.2, 1);
+  transform-origin: center center;
+}
+
+.lightbox.is-zoomed .lightbox-img { cursor: crosshair; }
+
+/* Close affordance — a single bare red × in the corner of the IMAGE itself
+   (the stage shrink-wraps the photo). No box; just the character. A 44px hit
+   area keeps it tappable while the glyph stays small; a dark shadow keeps it
+   legible over a blown-out corner. */
+.lightbox-stage {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 7px 9px;
+  background: none;
+  border: none;
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 521;
+  opacity: 0.92;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.9);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.lightbox-close:hover { opacity: 1; transform: scale(1.12); }
+
+/* Zoomed in (mini-map / loupe mode) the × would float over the middle of the
+   magnified frame with nothing to anchor it — so it bows out. Click the image,
+   tap the backdrop, or Esc to leave zoom; the × returns at fit. */
+.lightbox.is-zoomed .lightbox-close {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lightbox-counter {
+  position: absolute;
+  bottom: 16px;
+  right: 20px;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: var(--gray-700);
+  letter-spacing: 2px;
+  z-index: 510;
+  transition: bottom 0.3s ease;
+}
+
+.lightbox.is-zoomed .lightbox-counter {
+  bottom: 108px;
+}
+
+.minimap-hud {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 120px;
+  height: 80px;
+  background: rgba(0,0,0,0.85);
+  border: 1px solid var(--gray-700);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 510;
+}
+
+.lightbox.is-zoomed .minimap-hud { opacity: 1; visibility: visible; }
+.minimap-thumb { width: 100%; height: 100%; object-fit: contain; opacity: 0.5; }
+.minimap-reticle { position: absolute; border: 1px solid var(--red); background: rgba(var(--accent-rgb), 0.08); }
+
+.lightbox-meta {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--gray-500);
+  letter-spacing: 2px;
+  margin-top: 16px;
+  text-transform: uppercase;
+}
+
+.lightbox-meta .accent { color: var(--red); }
+
+/* ---- BLOG INSPECT THEME (field notes only) ----
+   Set via LightTable.open({ theme: 'blog' }); removed on close. For now this is
+   simply a slightly deeper backdrop than the standard lightbox, marking the
+   field-note light table as a distinct space. (A red "darkroom safelight" glow
+   lived here previously — parked for a future, more deliberate treatment; the
+   theme hook is kept so it can be re-added in one place.) */
+.lightbox.lb-blog {
+  background: rgba(0, 0, 0, 0.97);
+}
+
+/* ---- MOBILE OVERRIDES (shared components) ---- */
+
+@media (max-width: 640px) {
+  .contact-grid {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 3px;
+  }
+
+  .frame-tag { top: 2px; left: 2px; padding: 0px 2px 1px; }
+  .frame-tag .tag-id { font-size: 5.5px; letter-spacing: 1px; }
+
+  .ignite-btn { display: none !important; }
+
+  .day-header.hint-pulse .day-mark {
+    animation: ignite-pulse 3s ease-in-out infinite;
+  }
+}
+
+@media (max-width: 400px) {
+  .contact-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .day-block,
+  .emulsion,
+  .emulsion img,
+  .ignite-btn,
+  .lightbox-img,
+  .minimap-hud {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* The 0.01ms collapse above is correct for one-shot reveal/flicker
+     animations, but the idle "tap me" hint pulses run `infinite` — squeezing
+     an infinite pulse into 0.01ms turns a gentle fade into a strobe/fast-blink
+     (visible in iOS browsers, where OS-level Reduce Motion is honored). Stop
+     these outright instead of speeding them up. */
+  .ignite-btn.pulsing,
+  .day-header.hint-pulse .day-mark {
+    animation: none !important;
+  }
+}
+
+/* ── interpolate-size: native height:auto transitions (Safari 26.4+) ── */
+@supports (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
+}
+
+/* ============================================
+   BURST SEQUENCES — Film Gate + Contact Strip
+   Shared: buffer page + blog post embeds
+   ============================================ */
+
+/* ---- FILM GATE (the cycling cell) ---- */
+
+.burst-cell {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  background: var(--surface);
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid transparent;
+  outline: none;
+  transition: border-color 150ms ease;
+  /* stacked-film shadow */
+  box-shadow: 3px 3px 0 rgba(var(--accent-rgb), 0.2), 6px 6px 0 rgba(var(--accent-rgb), 0.08);
+  /* mobile: browser owns vertical scroll; we own horizontal scrub */
+  touch-action: pan-y;
+  /* Grid items default to min-width/min-height: auto, which refuses to shrink
+     below the content's intrinsic size. Safari/Gecko keep .burst-img out of
+     flow so it contributes nothing — but the Instagram in-app webview lets the
+     image's intrinsic size leak into the item's auto-minimum, blowing the cell
+     out to full-size on load. Pinning the minimums to 0 keeps the cell at its
+     aspect-ratio box everywhere; overflow:hidden then clips the cover image. */
+  min-width: 0;
+  min-height: 0;
+}
+
+.burst-cell:hover { border-color: var(--red); }
+
+.burst-cell:focus-visible {
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red), 3px 3px 0 rgba(var(--accent-rgb), 0.2), 6px 6px 0 rgba(var(--accent-rgb), 0.08);
+}
+
+.burst-cell.strip-open { border-color: var(--red); }
+
+.burst-img {
+  /* Fill the cell as an out-of-flow layer so the cell's height resolves purely
+     from aspect-ratio (matching .frame). An in-flow <img> with height:100%
+     lets its intrinsic height leak into the grid item in WebKit/Gecko, which
+     collapses/grows the cell and pushes the absolutely-positioned overlays
+     into the document flow below the image. */
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: brightness(0.25) contrast(1.4) saturate(0.8);
+  transition: opacity 0.7s ease-out, filter 0.7s ease-out;
+}
+
+/* ---- COUNTER PILL + BREATHING DOT ---- */
+
+.burst-counter {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px;
+  background: rgba(0, 0, 0, 0.82);
+  pointer-events: none;
+  line-height: 1;
+}
+
+.burst-counter-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--red);
+  line-height: 1;
+}
+
+.burst-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+  opacity: 1;
+  animation: breathe 2.5s ease-in-out infinite;
+}
+
+/* dormant: dimmer, slower pulse */
+.burst-cell.dormant .burst-dot {
+  opacity: 0.6;
+  animation: breathe-dormant 4s ease-in-out infinite;
+}
+
+/* actively cycling (incl. a hovered dormant burst) overrides the dormant dot */
+.burst-cell.cycling .burst-dot {
+  opacity: 1;
+  animation: breathe 2.5s ease-in-out infinite;
+}
+
+/* frozen while the strip is open */
+.burst-cell.static .burst-dot {
+  opacity: 0.35;
+  animation: none;
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+@keyframes breathe-dormant {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+}
+
+/* ---- REBATE LABEL ---- */
+
+.burst-rebate {
+  position: absolute;
+  bottom: 4px;
+  left: 5px;
+  z-index: 3;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--red);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ---- HOVER HINT ---- */
+
+.burst-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--white-bright);
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.burst-cell:hover .burst-hint { opacity: 1; }
+/* hide while actively cycling or when the strip is open (rules placed after
+   :hover so equal-specificity source order wins) */
+.burst-cell.cycling .burst-hint,
+.burst-cell.strip-open .burst-hint { opacity: 0; }
+
+/* ---- STRIP WRAPPER (grid expansion container) ---- */
+
+.burst-strip-wrapper {
+  /* Lives in normal document flow BELOW the contact grid (no longer a grid
+     child), so it never forces a sparse full-width row inside the grid.
+     display:grid + 0fr/1fr allocates the strip's vertical space; the height
+     ANIMATION is driven solely by .burst-strip-inner's max-height (see below)
+     so the row change here is intentionally instant — no transition. */
+  display: grid;
+  grid-template-rows: 0fr;
+}
+
+.burst-strip-wrapper.expanded {
+  grid-template-rows: 1fr;
+  /* match the contact grid's gap so the open strip sits flush below it */
+  margin-top: 5px;
+}
+
+.burst-strip-inner {
+  min-height: 0;
+  overflow: hidden;
+  /* SINGLE animated transition. Safari janks badly when grid-template-rows (fr)
+     and max-height animate in parallel — each frame triggers a double layout
+     recalculation. So the wrapper's grid-row change is instant (no transition)
+     and height alone carries the smooth open/close across all browsers. */
+  height: 0;
+  transition: none; /* instant reveal — cascade ignition IS the animation */
+}
+
+.burst-strip-wrapper.expanded .burst-strip-inner {
+  /* generous upper bound — real strip height is ~210px desktop / ~170px mobile,
+     so content is never clipped and the strip settles at its natural height */
+  height: auto;
+}
+
+/* ---- STRIP VISUAL CONTAINER ---- */
+
+.burst-strip {
+  position: relative;
+  background: #050505;
+  border-left: 2px solid var(--red);
+  overflow: hidden;
+}
+
+/* light-table warm-up flicker, scoped to the strip */
+.burst-strip::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 45%);
+  animation: strip-flicker 3s ease-in-out infinite;
+}
+
+@keyframes strip-flicker {
+  0%, 100% { opacity: 0.25; }
+  45% { opacity: 0.5; }
+  55% { opacity: 0.32; }
+  70% { opacity: 0.55; }
+}
+
+.strip-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px 6px;
+}
+
+.strip-header-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 2px;
+  color: var(--red);
+  opacity: 0.8;
+  text-transform: uppercase;
+  /* never wrap to a second line at narrow viewports; truncate instead */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;   /* let the flex item shrink so the ellipsis can engage */
+}
+
+.strip-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--gray-300);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1;
+  padding: 4px 6px;
+  flex-shrink: 0;     /* stay full-size and accessible next to the truncating label */
+  transition: color 0.15s ease;
+}
+
+.strip-close:hover { color: var(--red); }
+
+/* minimal dotted sprocket edges (NOT the heavy gradient rails) */
+.sprocket-edge {
+  position: relative;
+  z-index: 1;
+  height: 0;
+  margin: 0 10px;
+  border-top: 1px dotted var(--gray-700);
+}
+
+.sprocket-top { margin-bottom: 4px; }
+.sprocket-bottom { margin-top: 4px; }
+
+/* ---- STRIP SCROLL AREA ---- */
+
+.strip-scroll {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  /* explicit row flow — WebKit/Gecko otherwise let the frames stack as a
+     column in this nested grid/overflow context */
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;   /* iOS scroll momentum */
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: var(--red) #111;
+}
+
+.strip-scroll::-webkit-scrollbar { height: 6px; }
+.strip-scroll::-webkit-scrollbar-track { background: #111; }
+.strip-scroll::-webkit-scrollbar-thumb { background: var(--red); }
+
+/* ---- STRIP FRAME ---- */
+
+.strip-frame {
+  position: relative;
+  flex: 0 0 auto;
+  width: 200px;
+  height: 150px;
+  overflow: hidden;
+  cursor: pointer;
+  scroll-snap-align: start;
+  background: var(--surface);
+  opacity: 1;
+  /* Same auto-minimum guard as .burst-cell: without it the Instagram in-app
+     webview lets the image's intrinsic size override the fixed 200x150 box,
+     stretching each strip frame to full width. */
+  min-width: 0;
+  min-height: 0;
+}
+
+.strip-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.strip-frame.active {
+  outline: 1px solid var(--red);
+  outline-offset: -1px;
+}
+
+/* INVERTED tag — black on white — signals "sub-frame within a sequence" */
+.strip-frame-tag {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 2;
+  padding: 1px 4px;
+  background: var(--white);
+  color: #000;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+/* ---- CASCADE IGNITION ---- */
+/* JS sets inline animation-delay per .strip-frame and toggles these classes.
+   `both`/`forwards` fill-modes hold the dim state during the staggered delay
+   so frames don't flash before their turn. */
+
+.strip-frame.igniting { animation: burst-ignite 200ms ease-out both; }
+.strip-frame.dimming { animation: burst-dim 200ms ease-out forwards; }
+
+@keyframes burst-ignite {
+  from { opacity: 0.15; }
+  to { opacity: 1; }
+}
+
+@keyframes burst-dim {
+  from { opacity: 1; }
+  to { opacity: 0.15; }
+}
+
+/* ---- BURST RESPONSIVE ---- */
+
+@media (max-width: 640px) {
+  .burst-cell {
+    /* lighter shadow so it doesn't crowd the tight mobile grid gaps */
+    box-shadow: 2px 2px 0 rgba(var(--accent-rgb), 0.2), 4px 4px 0 rgba(var(--accent-rgb), 0.08);
+  }
+
+  .burst-counter { top: 2px; right: 2px; padding: 1px 3px; gap: 3px; }
+  .burst-counter-text { font-size: 8px; letter-spacing: 0.5px; }
+  .burst-dot { width: 4px; height: 4px; }
+  .burst-rebate { font-size: 6.5px; bottom: 2px; left: 3px; }
+  .burst-hint { font-size: 8px; letter-spacing: 1px; }
+
+  .strip-frame { width: 150px; height: 112px; }
+  .strip-frame-tag { font-size: 8px; }
+  .strip-header-label { font-size: 0.52rem; letter-spacing: 1.5px; }
+}
+
+/* ---- BURST REDUCED MOTION ---- */
+/* Skip cascade + pulses entirely; show/hide the strip instantly. */
+
+@media (prefers-reduced-motion: reduce) {
+  .burst-strip-wrapper { transition: none; }
+  .burst-strip-inner { transition: none; }
+  .burst-dot { animation: none !important; }
+  .burst-strip::before { animation: none !important; opacity: 0.3; }
+  .strip-frame.igniting,
+  .strip-frame.dimming {
+    animation: none !important;
+    opacity: 1;
+    filter: none;
+  }
+}
+
+/* ============================================
+   BUFFER EMBED IN BLOG POSTS (Phase 2)
+   ============================================ */
+
+.buffer-embed {
+  margin-bottom: 40px;
+}
+
+.buffer-embed .day-block {
+  margin-bottom: 32px;
+}
+
+.buffer-embed .contact-grid {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+
+.buffer-view-full {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 2px;
+  color: var(--gray-700);
+  margin-top: 8px;
+  transition: color 0.2s ease;
+}
+
+.buffer-view-full:hover {
+  color: var(--red);
+}
+
+@media (max-width: 640px) {
+  .buffer-embed .contact-grid {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  }
+}
+
+/* ============================================
+   INLINE FRAME STRIPS IN BLOG POSTS (Phase 3)
+   ============================================ */
+
+.buffer-inline-container {
+  margin: 2em 0;
+}
+
+.buffer-inline-container .contact-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 130px;
+  gap: 5px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray-800) transparent;
+  padding-bottom: 4px;
+}
+
+/* Inline strips are permanently lit */
+.buffer-inline-container.lit .emulsion {
+  background-color: #ffffff;
+}
+
+.buffer-inline-container.lit .emulsion img {
+  opacity: 0.88;
+  filter: brightness(1.1) contrast(1.15) saturate(1.1);
+}
+
+.buffer-inline-container.lit .frame:hover .emulsion img {
+  opacity: 0.92;
+  filter: brightness(1.15) contrast(1.1) saturate(1.15);
+}
+
+@media (max-width: 640px) {
+  .buffer-inline-container .contact-grid {
+    grid-auto-columns: 100px;
+  }
+}
+
+/* ============================================
+   ASSET FRAME STRIPS (from library picks)
+   Single-line horizontally-scrollable strip with
+   flanking red arrow navigation. Scoped to
+   .frame-strip so buffer-date inline strips keep
+   their own layout.
+   ============================================ */
+
+/* ---- NAV WRAPPER (‹ [strip] ›) ---- */
+
+.frame-strip-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+/* ---- ARROW BUTTONS ---- */
+
+.strip-arrow {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px 2px;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.strip-arrow:hover { opacity: 1; }
+.strip-arrow:focus-visible {
+  outline: 1px solid var(--red);
+  outline-offset: 2px;
+}
+
+/* Dim at scroll boundaries */
+.strip-arrow.at-end { opacity: 0.15; cursor: default; }
+
+/* Hide entirely when strip doesn't overflow */
+.strip-arrow.hidden { display: none; }
+
+/* ---- SCROLLABLE GRID ---- */
+
+.buffer-inline-container.frame-strip .contact-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 5px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  grid-auto-flow: unset;
+  grid-auto-columns: unset;
+  max-width: 100%;
+  padding-bottom: 2px;
+
+  /* Hide scrollbar — arrows are the navigation affordance */
+  scrollbar-width: none;
+}
+
+.buffer-inline-container.frame-strip .contact-grid::-webkit-scrollbar {
+  display: none;
+}
+
+.buffer-inline-container.frame-strip .contact-grid .frame {
+  flex: 0 0 110px;
+  min-width: 0;
+  max-width: none;
+  scroll-snap-align: start;
+}
+
+/* Keyboard focus ring on individual frames */
+.buffer-inline-container.frame-strip .contact-grid .frame:focus-visible {
+  outline: 1px solid var(--red);
+  outline-offset: -1px;
+  border-color: var(--red);
+}
+
+/* ---- MOBILE ---- */
+
+@media (max-width: 640px) {
+  .frame-strip-nav {
+    max-width: 100%;
+    gap: 4px;
+  }
+
+  .strip-arrow {
+    font-size: 16px;
+    padding: 2px 0;
+  }
+
+  .buffer-inline-container.frame-strip .contact-grid .frame {
+    flex: 0 0 85px;
+  }
+}
+
+/* ============================================================
+   EMPTY STATES — shared across every public surface
+   ============================================================
+   A fresh instance is the state every fork starts in, and the
+   state any instance returns to when its content is cleared.
+   One idiom so archive / buffer / wall / field notes all say
+   "nothing here yet" the same way, and any surface added later
+   inherits it for free.
+
+   The distinction the surfaces draw (see js/page-*.js):
+     - data file MISSING  -> sample content, so a fork that has
+       not been seeded still looks like a photography site
+     - data file EMPTY    -> this block, because content that was
+       deliberately cleared must not appear to still be there
+   ============================================================ */
+
+.page-empty {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 80px 40px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--gray-700);
+  letter-spacing: 2px;
+}
+
+.page-empty .accent { color: var(--red); }
+
+/* Second line: what to do about it. Quieter than the status line. */
+.page-empty-hint {
+  display: block;
+  margin-top: 14px;
+  font-size: 0.62rem;
+  letter-spacing: 1.5px;
+  color: var(--gray-800);
+}
+
+/* The archive and wall render their empty state inside the photo grid, so it
+   has to span every column instead of sitting in the first cell. */
+.archive-grid .page-empty,
+.wall-grid .page-empty {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .page-empty { padding: 56px 20px; letter-spacing: 1.4px; }
+}
