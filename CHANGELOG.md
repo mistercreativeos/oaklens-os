@@ -25,6 +25,18 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-09 (night)
+
+`setup.sh` broke on Linux — quietly. The deploy-log temp directory was made
+with a BSD-only `mktemp` flag that macOS accepts and GNU refuses ("too few
+X's"), so on every Linux machine the script lost the "Your site is live at:"
+address read-back while still exiting 0. Fixed with a portable template, and
+a guard test now keeps BSD-isms out of every script a fork runs. Nothing to
+do — merge and it's yours. If you installed from Linux and never saw your
+address printed, this was why.
+
+The console is stamped v0.13.1 (the sync-failure reporting below).
+
 ## 2026-08-09 (even later)
 
 A mistyped `GITHUB_REPO` secret used to look like a *working* site. Every
