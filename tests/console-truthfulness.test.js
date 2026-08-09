@@ -248,3 +248,65 @@ describe('R2 cleanup messages claim only what the code verified', () => {
     expect(dishonest, `reports a cleanup without the honest wording: ${dishonest.join(', ')}`).toEqual([]);
   });
 });
+
+// ---------- Cold run 4: a sync where GitHub never answered painted green -----
+//
+// A mistyped GITHUB_REPO secret 404s every file fetch AND the HEAD read, but
+// the worker's batch still answers 200 ok — and the D1 drafts that sync right
+// after are healthy, so the ledger read "✓ sync · drafts:0" and the toast said
+// "Synced from GitHub main" while not one byte had come from GitHub. The
+// verdict helper is the pure decision syncFromServer now renders from.
+
+describe('_syncVerdict: what a sync response actually proves', () => {
+  const FILES = ['data/buffer.json', 'data/archive.json', 'data/barrel.json'];
+  const nf = { ok: false, error: 'Not Found' };
+
+  it('all files failed + no HEAD → the GitHub link itself is down', () => {
+    const v = ui._syncVerdict({
+      files: { 'data/buffer.json': nf, 'data/archive.json': nf, 'data/barrel.json': nf },
+      headSha: null, headShaError: 'Not Found',
+    }, FILES);
+    expect(v.mode).toBe('github-down');
+    expect(v.error).toBe('Not Found');
+  });
+
+  it('a fresh fork\'s legitimate 404s stay ok while HEAD reads fine', () => {
+    // archive/posts/wallpapers are deliberately absent on a new fork (missing
+    // file → bundled samples render), so per-file 404s alone must not alarm.
+    const v = ui._syncVerdict({
+      files: { 'data/buffer.json': { ok: true, content: [] }, 'data/archive.json': nf, 'data/barrel.json': { ok: true, content: [] } },
+      headSha: 'HEAD_SHA',
+    }, FILES);
+    expect(v.mode).toBe('ok');
+  });
+
+  it('files arrived but HEAD did not → guard-disarmed warning, not an outage', () => {
+    const v = ui._syncVerdict({
+      files: { 'data/buffer.json': { ok: true, content: [] }, 'data/archive.json': nf, 'data/barrel.json': { ok: true, content: [] } },
+      headSha: null, headShaError: 'API rate limit exceeded',
+    }, FILES);
+    expect(v.mode).toBe('no-head');
+  });
+
+  it('falls back to a file\'s error when the HEAD read gave none', () => {
+    const v = ui._syncVerdict({
+      files: { 'data/buffer.json': nf, 'data/archive.json': nf, 'data/barrel.json': nf },
+      headSha: null,
+    }, FILES);
+    expect(v.mode).toBe('github-down');
+    expect(v.error).toBe('Not Found');
+  });
+});
+
+describe('_githubHint: config mistakes get their fix named', () => {
+  it('"Not Found" points at GITHUB_REPO', () => {
+    expect(ui._githubHint('Not Found')).toMatch(/GITHUB_REPO/);
+  });
+  it('"Bad credentials" points at GITHUB_TOKEN', () => {
+    expect(ui._githubHint('Bad credentials')).toMatch(/GITHUB_TOKEN/);
+  });
+  it('anything else stays unmapped — the raw error stands', () => {
+    expect(ui._githubHint('API rate limit exceeded')).toBeNull();
+    expect(ui._githubHint(undefined)).toBeNull();
+  });
+});

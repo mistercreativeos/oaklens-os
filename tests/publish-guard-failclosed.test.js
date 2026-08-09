@@ -206,4 +206,13 @@ describe('GET /api/sync — a missing headSha is announced, not silent', () => {
     expect(body.staleBaseGuard).toBeUndefined();
     expect(body.headShaError).toBeUndefined();
   });
+
+  it('names the repo it asked GitHub for', async () => {
+    // When every read 404s, "Not Found" alone is undebuggable; the console
+    // needs to be able to say "the worker asked for github.com/<this>" so a
+    // mistyped GITHUB_REPO secret (cold run 4) is visible from the console.
+    stubSync({ refOk: true });
+    const body = await (await worker.fetch(await syncReq(), env, ctx)).json();
+    expect(body.repo).toBe('owner/repo');
+  });
 });

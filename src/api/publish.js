@@ -367,6 +367,12 @@ export async function handleSync(request, env) {
   return jsonRes({
     ok: true,
     files: results,
+    // Which repo the worker actually asked GitHub for. The console shows this
+    // when every read fails — "Not Found" on its own is undebuggable, but
+    // "github.com/<what-you-typed> was not found" points straight at a
+    // mistyped GITHUB_REPO secret (the cold-run-4 failure). The endpoint is
+    // console-authed, so naming the repo leaks nothing.
+    repo: env.GITHUB_REPO,
     headSha,
     ...(headSha ? {} : {
       headShaError: headShaError || 'main HEAD unavailable',

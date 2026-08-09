@@ -25,6 +25,26 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-09 (even later)
+
+A mistyped `GITHUB_REPO` secret used to look like a *working* site. Every
+GitHub read failed with "Not Found", but the console's sync still painted
+green — the only data in the ledger line (`✓ sync · drafts:0`) came from the
+site's own database, not GitHub — and the Publish button failed with a bare
+"Not Found" that pointed at nothing. A fresh install hit exactly this.
+
+Nothing to do on your end unless you are seeing it: sync now says plainly when
+**nothing** came from GitHub, names the repo the worker asked for (so a typo
+is visible on sight), and both sync and Publish translate GitHub's two classic
+config errors into their fixes — "Not Found" → check `GITHUB_REPO`,
+"Bad credentials" → check `GITHUB_TOKEN`.
+
+- `/api/sync` now returns `repo` (which repo the worker queried) alongside the
+  per-file results. Console-authed, additive, ignored by older consoles.
+- A sync where files arrived but main's HEAD didn't still warns about the
+  disarmed stale-base guard, exactly as before. The new failure mode is only
+  the total one: no files *and* no HEAD.
+
 ## 2026-08-09 (later)
 
 Connecting your repo to Cloudflare — the thing that makes the console's

@@ -451,6 +451,46 @@ export function confirmPublish() {
 
 // ============== SERVER API ==============
 
+// Pure verdict (unit-tested): what a sync response actually proved about the
+// GitHub link. The worker fetches per-file and never fails the batch, so a
+// 200 with zero usable files is possible — and real: a mistyped GITHUB_REPO
+// secret 404s every file AND the HEAD read, while the drafts that sync right
+// after come from D1, not GitHub. Cold run 4 hit exactly that and the console
+// painted it green ("✓ sync · drafts:0") with only the disarmed-guard warning
+// hinting anything was wrong.
+//   github-down — no file arrived and main's HEAD was unreadable: the repo
+//                 link itself is broken (bad GITHUB_REPO / rejected token).
+//   no-head     — files arrived but HEAD didn't: stale-base guard disarmed.
+//   ok          — HEAD read fine. Per-file 404s are normal here: a fresh fork
+//                 legitimately has no archive/posts/wallpapers manifest yet.
+export function _syncVerdict(data, files) {
+  const entries = files.map((f) => data.files?.[f]).filter(Boolean);
+  const anyOk = entries.some((e) => e.ok);
+  if (!data.headSha && !anyOk) {
+    return {
+      mode: 'github-down',
+      error: data.headShaError || entries.find((e) => e.error)?.error || 'unknown',
+    };
+  }
+  return { mode: data.headSha ? 'ok' : 'no-head' };
+}
+
+// The two config mistakes behind almost every total GitHub failure, said in
+// terms of the fix. Anything else returns null and the raw error stands.
+export function _githubHint(message) {
+  const m = String(message || '');
+  if (/not found/i.test(m)) {
+    return 'The GITHUB_REPO secret probably doesn\'t match your repo — it must be '
+      + 'exactly owner/repo-name as it appears on github.com. Re-run '
+      + '"npx wrangler secret put GITHUB_REPO" to fix it.';
+  }
+  if (/bad credentials/i.test(m)) {
+    return 'GitHub rejected the token — expired, revoked, or mis-pasted. Make a '
+      + 'fresh one and re-run "npx wrangler secret put GITHUB_TOKEN".';
+  }
+  return null;
+}
+
 export let _syncPendingReconnect = false;   // an offline-deferred sync — rerun on reconnect
 
 export async function syncFromServer() {
@@ -475,11 +515,12 @@ export async function syncFromServer() {
     const filesParam = surfaces.map(s => s.file).join(',');
     const data = await syncFiles(filesParam);
     _syncPendingReconnect = false;
+    const verdict = _syncVerdict(data, surfaces.map(s => s.file));
     // Record the base revision this snapshot came from — stamped onto the next
     // publish so the worker can reject a publish built on now-stale state.
     if (data.headSha) {
       setSyncedSha(data.headSha);
-    } else {
+    } else if (verdict.mode === 'no-head') {
       // The worker got the files but not main's HEAD, so this snapshot carries
       // no base revision and the next publish runs with the stale-base guard
       // disarmed. That used to happen in total silence. It doesn't fail the
@@ -490,6 +531,8 @@ export async function syncFromServer() {
       showToast('⚠ Couldn\'t read main\'s revision — cross-device publish check is off until the next sync',
         { kind: 'warning', id: 'sync-nohead' });
     }
+    // (github-down says its piece once, below — a disarmed-guard warning under
+    // a link that is down entirely would be noise pointing at the wrong thing.)
 
     const results = [];
     for (const { file, surface } of surfaces) {
@@ -521,7 +564,23 @@ export async function syncFromServer() {
       }
     } catch (err) { console.warn('[sync] drafts:', err.message); }
 
-    if (results.length) {
+    if (verdict.mode === 'github-down') {
+      // Drafts above may still have merged — they live in D1, not GitHub — so
+      // keep the renders honest, but this sync must NOT read as a success:
+      // nothing GitHub-backed arrived, and publishing is broken the same way.
+      if (results.length) {
+        save();
+        refreshStageIndicators();
+        renderBuffer(); renderArchive(); renderFN();
+        renderWall(); renderBarrel(); renderNetwork(); renderLibrary(); renderPublish();
+      }
+      const asked = data.repo ? ` — the worker asked for github.com/${data.repo}` : '';
+      if (statusEl) statusEl.textContent = `✕ nothing synced from GitHub (${verdict.error})`;
+      // kind:'error' also writes the ledger, so this is the one full record.
+      showToast(`✕ Nothing synced — GitHub answered "${verdict.error}" for every file${asked}. `
+        + (_githubHint(verdict.error) || 'Check the GITHUB_TOKEN and GITHUB_REPO secrets.'),
+        { kind: 'error', id: 'sync-ghdown' });
+    } else if (results.length) {
       save();
       refreshStageIndicators();
       renderBuffer(); renderArchive(); renderFN();
@@ -726,7 +785,12 @@ export async function publishToServer() {
       return;
     }
     logLine(`✕ ${err.message}`, 'log-err');
-    toast(`⚠ Publish failed: ${err.message}`, 'error');
+    // "Not Found" / "Bad credentials" from GitHub are config mistakes with
+    // known fixes — say the fix, not just the symptom (cold run 4's publish
+    // failed with a bare "Not Found" over a mistyped GITHUB_REPO secret).
+    const hint = _githubHint(err.message);
+    if (hint) logLine(`▸ ${hint}`, 'log-info');
+    toast(`⚠ Publish failed: ${err.message}${hint ? ` — ${hint}` : ''}`, 'error');
   } finally {
     endProgress('publish');
     if (btn) btn.disabled = false;

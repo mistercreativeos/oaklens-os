@@ -193,14 +193,22 @@ settings** → **Personal access tokens**). Two kinds exist; the first is
 better:
 
 - **Fine-grained** (recommended) → *Generate new token*
+  - **Token name / Description:** labels for your own benefit — nothing
+    depends on the exact words. A name like "My site" and an empty
+    description are fine.
+  - **Expiration:** if you'd rather not think about it, pick the longest
+    GitHub offers; the 90-day default is also fine if you prefer a shorter
+    leash. When it expires, Publish starts failing and the console will say
+    the token was rejected — that is your cue to make a new one and re-run the
+    command below, not a sign anything broke. Your `git push` will start
+    failing at the same moment, for the same reason. A calendar note near the
+    date turns the surprise into a chore.
   - **Repository access:** *Only select repositories* → pick your site's repo.
   - **Permissions:** *Repository permissions* → **Contents** → **Read and
     write**. That is the only one needed — it covers both the reading and the
-    committing your site does. Leave everything else alone.
-  - **Expiration:** your call. Note that when it expires, Publish starts
-    failing and the console will say the token was rejected — that is your cue
-    to make a new one and re-run the command below, not a sign anything broke.
-    Your `git push` will start failing at the same moment, for the same reason.
+    committing your site does. Leave everything else alone. (GitHub adds
+    **Metadata: Read-only** by itself and marks it *Required* — that is
+    normal, leave it too.)
 - **Classic** → *Generate new token (classic)*, scope **`repo`**. Simpler to
   find, but it grants access to **every** repo you own, so prefer fine-grained.
 
@@ -216,7 +224,9 @@ npx wrangler secret put GITHUB_TOKEN
 
 npx wrangler secret put GITHUB_REPO
 # value: owner/repo — e.g. yourname/your-site. Just those two parts, no
-# https://, no .git, no branch.
+# https://, no .git, no branch. Copy it from your repo's address bar rather
+# than typing it: a typo here does not fail loudly — every GitHub call the
+# worker makes just answers "Not Found".
 
 npx wrangler secret put ADMIN_KEY
 # key for /api/subscribers/export
@@ -226,6 +236,14 @@ npx wrangler secret put ADMIN_KEY
 # ARCHIVE_S3_ACCESS + ARCHIVE_S3_SECRET
 #   — daily Wayback archive cron
 ```
+
+**Then prove the pair works, end to end — thirty seconds.** In the Field
+Console, open **Publish** and press **↓ Sync from GitHub**. Green with a list
+like `buffer:0 · barrel:0 · …` means token and repo name both work. A red
+message naming a repo means `GITHUB_REPO` has a typo — the message shows
+exactly what the worker asked for, so compare it against your repo's address
+and re-run the command. "Bad credentials" means the token itself — re-run
+`npx wrangler secret put GITHUB_TOKEN` with a fresh one.
 
 ## Deploy
 
