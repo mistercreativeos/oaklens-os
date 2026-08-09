@@ -25,6 +25,14 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-09 (small hours)
+
+On Android Chrome, tapping a frame in the buffer or archive flashed a grey
+highlight over the image — the browser's built-in "you tapped this" overlay,
+which the public stylesheet never turned off (the console's already did).
+Suppressed site-wide; the hover and light-table states are the real feedback.
+Nothing to do — merge and it's yours.
+
 ## 2026-08-09 (night)
 
 `setup.sh` broke on Linux — quietly. The deploy-log temp directory was made
