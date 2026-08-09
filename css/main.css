@@ -271,6 +271,10 @@ img {
 /* Prevent pinch-to-zoom on mobile */
 html {
   touch-action: pan-x pan-y;
+  /* Android Chrome paints a grey tap flash on anything with a click handler
+     (frames, burst cells, day headers). Hover/lit states are the feedback
+     here — suppress the overlay everywhere, like field-console.css does. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ============================================
