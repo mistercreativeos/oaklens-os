@@ -62,7 +62,6 @@ function logSecretHealth(env) {
   const offFeatures = [
     ['GitHub publish/sync', ['GITHUB_TOKEN', 'GITHUB_REPO']],
     ['subscriber export', ['ADMIN_KEY']],
-    ['portal email notifications', ['RESEND_API_KEY']],
     ['Wayback archive cron', ['ARCHIVE_S3_ACCESS', 'ARCHIVE_S3_SECRET']],
     ['bench RAW cold storage', ['B2_BUCKET_NAME', 'B2_KEY_ID', 'B2_APP_KEY']],
   ].filter(([, keys]) => keys.some((k) => !env[k]));

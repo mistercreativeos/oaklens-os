@@ -26,7 +26,7 @@ cd "$(dirname "$0")/.." || exit 1
 
 # ---- output helpers -------------------------------------------------------
 bold()  { printf '\033[1m%s\033[0m\n' "$1"; }
-step()  { printf '\n\033[1m[%s of 7] %s\033[0m\n' "$1" "$2"; }
+step()  { printf '\n\033[1m[%s of 8] %s\033[0m\n' "$1" "$2"; }
 info()  { printf '  %s\n' "$1"; }
 good()  { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn()  { printf '  \033[33m!\033[0m %s\n' "$1"; }
@@ -232,7 +232,7 @@ fi
 # the dashboard should not first read three lines about what is coming next.
 info "Three pieces, all on Cloudflare's free tier:"
 info "  • a place for photos and video   (R2)"
-info "  • a small database for your notes and client portal   (D1)"
+info "  • a small database for drafts and your work queue   (D1)"
 info "  • a list for email subscribers   (KV)"
 echo
 info "Two things you'll see and can ignore: wrangler asking whether it should"
@@ -303,11 +303,11 @@ if placeholder_left YOUR_D1_DATABASE_ID; then
   echo
   info "Database…"
   info "  A small filing drawer your site writes to as you work: drafts of field"
-  info "  notes you haven't published, and the client portal. Your photographs"
-  info "  do not go in here."
+  info "  notes you haven't published, and your processing queue. Your"
+  info "  photographs do not go in here."
   info "  The name is internal — visitors never see it, it isn't part of your"
   info "  web address, and the suggestion below is a good long-term answer."
-  db_name="$(ask 'Database name' 'photo-portal')"
+  db_name="$(ask 'Database name' 'site-notes')"
   sub YOUR_DB_NAME "$db_name"
   capture npx wrangler d1 create "$db_name"
   db_id="$(printf '%s' "$CAPTURED" | node scripts/lib/wrangler-parse.mjs d1 2>/dev/null)"
@@ -396,7 +396,17 @@ info "  1) aperture       cool and architectural, contemporary studio"
 info "  2) passe-partout  warm paper and museum labels, fine-art gallery"
 info "  3) noir           black, white and red — high-contrast, terminal feel"
 echo
-preset_choice="$(ask 'Pick one [1-3]' '1')"
+# Default to whatever is ALREADY chosen, so pressing return on a re-run keeps
+# it. This used to default to 1 every time: re-running the script — which its
+# own header promises is safe — quietly put a passe-partout site back to
+# aperture, with a green tick and no mention that anything had changed.
+current_preset="$(sed -nE "s/.*preset:[[:space:]]*'([^']*)'.*/\1/p" site.config.js 2>/dev/null | head -1)"
+case "$current_preset" in
+  passe-partout) preset_default=2 ;;
+  noir)          preset_default=3 ;;
+  *)             preset_default=1 ;;
+esac
+preset_choice="$(ask 'Pick one [1-3]' "$preset_default")"
 case "$preset_choice" in
   2) preset="passe-partout" ;;
   3) preset="noir" ;;
@@ -410,7 +420,78 @@ const out = src.replace(/preset:\s*'[^']*'/, \"preset: '$preset'\");
 if (out !== src) fs.writeFileSync('site.config.js', out);
 " && good "Look set to $preset."
 
-# ---- 6. go live -----------------------------------------------------------
+# ---- 6. save the settings into the project's history ----------------------
+#
+# THE MOST EXPENSIVE FIVE LINES THIS SCRIPT DOES NOT HAVE, until now.
+#
+# `wrangler.jsonc` ships tracked in git, full of placeholders, and everything
+# above fills it in ON THIS COMPUTER ONLY. Nothing told anyone to commit it. So
+# the moment someone connected their repo to Cloudflare, Cloudflare checked out
+# GitHub's copy — still `your-worker-name` / `YOUR_KV_NAMESPACE_ID` /
+# `your-bucket-name` — deployed under the wrong name, auto-provisioned a junk R2
+# bucket literally called `your-bucket-name`, and died on the KV placeholder.
+# Their site kept running on the last hand-deploy, so the failure was completely
+# invisible until they wondered why Publish did nothing.
+#
+# Committing here does not fix that on its own (the push is still theirs to
+# make, and needs credentials this script has no business handling). What it
+# does is remove the step a person can forget: by the time they push anything at
+# all, the settings are already in the commit.
+#
+# Deliberately NOT `git add -A`: only the two files this script wrote. Somebody
+# else's work-in-progress is not ours to commit.
+step 6 "Saving your settings"
+git_ok=0
+if [ -d .git ] && command -v git >/dev/null 2>&1; then git_ok=1; fi
+if [ "$git_ok" != "1" ]; then
+  warn "This folder isn't a git project, so there's nothing to save your settings into."
+  info "That usually means the code was downloaded as a ZIP rather than cloned."
+  info "Everything below still works — but publishing from the console later"
+  info "needs a real clone of your own GitHub copy. See setup.md."
+# `git status --porcelain`, not `git diff`: diff is blind to a file git has
+# never seen, and site.config.js is exactly that on a checkout that only ever
+# had the example. "No diff" would have read as "already saved" while the
+# file sat untracked.
+elif [ -z "$(git status --porcelain -- wrangler.jsonc site.config.js 2>/dev/null)" ]; then
+  good "Settings already saved — nothing changed."
+else
+  info "Your settings live in two files, and they're only on this computer so far."
+  info "This records them in your project's history so they can travel to GitHub."
+  echo
+  # Git labels every save with a name and an email, and a freshly installed git
+  # has neither — `git commit` then fails with "Please tell me who you are",
+  # which reads like the script broke. Ask, and write it --local so we never
+  # touch settings that belong to the rest of their machine.
+  if [ -z "$(git config user.email 2>/dev/null)" ] || [ -z "$(git config user.name 2>/dev/null)" ]; then
+    info "First, git needs to know who's making the change — it labels every"
+    info "save with a name and an email. This stays on this project only."
+    # The owner of the GitHub copy is already in the remote address, so the
+    # defaults are usually just right and they can press return twice.
+    owner="$(git config --get remote.origin.url 2>/dev/null \
+      | sed -E 's#.*[/:]([^/]+)/[^/]+(\.git)?$#\1#')"
+    [ "$owner" = "$(git config --get remote.origin.url 2>/dev/null)" ] && owner=""
+    git_name="$(ask 'Your name' "${owner:-$(id -un)}")"
+    git_mail="$(ask 'Your email' "${owner:+$owner@users.noreply.github.com}")"
+    git config --local user.name "$git_name"
+    git config --local user.email "$git_mail"
+    good "Saved as $git_name <$git_mail>."
+  fi
+  if git add wrangler.jsonc site.config.js 2>/dev/null \
+     && git commit -q -m "config: my site's settings" 2>/dev/null; then
+    good "Settings saved to your project's history."
+    info "They're still only on this computer. Sending them to GitHub is one"
+    info "command — it's in the next-steps list at the end."
+  else
+    warn "Couldn't save the settings automatically."
+    info "Nothing is broken and nothing is lost. Run these two yourself:"
+    info "    git add wrangler.jsonc site.config.js"
+    info "    git commit -m \"my site's settings\""
+    info "Do it before you connect your repo to Cloudflare — connecting with"
+    info "the blank template still on GitHub is what breaks the Publish button."
+  fi
+fi
+
+# ---- 7. go live -----------------------------------------------------------
 #
 # This step used to be homework: the script finished, printed "now run npx
 # wrangler deploy", and stopped. Two things went wrong with that, both found on
@@ -433,7 +514,7 @@ if (out !== src) fs.writeFileSync('site.config.js', out);
 # question nobody can see is a hang. WRANGLER_LOG_PATH gets us the output
 # anyway: wrangler writes its own log to that file while the screen stays
 # interactive.
-step 6 "Putting your site on the internet"
+step 7 "Putting your site on the internet"
 LIVE_URL=""
 if grep -Eq '^[[:space:]]*repoConnected:[[:space:]]*true' site.config.js 2>/dev/null; then
   good "Your repo is connected to Cloudflare, so it deploys itself."
@@ -482,8 +563,8 @@ else
   rm -rf "$deploy_dir"
 fi
 
-# ---- 7. secrets -----------------------------------------------------------
-step 7 "Setting your password"
+# ---- 8. secrets -----------------------------------------------------------
+step 8 "Setting your password"
 info "Two things get stored securely on Cloudflare — never in your code,"
 info "never in your repo, and not visible to anyone who clones your site."
 echo
@@ -587,29 +668,45 @@ cat <<'EOF'
   Then sign in at your address + /dev/field-console with the password you
   just set, and start posting.
 
-  5. Worth doing soon: connect your GitHub repo to Cloudflare
-     Right now, publishing from the console saves your changes to GitHub,
-     but your live site only picks them up when you run `npx wrangler
-     deploy`. Connect the repo once and that last step disappears —
-     publish, and the site updates itself in about a minute:
+  5. Make a GitHub token, and give it to your site
+     One token, two jobs: it lets your console save posts to GitHub, and it
+     is also what you type when git asks for a password. Make a fine-grained
+     token with Contents: Read and write on this repo only —
+     GitHub -> Settings -> Developer settings -> Personal access tokens.
+     It is shown once, so put it in your password manager as it appears.
+        echo -n 'ghp_your_token' | npx wrangler secret put GITHUB_TOKEN
+        echo -n 'you/your-repo'  | npx wrangler secret put GITHUB_REPO
+     Full walkthrough in setup.md, "GITHUB_TOKEN + GITHUB_REPO".
+
+  6. Send your settings to GitHub  <- do this before step 7
+     Your settings are saved on this computer. GitHub still has the blank
+     template, and step 7 makes Cloudflare read GitHub's copy, so this has
+     to happen first:
+        git add -A
+        git commit -m "my site"
+        git push
+     The push asks for a username and a password. The "password" is the
+     token from step 5, NOT your GitHub account password. The account
+     password is refused, which looks like a broken login and is not.
+
+  7. Connect your GitHub repo to Cloudflare
+     This is what makes the Publish button in your console actually put
+     things live. Without it, Publish saves to GitHub and your site keeps
+     serving the old copy until you run `npx wrangler deploy` by hand:
         Cloudflare dashboard -> Compute -> Workers & Pages -> your Worker
         -> Settings -> Build -> Connect a repository
      (Cloudflare is mid-redesign. Older accounts show "Workers & Pages"
      straight in the sidebar with no "Compute" above it — same place.)
-     Leave the build command empty (there is nothing to build), set the
-     deploy command to `npx wrangler deploy`, and switch off builds for
+     Leave the build command empty (there is nothing to build), keep the
+     deploy command as `npx wrangler deploy`, and switch OFF builds for
      non-production branches. Then set  repoConnected: true  in
-     site.config.js so the console describes the new flow, and from that
-     point on go live with `git push` — not `npx wrangler deploy`, which
-     the next automatic build would quietly undo.
+     site.config.js, commit and push — that push is what starts the first
+     build. From then on go live with `git push`, not `npx wrangler deploy`,
+     which the next automatic build would quietly undo.
      Full walkthrough in setup.md, "Connect your repo".
 
   Optional extras — each one is off until you set it, and nothing breaks
   while it's off:
-     GITHUB_TOKEN + GITHUB_REPO   save your posts to GitHub automatically
-                                  (setup.md walks through making the token —
-                                   it is the fiddliest step here)
-     RESEND_API_KEY               email notifications for client messages
      ADMIN_KEY                    export your subscriber list
      B2_*                         cold storage for RAW files
      ARCHIVE_S3_*                 daily backup to the Internet Archive

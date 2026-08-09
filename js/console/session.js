@@ -169,8 +169,17 @@ export async function applyInstancePosture() {
   const badge = document.getElementById('demo-badge');
   if (badge && s.demoMode) badge.style.display = '';
   const hint = document.getElementById('publish-deploy-hint');
-  if (hint && s.repoConnected) {
-    hint.textContent = 'Cloudflare rebuilds from the repo — live in about a minute. No ZIP, no terminal, no cleanup.';
+  if (hint) {
+    // Also PARKED ON THE ELEMENT, not just rendered into it. publish.js sits
+    // below this module in the layer order and cannot import from it, but it
+    // has to tell the truth about what a finished publish just did — "Cloudflare
+    // is rebuilding" is a lie on an unconnected fork, and it was the exact lie
+    // that hid a broken deploy through a whole cold run. A dataset flag is a
+    // DOM read, not an upward import.
+    hint.dataset.repoConnected = s.repoConnected ? '1' : '0';
+    if (s.repoConnected) {
+      hint.textContent = 'Cloudflare rebuilds from the repo — live in about a minute. No ZIP, no terminal, no cleanup.';
+    }
   }
   applyRingPosture(s.webring);
 }

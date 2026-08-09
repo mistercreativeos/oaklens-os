@@ -600,8 +600,27 @@ export async function publishToServer() {
     // flagged stale against the revision we just superseded.
     setSyncedSha(data.sha);
 
-    logLine(`✓ Published! ${data.sha.slice(0, 7)} · Cloudflare Pages deploying (~30s)`, 'log-ok');
-    logEvent(`✓ published ${data.sha.slice(0, 7)} — Pages deploying`, 'info');
+    // WHAT HAPPENS NEXT DEPENDS ON THE REPO, so say the one that is true.
+    // This line used to promise "Cloudflare Pages deploying (~30s)" after every
+    // publish — wrong twice over: it is Workers Builds, not Pages, and on a fork
+    // whose repo is not connected to Cloudflare NOTHING is deploying. The commit
+    // lands, the live site keeps serving the old build, and the console says it
+    // worked. A cold run lost an evening to exactly that.
+    // session.js parks the flag on the hint element at boot; it sits above this
+    // module in the layer order, so this reads the DOM rather than importing it.
+    const connected =
+      document.getElementById('publish-deploy-hint')?.dataset.repoConnected === '1';
+    const sha = data.sha.slice(0, 7);
+    logLine(
+      connected
+        ? `✓ Published! ${sha} · Cloudflare is rebuilding — live in about a minute`
+        : `✓ Published! ${sha} · saved to GitHub. Run npx wrangler deploy to put it live`,
+      'log-ok',
+    );
+    logEvent(
+      connected ? `✓ published ${sha} — Cloudflare rebuilding` : `✓ published ${sha} — deploy to go live`,
+      'info',
+    );
 
     // Execute queued R2 deletions for non-library surfaces
     const pubR2 = _pendingR2Deletes.filter(d => d.surface !== 'library');

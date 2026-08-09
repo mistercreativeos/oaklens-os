@@ -295,6 +295,62 @@ function makeFork() {
 }
 
 /**
+ * Hermetic git. Without this the suite reads whoever is running it: their
+ * global identity would silently satisfy the no-identity test below, and a
+ * global `commit.gpgsign = true` would hang the commit on a passphrase prompt.
+ */
+// Two shapes, and the difference bites: runSetup MERGES its env argument over
+// a PATH that points at the fake wrangler, so handing it a full `process.env`
+// clone puts the real PATH back and runs the real binary. Pass the overrides
+// alone to runSetup; the full clone is only for direct `git` calls here.
+const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
+const GIT_ENV = { ...process.env, ...GIT_HERMETIC };
+
+/**
+ * The same throwaway fork, but a REAL git checkout of it — the shape an
+ * installer actually has, because the guide tells them to clone.
+ *
+ * Real git, not a stub, on purpose. The step under test only matters if a
+ * commit lands in a real history, and a fake `git` that always says yes would
+ * rehearse the happy path and prove nothing. (The fake wrangler taught us that
+ * the expensive way — see the WRANGLER_LOG_PATH note above.)
+ *
+ * `identity: false` models a machine where git has just been installed and
+ * knows nobody. That is the DEFAULT on macOS, not an edge case: git arrives
+ * with the Xcode command line tools carrying no user.name/user.email, and
+ * `git commit` answers "Please tell me who you are" and exits non-zero.
+ */
+function makeGitFork({ identity = true } = {}) {
+  const dir = makeFork();
+  const git = (...args) => execFileSync('git', args, { cwd: dir, env: GIT_ENV, stdio: 'pipe' });
+  git('init', '-q', '-b', 'main');
+  git('remote', 'add', 'origin', 'https://github.com/teststudio/oaklens-os');
+  // Both files ship TRACKED and full of placeholders. That is the whole
+  // mechanism behind the bug: a fork's GitHub copy keeps the blank template
+  // until somebody commits over it.
+  cpSync(join(dir, 'wrangler.example.jsonc'), join(dir, 'wrangler.jsonc'));
+  cpSync(join(dir, 'site.config.example.js'), join(dir, 'site.config.js'));
+  git('add', 'wrangler.jsonc', 'site.config.js');
+  git('-c', 'user.name=Engine', '-c', 'user.email=engine@example.invalid',
+    'commit', '-q', '-m', 'the template, unfilled');
+  // A real install is a CLONE, which arrives with an `origin/main` tracking ref
+  // already pointing at what GitHub had. Without this the fixture is a shape no
+  // user ever has, and doctor's "have your changes reached GitHub?" check would
+  // be exercised only on its can't-tell branch.
+  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  if (identity) {
+    git('config', '--local', 'user.name', 'Test Installer');
+    git('config', '--local', 'user.email', 'installer@example.invalid');
+  }
+  return dir;
+}
+
+/** Read back a repo's history. */
+function gitLog(dir, ...args) {
+  return execFileSync('git', ['log', ...args], { cwd: dir, env: GIT_ENV, encoding: 'utf8' });
+}
+
+/**
  * Run setup.sh with scripted answers.
  * @param {string} dir fork directory
  * @param {string[]} answers stdin lines, in prompt order
@@ -453,6 +509,112 @@ describe('setup.sh — the ways it can go wrong', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 2b. Saving the settings — the step whose absence broke every connected fork
+// ---------------------------------------------------------------------------
+//
+// `wrangler.jsonc` is tracked and ships full of placeholders; setup.sh fills it
+// in ON THE USER'S COMPUTER. Nothing used to tell anyone to commit it, so the
+// moment they connected their repo, Cloudflare Builds checked out GitHub's copy
+// — still `your-worker-name` / `YOUR_KV_NAMESPACE_ID` / `your-bucket-name` —
+// deployed under the wrong name, auto-provisioned a junk R2 bucket literally
+// called `your-bucket-name`, and died on the KV placeholder. Their site kept
+// serving the last hand-deploy, so nothing looked wrong until they wondered why
+// Publish did nothing.
+describe('setup.sh — saving the settings into the project history', () => {
+  let dir;
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  const ANSWERS = ['my-photo-site', 'photo-subscribers', 'photo-portal', 'photo-cdn', '2', 'hunter2hunter2'];
+  // Two extra prompts, between the preset and the password, on a machine where
+  // git has no identity yet.
+  const ANSWERS_WITH_IDENTITY = [
+    'my-photo-site', 'photo-subscribers', 'photo-portal', 'photo-cdn', '2',
+    'Ada Photographer', 'ada@example.invalid',
+    'hunter2hunter2',
+  ];
+
+  it('commits the filled-in config, so a push carries it', () => {
+    dir = makeGitFork();
+    const r = runSetup(dir, ANSWERS, GIT_HERMETIC);
+    expect(r.status).toBe(0);
+
+    const files = gitLog(dir, '-1', '--name-only', '--format=').trim().split('\n').sort();
+    expect(files).toEqual(['site.config.js', 'wrangler.jsonc']);
+
+    // And the committed copy is the FILLED one. Committing the placeholder
+    // template would satisfy a naive "did it commit?" assertion while shipping
+    // the exact config that broke the build.
+    const committed = execFileSync('git', ['show', 'HEAD:wrangler.jsonc'],
+      { cwd: dir, env: GIT_ENV, encoding: 'utf8' });
+    expect(remainingPlaceholders(committed)).toEqual([]);
+    expect(committed).toContain('my-photo-site');
+  });
+
+  it('asks who is making the change when git has no identity, and records it locally', () => {
+    // Without this, `git commit` fails with "Please tell me who you are" and
+    // the whole step reads as the script being broken.
+    dir = makeGitFork({ identity: false });
+    const r = runSetup(dir, ANSWERS_WITH_IDENTITY, GIT_HERMETIC);
+    expect(r.status).toBe(0);
+
+    expect(gitLog(dir, '-1', '--format=%an <%ae>').trim())
+      .toBe('Ada Photographer <ada@example.invalid>');
+    // --local: their machine-wide git settings are not ours to edit.
+    const local = readFileSync(join(dir, '.git', 'config'), 'utf8');
+    expect(local).toContain('ada@example.invalid');
+  });
+
+  it('offers the repo owner as the default identity, so both answers are a return', () => {
+    dir = makeGitFork({ identity: false });
+    const r = runSetup(dir, [
+      'my-photo-site', 'photo-subscribers', 'photo-portal', 'photo-cdn', '2',
+      '', '', // accept both defaults
+      'hunter2hunter2',
+    ], GIT_HERMETIC);
+    expect(r.status).toBe(0);
+    // `teststudio` is the owner in the origin URL makeGitFork set.
+    expect(gitLog(dir, '-1', '--format=%an <%ae>').trim())
+      .toBe('teststudio <teststudio@users.noreply.github.com>');
+  });
+
+  it('commits only the two files it wrote, never someone else\'s work in progress', () => {
+    dir = makeGitFork();
+    writeFileSync(join(dir, 'my-notes.txt'), 'half-finished thoughts\n');
+    const r = runSetup(dir, ANSWERS, GIT_HERMETIC);
+    expect(r.status).toBe(0);
+
+    const files = gitLog(dir, '-1', '--name-only', '--format=').trim().split('\n');
+    expect(files).not.toContain('my-notes.txt');
+    expect(existsSync(join(dir, 'my-notes.txt'))).toBe(true);
+  });
+
+  it('is safe to re-run: the second pass adds no empty commit', () => {
+    dir = makeGitFork();
+    runSetup(dir, ANSWERS, GIT_HERMETIC);
+    const before = gitLog(dir, '--format=%H').trim();
+    // A re-run asks far fewer questions — naming and storage are already done —
+    // so the answers are only the ones still on screen: the look, then the
+    // password. Pressing return at the look keeps whatever is already set.
+    const r = runSetup(dir, ['', 'hunter2hunter2'], GIT_HERMETIC);
+    expect(gitLog(dir, '--format=%H').trim()).toBe(before);
+    expect(r.stdout).toContain('already saved');
+    // The re-run must not have quietly changed the look back to the first
+    // option, which is what defaulting to 1 every time used to do.
+    expect(r.siteConfig).toMatch(/preset:\s*'passe-partout'/);
+  });
+
+  it('says so plainly, and carries on, when the folder is not a git project', () => {
+    // A downloaded ZIP rather than a clone. Nothing here is fatal — the site
+    // still deploys — but publishing later needs a real repo, so say it now.
+    dir = makeFork();
+    const r = runSetup(dir, ANSWERS);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/isn't a git project/);
+    expect(remainingPlaceholders(r.config)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 3. doctor.sh
 // ---------------------------------------------------------------------------
 
@@ -468,7 +630,13 @@ function runDoctor(dir, env = {}) {
     stdout = execFileSync('bash', [join(dir, 'scripts', 'doctor.sh')], {
       cwd: dir,
       encoding: 'utf8',
-      env: { ...process.env, PATH: `${join(dir, 'bin')}:${process.env.PATH}`, CALL_LOG: callLog, ...env },
+      env: {
+        ...process.env,
+        PATH: `${join(dir, 'bin')}:${process.env.PATH}`,
+        CALL_LOG: callLog,
+        ...GIT_HERMETIC,
+        ...env,
+      },
       timeout: 60_000,
     });
   } catch (e) {
@@ -483,7 +651,10 @@ describe('doctor.sh', () => {
   let dir;
   const ANSWERS = ['my-photo-site', 'photo-subscribers', 'photo-portal', 'photo-cdn', '2', 'hunter2hunter2'];
   beforeEach(() => {
-    dir = makeFork();
+    // A git checkout, because that is what an install actually is — and because
+    // doctor now reports on what the project's history holds, which a bare
+    // directory cannot answer.
+    dir = makeGitFork();
     // doctor runs `npm test`, which does not exist in the throwaway fork.
     writeFileSync(join(dir, 'bin', 'npm'), '#!/usr/bin/env bash\nexit 0\n');
     chmodSync(join(dir, 'bin', 'npm'), 0o755);
@@ -544,6 +715,66 @@ describe('doctor.sh', () => {
     expect(r.stdout).not.toMatch(/✗.*[Oo]ptional/);
   });
 
+  // ---- what GitHub actually has -------------------------------------------
+  //
+  // The state that broke a cold run and left no trace: settings filled in
+  // perfectly on the installer's computer, blank template still on GitHub, and
+  // Cloudflare building from GitHub. The site kept serving its last hand-deploy,
+  // so every visible signal said fine.
+
+  it('catches a config that is filled in here but still blank in the history', () => {
+    runSetup(dir, ANSWERS);
+    // Undo the commit setup.sh made, keeping the filled file on disk. This is
+    // exactly the shape of every install done before setup.sh started
+    // committing, and of anyone who edits the config by hand afterwards.
+    execFileSync('git', ['reset', '--soft', 'HEAD~1'], { cwd: dir, env: GIT_ENV });
+    execFileSync('git', ['reset'], { cwd: dir, env: GIT_ENV });
+
+    const r = runDoctor(dir);
+    expect(r.stdout).toMatch(/saved copy of your settings is still the blank template/);
+    expect(r.stdout).toMatch(/Cloudflare builds from GitHub's copy/);
+    // Fatal, not a note: a site in this state cannot publish, and nothing else
+    // will tell them so.
+    expect(r.status).not.toBe(0);
+    // And it must not contradict itself — the on-disk config really is fine.
+    expect(r.stdout).toContain('All settings filled in');
+  });
+
+  it('says so when the settings are saved but never sent to GitHub', () => {
+    runSetup(dir, ANSWERS);
+    const r = runDoctor(dir);
+    expect(r.stdout).toMatch(/1 change saved here but not sent to GitHub yet/);
+    expect(r.stdout).toMatch(/your GitHub token, not your account password/);
+    // Unpushed work is a nudge, not a fault — they may be mid-edit.
+    expect(r.stdout).not.toMatch(/✗.*GitHub/);
+  });
+
+  it('is quiet about the history once everything is committed and pushed', () => {
+    runSetup(dir, ANSWERS);
+    // Model the push: origin/main catches up with local main.
+    execFileSync('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'],
+      { cwd: dir, env: GIT_ENV });
+    const r = runDoctor(dir);
+    expect(r.stdout).toContain('Your settings are saved in your project\'s history');
+    expect(r.stdout).toContain('Everything saved here has been sent to GitHub');
+    expect(r.stdout).not.toMatch(/not sent to GitHub yet/);
+  });
+
+  it('calls out a folder that is not a git project at all', () => {
+    // A downloaded ZIP. The site can still deploy by hand, but the Publish
+    // button never can, and nothing else in the report would say why.
+    const zip = makeFork();
+    writeFileSync(join(zip, 'bin', 'npm'), '#!/usr/bin/env bash\nexit 0\n');
+    chmodSync(join(zip, 'bin', 'npm'), 0o755);
+    try {
+      const r = runDoctor(zip);
+      expect(r.stdout).toMatch(/isn't a git project/);
+      expect(r.stdout).toMatch(/downloaded as a ZIP/);
+    } finally {
+      rmSync(zip, { recursive: true, force: true });
+    }
+  });
+
   it('never mutates anything', () => {
     runSetup(dir, ANSWERS);
     const before = readFileSync(join(dir, 'wrangler.jsonc'), 'utf8');
@@ -570,6 +801,23 @@ describe('the scripts do not send people to pages that no longer exist', () => {
   // guaranteed to be wrong for somebody. So the rule is now: name BOTH, and
   // let the reader match whichever sidebar they are looking at.
   const SCRIPTS = ['scripts/setup.sh', 'scripts/doctor.sh'];
+
+  // A GLOBAL WRANGLER IS NOT A PREREQUISITE, and setup.md had seven commands
+  // that assumed one. On the 2026-08-08 cold run every single `wrangler …` line
+  // answered `command not found` — including the two that set the required
+  // secrets, which is where the install stops being recoverable by guessing.
+  // `npx` runs the copy `npm install` already put in the project.
+  it('setup.md never tells anyone to run a bare `wrangler`', () => {
+    const src = readFileSync(join(ROOT, 'setup.md'), 'utf8');
+    const offenders = [];
+    let inFence = false;
+    for (const [i, line] of src.split('\n').entries()) {
+      if (line.startsWith('```')) { inFence = !inFence; continue; }
+      if (!inFence) continue;
+      if (/^\s*wrangler\s/.test(line)) offenders.push(`${i + 1}: ${line.trim()}`);
+    }
+    expect(offenders, 'these need `npx` in front').toEqual([]);
+  });
 
   it.each(SCRIPTS.map((s) => [s]))('%s names both labels for the Access sidebar', (s) => {
     const src = readFileSync(join(ROOT, s), 'utf8');

@@ -126,12 +126,16 @@ export default Object.freeze({
   // storage, using your own password. OFF by default — a normal site never
   // wants this.
   // demoMode: true,
-  // Set this once you connect the repo to Cloudflare Builds (your Worker →
-  // Settings → Build). It only changes what the console's publish card says:
-  // connected instances see "Cloudflare rebuilds — live in about a minute",
-  // unconnected ones keep the honest "run npx wrangler deploy" instruction.
-  // The Worker can't detect the connection itself, so this flag carries it.
-  // repoConnected: true,
+  // Have you connected this repo to Cloudflare, so that publishing goes live
+  // on its own? Flip this to `true` the moment you finish that (setup.md,
+  // "Connect your repo"). It changes what the console's Publish screen tells
+  // you: connected sites are told Cloudflare is rebuilding and the change will
+  // be live in about a minute, unconnected ones are told to run
+  // `npx wrangler deploy` themselves — which is the truth until you connect.
+  // The Worker cannot see the connection from the inside, so this line is how
+  // it knows. It ships LIVE and false on purpose: a switch you can see is a
+  // switch you can find again.
+  repoConnected: false,
   // The small "OS" chip in the homepage footer — one quiet link back to the
   // engine this site runs on, for a visitor who decides they want one too. It
   // is the only self-promotion in the template, it is deliberately unbranded,

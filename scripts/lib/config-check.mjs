@@ -13,6 +13,11 @@
 // Usage:  node scripts/lib/config-check.mjs [path]
 //   exit 0 -> nothing left to fill in
 //   exit 1 -> prints one remaining placeholder per line, on stdout
+//
+// `-` reads stdin instead of a file. doctor.sh uses it to check the copy of the
+// config saved in git history (`git show HEAD:wrangler.jsonc`) without writing
+// a temp file — that copy is what Cloudflare Builds actually deploys from, and
+// it can be the blank template while the one on disk is perfectly filled in.
 
 import { readFileSync } from 'node:fs';
 
@@ -81,7 +86,7 @@ if (process.argv[1]?.endsWith('config-check.mjs')) {
   // exitCode and letting the process end naturally is load-bearing, not style.
   let src;
   try {
-    src = readFileSync(path, 'utf8');
+    src = readFileSync(path === '-' ? 0 : path, 'utf8');
   } catch {
     console.log('MISSING_CONFIG');
     process.exitCode = 1;

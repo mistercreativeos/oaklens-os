@@ -62,6 +62,75 @@ else
 fi
 echo
 
+# ---- what GitHub actually has ---------------------------------------------
+#
+# THE CHECK THAT WOULD HAVE SAVED AN EVENING.
+#
+# `wrangler.jsonc` is tracked and ships full of placeholders. setup.sh fills it
+# in on this computer. If it is never committed and pushed, GitHub keeps the
+# blank template — and the moment the repo is connected to Cloudflare, Cloudflare
+# builds from GitHub's copy: wrong worker name, a junk R2 bucket auto-provisioned
+# as `your-bucket-name`, and a hard stop on the KV placeholder. The live site
+# carries on serving the last hand-deploy, so there is nothing to see. The person
+# only finds out when they wonder why Publish does nothing.
+#
+# Filled in locally + still blank in the history is a specific, detectable,
+# fatal state. So detect it.
+#
+# All offline, on purpose. Asking GitHub what it holds would mean a network call
+# and, on a private repo, a credential prompt — and a health check that hangs
+# waiting for a password is worse than one that reports slightly stale news.
+# `origin/main` here is the local remote-tracking ref: what this computer last
+# saw. That is enough to say "you have work that has not gone up".
+echo "Your project's history"
+if ! have git; then
+  note "Git isn't installed, so I can't check what GitHub has"
+  fix "Install it from https://git-scm.com/downloads"
+elif [ ! -d .git ]; then
+  bad "This folder isn't a git project, so nothing here can reach GitHub"
+  fix "The code was probably downloaded as a ZIP. Publishing needs a real clone of your own GitHub copy — see setup.md."
+else
+  dirty="$(git status --porcelain -- wrangler.jsonc site.config.js 2>/dev/null)"
+  head_cfg="$(git show HEAD:wrangler.jsonc 2>/dev/null)"
+  history_ok=0
+  if [ -z "$head_cfg" ]; then
+    bad "Your settings file isn't saved in your project's history at all"
+    fix "Run: git add wrangler.jsonc site.config.js && git commit -m \"my site's settings\""
+  elif ! printf '%s' "$head_cfg" | node scripts/lib/config-check.mjs - >/dev/null 2>&1; then
+    bad "The saved copy of your settings is still the blank template"
+    fix "Cloudflare builds from GitHub's copy, not this one. Run: git add wrangler.jsonc site.config.js && git commit -m \"my site's settings\" && git push"
+  else
+    history_ok=1
+    ok "Your settings are saved in your project's history"
+  fi
+
+  if [ -n "$dirty" ]; then
+    note "You have changes to your settings that aren't saved yet"
+    fix "Run: git add wrangler.jsonc site.config.js && git commit -m \"settings\""
+  fi
+
+  # Unpushed work. Counted against the last state this computer saw, so it can
+  # only ever under-report — which is the safe direction for a warning.
+  if git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    ahead="$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)"
+    if [ "${ahead:-0}" -gt 0 ]; then
+      note "$ahead change$([ "$ahead" -eq 1 ] || echo s) saved here but not sent to GitHub yet"
+      fix "Run: git push  (the password it asks for is your GitHub token, not your account password)"
+    elif [ "$history_ok" = "1" ]; then
+      ok "Everything saved here has been sent to GitHub"
+    fi
+    # No `else` when the saved config is still the template: "everything has been
+    # sent to GitHub" is literally true and completely misleading two lines under
+    # "the saved copy is still the blank template". Nothing sent is not the same
+    # as nothing to send, and a reassuring tick beside a fatal cross is how a
+    # report gets skimmed past.
+  else
+    note "Couldn't tell whether your changes have reached GitHub"
+    fix "Run: git push  — it's harmless if there's nothing to send"
+  fi
+fi
+echo
+
 # ---- account + secrets ----------------------------------------------------
 echo "Cloudflare"
 signed_in=0
@@ -142,10 +211,20 @@ if [ "$signed_in" = "1" ]; then
 
   # Optional features. Each is off until you set it, and off is a valid,
   # fully-working state — so these are notes, never failures.
+  # GITHUB_TOKEN + GITHUB_REPO are NOT in the optional list any more. They are
+  # what the console's Publish button runs on, and a site you cannot publish
+  # from is a demo. Still a note rather than a cross — the site genuinely works,
+  # and someone mid-install has not failed at anything — but it gets its own
+  # line instead of sitting between RAW cold storage and Wayback backups.
+  if has_secret GITHUB_TOKEN && has_secret GITHUB_REPO; then
+    ok "Publishing from the console is wired up"
+  else
+    note "Publishing from the console isn't set up yet — the Publish button will say \"not configured\""
+    fix "setup.md, \"GITHUB_TOKEN + GITHUB_REPO\" — it is the one optional-looking step that isn't optional"
+  fi
+
   off=""
   add_off() { off="${off}${off:+, }$1"; }
-  has_secret GITHUB_TOKEN && has_secret GITHUB_REPO || add_off "saving posts to GitHub"
-  has_secret RESEND_API_KEY || add_off "client email notifications"
   has_secret ADMIN_KEY      || add_off "subscriber export"
   has_secret B2_APP_KEY     || add_off "RAW cold storage"
   has_secret ARCHIVE_S3_ACCESS || add_off "daily Internet Archive backup"

@@ -25,6 +25,64 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-09 (later)
+
+Connecting your repo to Cloudflare — the thing that makes the console's
+**Publish** button actually put changes live — was broken, and broken in the
+worst way: silently. This fixes it and promotes the whole flow from optional to
+required.
+
+### ⚠️ ACTION REQUIRED — if you connected your repo, check what GitHub has
+
+`wrangler.jsonc` ships tracked and full of placeholders. `setup.sh` fills it in
+**on your computer**. Nothing ever told anyone to commit it — so the moment you
+connected the repo, Cloudflare built from GitHub's copy: it deployed under the
+name `your-worker-name`, auto-provisioned an R2 bucket literally called
+`your-bucket-name`, and stopped on
+`KV namespace 'YOUR_KV_NAMESPACE_ID' is not valid`. Your site carried on serving
+its last hand-deploy the whole time, so nothing looked wrong.
+
+Run `bash scripts/doctor.sh`. It now checks this directly and tells you in one
+line. If it flags you:
+
+```bash
+git add wrangler.jsonc site.config.js
+git commit -m "my site's settings"
+git push
+```
+
+Then delete the junk `your-bucket-name` bucket if Cloudflare made one
+(`npx wrangler r2 bucket delete your-bucket-name`). It is empty and costs
+nothing, but it will confuse you later.
+
+### What changed
+
+- **`setup.sh` commits your settings for you**, as a new step 6 of 8, before it
+  deploys. If git does not know who you are yet it asks once and records the
+  answer against this project only.
+- **`doctor.sh` reports on your project's history**: whether the saved copy of
+  your settings is the real one, whether anything is uncommitted, and whether
+  anything is waiting to be pushed. All offline — it never asks GitHub, so it
+  cannot hang on a password prompt.
+- **`setup.md`'s "Connect your repo" is rewritten** in the order that works,
+  with the field-by-field dashboard settings and a recovery section.
+- **Every `wrangler` command in `setup.md` is now `npx wrangler`.** A global
+  install was never a prerequisite and the bare form fails on a clean machine.
+- **The console stops claiming a deploy that is not happening.** After Publish
+  it used to say "Cloudflare Pages deploying (~30s)" every time; on an
+  unconnected repo nothing was deploying at all. It now says which of the two
+  actually happened.
+- **`repoConnected` ships live and `false`** in `site.config.example.js`
+  instead of commented out, so turning it on is an edit rather than an
+  excavation. No behaviour change — `false` was already the default.
+- **Re-running `setup.sh` no longer resets your look.** The theme question
+  defaulted to option 1 every time, so a re-run quietly put a `passe-partout`
+  site back to `aperture`. It now defaults to whatever you already chose.
+- **The fork's docs stop describing the client portal**, which forks do not
+  have. `RESEND_API_KEY` went with it.
+
+---
+
 ## 2026-08-09
 
 Three first-run bugs, all found by watching a stranger install this from

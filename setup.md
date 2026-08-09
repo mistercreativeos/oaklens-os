@@ -54,16 +54,12 @@ Two things the engine does so that flow can work at all:
   namespace. Nobody has to invent random text.
 - **Your database tables.** The button creates the database, and the tables
   come from the repo's own deploy step: `package.json`'s `deploy` script runs
-  `wrangler d1 migrations apply DB --remote` before every deploy (Cloudflare
+  `npx wrangler d1 migrations apply DB --remote` before every deploy (Cloudflare
   runs that script on the button path — the button does *not* apply migrations
   on its own). The migration files are idempotent, so re-running them is
   always safe. And if a deploy ever happens without them, nothing breaks
   loudly: draft and bench features answer "not configured yet" with the exact
   command to run, instead of erroring.
-
-One thing to know: the **client portal** (`/c/*`) stays switched off on an
-install that never set `SESSION_SECRET` explicitly. It is out of launch scope
-and a new site is not using it; set the secret if you want it on.
 
 ## Before either way: switch on R2
 
@@ -100,7 +96,7 @@ across the three generated sizes), and reads are cheaper than they look because
 binding constraint on a fork is the Workers free tier's 100,000 requests/day,
 not R2.
 
-Skip it and the first `wrangler deploy` dies on a bucket that does not exist.
+Skip it and the first `npx wrangler deploy` dies on a bucket that does not exist.
 `setup.sh` now checks for this before it creates anything and stops with these
 instructions, and `doctor.sh` reports it — but neither can flip the switch for
 you.
@@ -109,7 +105,7 @@ you.
 
 ```bash
 npx wrangler login      # sign in to Cloudflare
-bash scripts/setup.sh   # seven steps, asks a few questions, ends with your site live
+bash scripts/setup.sh   # eight steps, asks a few questions, ends with your site live
 bash scripts/doctor.sh  # confirms it all worked
 ```
 
@@ -125,6 +121,12 @@ your terminal. It also **deploys for you** and prints the resulting
 - The address otherwise scrolls past inside wrangler's output, and people
   genuinely could not find their own site.
 
+It also **commits your filled-in `wrangler.jsonc` and `site.config.js`** before
+it deploys. That is not tidiness: those two files ship *tracked and full of
+placeholders*, `setup.sh` fills them in on your computer only, and Cloudflare
+Builds deploys from what is on **GitHub**. Committing here removes the step
+people forget. Pushing is still yours to do — see "Connect your repo".
+
 Everything below is the manual version of what it does.
 
 > **On Windows, run these in Git Bash** — the terminal that comes with
@@ -133,8 +135,10 @@ Everything below is the manual version of what it does.
 > say it doesn't recognise `bash` and stop there. WSL works too if you already
 > have it. Everything else in this file is the same on every platform.
 
-After you're live, do one more thing when you're ready: **connect your repo**
-(section below) so publishing from the console updates your site on its own.
+After you're live, finish the job: **connect your repo** (section below). It is
+not an extra — it is what makes the Field Console's Publish button put anything
+live. Until you do it, Publish saves your work to GitHub and your site carries
+on serving the old copy.
 
 ---
 
@@ -155,30 +159,34 @@ node -e "const b = require('bcryptjs'); b.hash('YOUR_PASSWORD', 12).then(h => co
 Only two secrets are **required** — a fresh instance runs with just these:
 
 ```bash
-wrangler secret put AUTH_PASSWORD_HASH
+npx wrangler secret put AUTH_PASSWORD_HASH
 # paste the bcrypt hash from above
 # (or set AUTH_PASSWORD to the password itself — see "one click" above.
 #  The hash wins if both are set.)
 
-wrangler secret put SESSION_SECRET
+npx wrangler secret put SESSION_SECRET
 # paste a random 32-char string, e.g.: openssl rand -hex 32
 # (optional: with a SUBSCRIBERS KV binding the Worker generates and stores
-#  one itself on first use. Set it explicitly if you want the client portal,
-#  which still reads this value directly.)
+#  one itself on first use, so you can skip this one entirely.)
 ```
 
-Everything else is **optional** and gates one feature. Until a secret is set,
+Everything else is **optional** and gates one feature — with one exception,
+next. `GITHUB_TOKEN` + `GITHUB_REPO` are what the Publish button runs on, and a
+site you cannot publish from is a demo. Treat them as required. Until a secret is set,
 its endpoint answers `501 { notConfigured: true }` and the console shows
 "not configured" instead of an error. The worker logs which features are off
-(`[health] …`, once per isolate — visible in `wrangler tail`).
+(`[health] …`, once per isolate — visible in `npx wrangler tail`).
 
 ### `GITHUB_TOKEN` + `GITHUB_REPO` — what makes Publish work
 
 These two are worth doing carefully; they are the fiddliest part of the whole
 install, and together they are what lets the Field Console save your photos
 and posts to your repo. Until both are set, Publish answers *"not
-configured"* — that is deliberate, not a fault. Everything else works without
-them.
+configured"* — deliberate, not a fault, but also not a finished site.
+
+**One token, two jobs.** The same fine-grained token is what git asks for as a
+"password" when you push (see "Connect your repo"). Make it once, save it once,
+use it in both places.
 
 **Make the token** (GitHub → your avatar → **Settings** → **Developer
 settings** → **Personal access tokens**). Two kinds exist; the first is
@@ -192,25 +200,26 @@ better:
   - **Expiration:** your call. Note that when it expires, Publish starts
     failing and the console will say the token was rejected — that is your cue
     to make a new one and re-run the command below, not a sign anything broke.
+    Your `git push` will start failing at the same moment, for the same reason.
 - **Classic** → *Generate new token (classic)*, scope **`repo`**. Simpler to
   find, but it grants access to **every** repo you own, so prefer fine-grained.
 
 **Then set both secrets:**
 
-```bash
-wrangler secret put GITHUB_TOKEN
-# paste the token you just made (it is shown once — copy it before leaving
-# the page)
+**The token is shown exactly once.** Put it in your password manager on the
+page that shows it, not afterwards — there is no way to look it up later, only
+to throw it away and make another.
 
-wrangler secret put GITHUB_REPO
+```bash
+npx wrangler secret put GITHUB_TOKEN
+# paste the token you just made
+
+npx wrangler secret put GITHUB_REPO
 # value: owner/repo — e.g. yourname/your-site. Just those two parts, no
 # https://, no .git, no branch.
 
-wrangler secret put ADMIN_KEY
+npx wrangler secret put ADMIN_KEY
 # key for /api/subscribers/export
-
-wrangler secret put RESEND_API_KEY
-# portal email notifications
 
 # B2_BUCKET_NAME + B2_KEY_ID + B2_APP_KEY (+ B2_ENDPOINT/B2_REGION overrides)
 #   — bench RAW cold-storage proxy
@@ -221,41 +230,121 @@ wrangler secret put RESEND_API_KEY
 ## Deploy
 
 ```bash
-wrangler deploy
+npx wrangler deploy
 ```
 
-## Connect your repo — so publishing goes live by itself (recommended)
+## Connect your repo — this is what makes Publish work
 
-When you hit **Publish** in the Field Console, your changes are saved to your
-GitHub repo. Whether they then *appear on your site* depends on one thing:
-whether Cloudflare is watching that repo.
+**Not optional.** When you hit **Publish** in the Field Console, your changes are
+committed to your GitHub repo. Whether they then *appear on your site* depends
+on one thing: whether Cloudflare is watching that repo.
 
-- **Repo connected:** Cloudflare notices the save, rebuilds, and your site
+- **Repo connected:** Cloudflare notices the commit, rebuilds, and your site
   updates in about a minute. Publish → done. No terminal.
-- **Repo not connected:** the save happens, but your live site keeps serving
-  the old files until you run `npx wrangler deploy` yourself.
+- **Repo not connected:** the commit happens, the console says it published, and
+  your live site keeps serving the old files until you run `npx wrangler deploy`
+  yourself. Nothing looks broken. That is the trap.
 
 (The one-click **Deploy to Cloudflare** button sets this connection up for
 you — this section is for everyone who used `setup.sh` instead.)
 
-To connect it, in the Cloudflare dashboard:
+### Do these in order. The order is the whole thing.
 
-1. **Compute → Workers & Pages** → your Worker → **Settings** → **Build** →
-   **Connect a repository**, and pick your site's GitHub repo.
-   *(Accounts still on the older sidebar have **Workers & Pages** at the top
-   level, with no **Compute** above it. Same destination.)*
-2. Leave the **build command empty** — this site has no build step.
-   Set the **deploy command** to `npx wrangler deploy`.
-3. Turn **off** builds for non-production branches (your site deploys from
-   `main` only).
-4. In `site.config.js`, set `repoConnected: true` so the console's Publish
-   screen describes what actually happens now.
+**1. Get your settings onto GitHub, before you connect anything.**
 
-**The one habit that changes:** once connected, your repo is the source of
-truth. Going forward you go live with `git push origin main` (or by hitting
-Publish) — and you should **stop running `npx wrangler deploy` by hand**. A
-hand deploy isn't saved in the repo, so the next publish-triggered rebuild
-quietly puts things back the way the repo has them, undoing it.
+`wrangler.jsonc` is tracked in git and ships full of placeholders.
+`setup.sh` fills it in **on your computer**. Cloudflare Builds checks out
+**GitHub's** copy. If those two disagree at the moment you connect, the first
+build reads the template and:
+
+- deploys under the name `your-worker-name` instead of yours,
+- **auto-provisions a junk R2 bucket literally called `your-bucket-name`**,
+- and dies on `KV namespace 'YOUR_KV_NAMESPACE_ID' is not valid. [code: 10042]`.
+
+Your site keeps running on its last hand-deploy throughout, so nothing tells
+you. Verified on a real install, 2026-08-08.
+
+```bash
+git add -A
+git commit -m "my site's settings"
+git push
+```
+
+Then **look at `wrangler.jsonc` on github.com** and check it says your worker
+name, not `your-worker-name`. Thirty seconds, and it is the only proof that
+matters.
+
+> **The push asks for a username and a password, and the password is not your
+> password.** GitHub stopped accepting account passwords over git years ago; what
+> it wants is a **personal access token** — the same one from
+> `GITHUB_TOKEN` above, if you have made it, since a fine-grained token with
+> **Contents: Read and write** works for both jobs. Your real password is
+> rejected with an authentication error that looks like a broken login and is
+> not. Paste the token where it says Password.
+
+**2. Connect the repo in the Cloudflare dashboard.**
+
+**Compute → Workers & Pages** → your Worker → **Settings** → **Build** →
+**Connect a repository**, and pick your site's GitHub repo.
+*(Accounts still on the older sidebar have **Workers & Pages** at the top level,
+with no **Compute** above it. Same destination.)*
+
+GitHub will ask you to install the **Cloudflare Workers and Pages** app. "Only
+select repositories" is enough — you do not have to grant it everything you own.
+
+Then, in the panel that appears:
+
+| Field | What to put |
+|---|---|
+| Build command | **Leave empty.** This site has no build step. |
+| Deploy command | `npx wrangler deploy` — already filled in; leave it. |
+| Production branch | `main` |
+| Builds for non-production branches | **Untick it.** Your site deploys from `main` only. |
+
+**3. Turn the flag on, and let that be the first build.**
+
+In `site.config.js`, change `repoConnected: false` to `true`. It ships as a live
+line, so this is an edit, not an uncomment. It only changes what the console's
+Publish screen tells you — but an honest console is the difference between
+"published" meaning something and meaning nothing.
+
+```bash
+git add site.config.js
+git commit -m "repo connected"
+git push
+```
+
+Cloudflare's Build panel says *"You can now push a commit to your Git repository
+to start your first build"* — this is that commit. Watch it under the
+**Deployments** tab; it should finish green in about a minute.
+
+**4. Prove it.** Open the Field Console, change something small, press
+**Publish**, and watch a new build appear. That is the loop working. If no build
+appears, the repo is not really connected; if a build appears and fails, read
+step 1 again.
+
+### If you connected before reading this
+
+Two things to clean up, neither urgent:
+
+- **The junk bucket.** Cloudflare made an R2 bucket called `your-bucket-name`.
+  It is empty and costs nothing, but delete it so it never confuses you:
+  dashboard → **R2** → `your-bucket-name` → Settings → Delete, or
+  `npx wrangler r2 bucket delete your-bucket-name`.
+- **The name-mismatch banner.** Cloudflare shows an orange
+  *"Update wrangler.jsonc in your repo to keep settings consistent"* box, and
+  offers to open a pull request fixing the name. Don't take it — it fixes one
+  line and leaves the KV and R2 placeholders. Push your real config instead,
+  and the banner goes away on the next build.
+
+### The one habit that changes
+
+Once connected, **your repo is the source of truth**. Going forward you go live
+with `git push origin main` (or by hitting Publish), and you **stop running
+`npx wrangler deploy` by hand**. A hand deploy is not in the repo, so the next
+publish-triggered rebuild quietly puts things back the way the repo has them,
+undoing it.
+
 
 ## Keeping your site up to date with the engine
 
@@ -378,7 +467,7 @@ sensitive on the instance), set `consoleShellPublic: true` in `site.config.js`.
 
 ### Optional hardening: Cloudflare Access (recommended)
 
-For instances holding real client data (portal projects, subscriber lists),
+For sites holding anything private (client work, a subscriber list),
 add an identity wall at Cloudflare's edge — enforced **before** any request
 reaches the worker, free for up to 50 users, zero code:
 
