@@ -213,3 +213,20 @@ describe('?v= cache discipline', () => {
     expect(offenders, `\n${offenders.join('\n')}\n`).toEqual([]);
   });
 });
+
+describe('shell scripts stay portable across BSD and GNU', () => {
+  // setup.sh runs on whatever machine a stranger owns. `mktemp -d -t name` is
+  // the trap that already fired once: macOS accepts it, GNU mktemp refuses
+  // with "too few X's", and the fallout was silent — deploy_dir came back
+  // empty, the wrangler log path degraded to /deploy.log, and every Linux
+  // install (and CI) lost the address read-back while the script exited 0.
+  // The portable spelling is an explicit template: mktemp -d "$dir/name.XXXXXX".
+  it('no `mktemp -t` in any script a fork runs', () => {
+    const dir = join(ROOT, 'scripts');
+    const offenders = readdirSync(dir)
+      .filter((f) => f.endsWith('.sh'))
+      .filter((f) => /mktemp[^\n|;)]*\s-t\b/.test(readFileSync(join(dir, f), 'utf8')))
+      .map((f) => `scripts/${f}`);
+    expect(offenders, `BSD-only mktemp -t (GNU refuses it): ${offenders.join(', ')}`).toEqual([]);
+  });
+});

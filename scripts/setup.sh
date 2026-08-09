@@ -533,7 +533,12 @@ else
   # script cheerfully printed "Done. Your site is live." followed by "Open the
   # address above", pointing at nothing. `mktemp -d` gives us a private
   # directory; the log is a name inside it that nothing has touched.
-  deploy_dir="$(mktemp -d -t oaklens-deploy)"
+  # Template spelled out with X's, because the short flag-t form of mktemp is
+  # a BSD-ism: macOS accepts it, but GNU mktemp (every Linux) refuses with
+  # "too few X's" — which emptied deploy_dir, degraded the log path to
+  # /deploy.log, and silently cost Linux installs the address read-back.
+  # tests/guards.test.js pins the portable spelling.
+  deploy_dir="$(mktemp -d "${TMPDIR:-/tmp}/oaklens-deploy.XXXXXX")"
   deploy_log="$deploy_dir/deploy.log"
   if WRANGLER_LOG_PATH="$deploy_log" npx wrangler deploy; then
     LIVE_URL="$(grep -oE 'https://[a-z0-9][a-z0-9.-]*\.workers\.dev' "$deploy_log" 2>/dev/null | head -1)"
