@@ -135,7 +135,7 @@ export default Object.freeze({
   // The Worker cannot see the connection from the inside, so this line is how
   // it knows. It ships LIVE and false on purpose: a switch you can see is a
   // switch you can find again.
-  repoConnected: false,
+  repoConnected: true,
   // The small "OS" chip in the homepage footer — one quiet link back to the
   // engine this site runs on, for a visitor who decides they want one too. It
   // is the only self-promotion in the template, it is deliberately unbranded,
