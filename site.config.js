@@ -5,10 +5,10 @@
 // this one file, and everything else derives from the request origin at
 // runtime, so a fresh fork works on *.workers.dev with zero extra config.
 export default Object.freeze({
-  name: 'Your Studio',
-  tagline: 'Photography portfolio',
-  email: 'you@example.com',
-  contactName: 'You',
+  name: 'Ideas Studio',
+  tagline: 'Photo Buzz',
+  email: 'mistercreative@oaklens.art',
+  contactName: 'Mister Creative',
   // The display wordmark: nav logo, footer, page <title>, console chrome.
   // Optionally split in two so the second half takes the theme's accent colour
   // — { stem: 'STUDIO', accent: '.COM' } renders STUDIO.COM with .COM in
