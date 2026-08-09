@@ -15,7 +15,7 @@
   // (valid to wrangler, still obviously unfilled); everything wrangler does
   // not format-check keeps the louder `YOUR_*`.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "your-worker-name", // e.g. "my-photo-site"
+  "name": "oaklens-os", // e.g. "my-photo-site"
   "main": "worker.js",
   "compatibility_date": "2026-05-05",
   "observability": {
@@ -68,29 +68,29 @@
   "kv_namespaces": [
     {
       "binding": "SUBSCRIBERS",
-      "id": "YOUR_KV_NAMESPACE_ID",
-      "preview_id": "YOUR_KV_PREVIEW_ID"
+      "id": "04c0cac01cc74af5b939231e8e2a12f9",
+      "preview_id": "31d28a3c17054c47af491ab8258936f5"
     }
   ],
   // D1: cloud drafts + bench queue (and, instance-only, the portal tables).
-  // Create: `npx wrangler d1 create YOUR_DB_NAME`. The tables themselves are
+  // Create: `npx wrangler d1 create site notes`. The tables themselves are
   // wrangler migrations (migrations/): setup.sh applies them, and the
   // package.json `deploy` script applies them on every deploy — including the
   // one-click Deploy path, which runs that script (see setup.md).
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "YOUR_DB_NAME",
-      "database_id": "YOUR_D1_DATABASE_ID",
+      "database_name": "site notes",
+      "database_id": "d274a5dc-2be9-4279-8780-9e454f1c5dd3",
       "migrations_dir": "migrations"
     }
   ],
   // R2: image/video variants, OG cards, bench previews, portal proofs.
-  // Create: `npx wrangler r2 bucket create your-bucket-name`
+  // Create: `npx wrangler r2 bucket create photo-cdn`
   "r2_buckets": [
     {
       "binding": "CDN",
-      "bucket_name": "your-bucket-name"
+      "bucket_name": "photo-cdn"
     }
   ],
   // Optional: the daily Wayback-archive cron. Remove this block if you don't
