@@ -395,6 +395,8 @@ echo
 info "  1) aperture       cool and architectural, contemporary studio"
 info "  2) passe-partout  warm paper and museum labels, fine-art gallery"
 info "  3) noir           black, white and red — high-contrast, terminal feel"
+info "  4) selenium       the folio — serif headings, coral accent, built to read"
+info "  5) cyanotype      the folio in Prussian-blue ink, like the contact print"
 echo
 # Default to whatever is ALREADY chosen, so pressing return on a re-run keeps
 # it. This used to default to 1 every time: re-running the script — which its
@@ -404,12 +406,16 @@ current_preset="$(sed -nE "s/.*preset:[[:space:]]*'([^']*)'.*/\1/p" site.config.
 case "$current_preset" in
   passe-partout) preset_default=2 ;;
   noir)          preset_default=3 ;;
+  selenium)      preset_default=4 ;;
+  cyanotype)     preset_default=5 ;;
   *)             preset_default=1 ;;
 esac
-preset_choice="$(ask 'Pick one [1-3]' "$preset_default")"
+preset_choice="$(ask 'Pick one [1-5]' "$preset_default")"
 case "$preset_choice" in
   2) preset="passe-partout" ;;
   3) preset="noir" ;;
+  4) preset="selenium" ;;
+  5) preset="cyanotype" ;;
   *) preset="aperture" ;;
 esac
 # Targeted value swap — never hand-roll a JS parser over the config.

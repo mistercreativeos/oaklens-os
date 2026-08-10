@@ -98,13 +98,27 @@ export async function handlePutDraft(request, env) {
      ON CONFLICT(id) DO UPDATE SET
        fn_id=excluded.fn_id, title=excluded.title, location=excluded.location,
        date=excluded.date, body=excluded.body, hero_filename=excluded.hero_filename,
-       buffer_dates=excluded.buffer_dates, updated_at=excluded.updated_at${guard}
+       buffer_dates=excluded.buffer_dates,
+       updated_at=MAX(excluded.updated_at, fn_drafts.updated_at + 1)${guard}
      RETURNING updated_at`;
 
   try {
     const binds = conditional ? [...values, d.base_updated_at] : values;
     const row = await env.DB.prepare(sql).bind(...binds).first();
-    if (row) return jsonRes({ ok: true, id: d.id, updated_at }, 200);
+    // The stamp the row actually got, which is NOT always the clock read above:
+    // `MAX(…, stored + 1)` above forces it strictly forward.
+    //
+    // WHY. `updated_at` is epoch-MILLISECONDS, and two saves can land inside
+    // one of those. When they did, the second write stamped the same value the
+    // first one had, so the row never appeared to move — and the next save
+    // from a device holding that same base passed `stored <= base` and
+    // overwrote work it had never seen. That is precisely the lost update this
+    // whole conditional exists to stop, hiding in the resolution of the clock
+    // it was measured with. It surfaced as an intermittently red
+    // tests/drafts-conflict.test.js ("A's forced retry wins") rather than as a
+    // report, because two writes in the same millisecond is a test loop's
+    // normal day and a human author's rare one.
+    if (row) return jsonRes({ ok: true, id: d.id, updated_at: row.updated_at }, 200);
 
     // Nothing written: the row moved since the client loaded it. Hand back the
     // server's copy so the console can show what it would have overwritten.

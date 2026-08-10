@@ -12,7 +12,7 @@
 // device sequence through worker.fetch against a D1 stub that enforces the
 // guard the way SQLite does — an upsert whose DO UPDATE ... WHERE fails leaves
 // the row alone and returns no rows, without raising.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import worker from '../worker.js';
 import { createToken } from '../src/shared/auth.js';
 
@@ -33,15 +33,23 @@ function makeDB(rows = {}) {
     if (/^\s*SELECT/i.test(sql)) return table.get(String(binds[0])) || null;
     if (!/^\s*INSERT INTO fn_drafts/i.test(sql)) throw new Error(`unexpected SQL: ${sql}`);
 
-    const [id, fn_id, title, location, date, body, hero_filename, buffer_dates, updated_at] = binds;
+    const [id, fn_id, title, location, date, body, hero_filename, buffer_dates, clockStamp] = binds;
     const key = String(id);
     const existing = table.get(key);
-    const row = { id: key, fn_id, title, location, date, body, hero_filename, buffer_dates, updated_at };
 
     if (existing && / WHERE fn_drafts\.updated_at <= \?/.test(sql)) {
       if (!(existing.updated_at <= binds[9])) return null;   // guard held: no-op
     }
-    table.set(key, row);
+    // `updated_at=MAX(excluded.updated_at, fn_drafts.updated_at + 1)` — the row's
+    // stamp only ever moves forward, even when two writes read the same
+    // millisecond off the clock. Without it a same-ms save left the row looking
+    // untouched, and the next stale write sailed through the guard above.
+    const updated_at = existing
+      ? Math.max(clockStamp, existing.updated_at + 1)
+      : clockStamp;
+    table.set(key, {
+      id: key, fn_id, title, location, date, body, hero_filename, buffer_dates, updated_at,
+    });
     return { updated_at };
   }
 
@@ -79,6 +87,10 @@ const draft = (over = {}) => ({
 });
 
 describe('PUT /api/drafts — two devices, one draft', () => {
+  // One test freezes Date.now to make the same-millisecond race deterministic;
+  // every other test needs the real clock back.
+  afterEach(() => vi.restoreAllMocks());
+
   it('the stale writer is refused and the newer work survives', async () => {
     const db = makeDB();
 
@@ -116,6 +128,30 @@ describe('PUT /api/drafts — two devices, one draft', () => {
     const forced = await put(db, { ...draft({ body: 'A version' }), base_updated_at: base, force: true });
     expect(forced.status).toBe(200);
     expect(db.table.get('d1').body).toBe('A version');
+  });
+
+  // The bug the MAX(...) stamp exists for, pinned so it cannot come back as a
+  // coin flip. `updated_at` is epoch-MILLISECONDS and two saves can share one,
+  // which used to leave the row looking untouched and let the next stale write
+  // through the guard. Freezing the clock makes that certain instead of
+  // occasional — this test failed roughly one run in three before the fix, as
+  // an unexplained flake in the case below it.
+  it('two saves inside one millisecond still order', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_754_700_000_000);
+
+    const db = makeDB();
+    const base = (await (await put(db, { ...draft(), base_updated_at: 0 })).json()).updated_at;
+
+    // B saves against that base — applies, and must move the row forward even
+    // though the clock has not.
+    const bWrote = await put(db, { ...draft({ body: 'B version' }), base_updated_at: base });
+    expect(bWrote.status).toBe(200);
+    expect((await bWrote.json()).updated_at).toBeGreaterThan(base);
+
+    // A, still holding the old copy, must now be refused.
+    const aStale = await put(db, { ...draft({ body: 'A version' }), base_updated_at: base });
+    expect(aStale.status).toBe(409);
+    expect(db.table.get('d1').body, "B's work must survive").toBe('B version');
   });
 
   it('a fresh id still inserts (nothing to conflict with)', async () => {

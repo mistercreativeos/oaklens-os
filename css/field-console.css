@@ -172,7 +172,7 @@
 
 /* ---- Preset derivation — the console wears the site's brand. data-preset
    is stamped on every HTML document by the worker (injectSiteChrome). noir
-   is the L1 base values above; only the two other presets need overrides.
+   is the L1 base values above; every other preset carries an override block.
    The [data-theme="light"] variants swap the wash/hairline to the ink tier
    (mirroring how DAYLIGHT already treats the base brand). ---- */
 :root[data-preset="aperture"] {
@@ -198,6 +198,26 @@
 :root[data-preset="passe-partout"][data-theme="light"] {
   --brand-ink-rgb: 150, 58, 48;
   --accent-line: #e0c3ba;
+}
+:root[data-preset="selenium"] {
+  --brand: #D8674A; --brand-bright: #E08063; --brand-ink: #B8482C;
+  --brand-deep: #4A2015; --brand-rgb: 216, 103, 74;
+  --font-mono:    'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-display: 'Fraunces', Georgia, serif;
+}
+:root[data-preset="selenium"][data-theme="light"] {
+  --brand-ink-rgb: 184, 72, 44;
+  --accent-line: #e2c2b6;
+}
+:root[data-preset="cyanotype"] {
+  --brand: #5C9FCE; --brand-bright: #85BADF; --brand-ink: #23648E;
+  --brand-deep: #16344A; --brand-rgb: 92, 159, 206;
+  --font-mono:    'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-display: 'Fraunces', Georgia, serif;
+}
+:root[data-preset="cyanotype"][data-theme="light"] {
+  --brand-ink-rgb: 35, 100, 142;
+  --accent-line: #b9d2e3;
 }
 
 /* ---- Compat shim: legacy names alias semantic tokens. Declared once on

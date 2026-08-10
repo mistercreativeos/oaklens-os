@@ -49,6 +49,13 @@ export const BACKFILL = Object.freeze({
   // `!== false`, so they need no protection. They are written out anyway:
   // BACKFILL plus SHAPE is meant to be a complete, readable statement of the
   // config shape, and a flag that only exists in a comment gets forgotten.
+  // Branded short links, `{ code: 'https://…' }`. An empty table is a complete
+  // statement of "this instance redirects nothing", so it backfills rather
+  // than shaping — there are no sub-keys to fill in, the keys ARE the data.
+  shortLinks: {},
+  // Hostname prefix the short links answer on, or '' for every host this site
+  // serves — which is the right default, because a fork has one domain.
+  shortLinkHost: '',
   legacyRedirects: false,
   webAnalytics: false,
   appleMusicEmbeds: false,

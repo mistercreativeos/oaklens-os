@@ -16,7 +16,7 @@
 // Mutations (/api/* upload, publish, sync) always require the network and are
 // never intercepted or cached — this SW only serves the static shell.
 
-const CACHE = 'oaklens-console-v87';
+const CACHE = 'oaklens-console-v89';
 const SHELL = '/dev/field-console.html';
 // Same-origin shell assets. The js/ versions here must match the import map in
 // field-console.html exactly — that map is where a module's version is decided,
@@ -24,7 +24,7 @@ const SHELL = '/dev/field-console.html';
 // import map, so the duplication is unavoidable; tests/guards.test.js keeps the
 // two in step. CSS is a plain <link>, so its ?v= still lives on the tag.
 const SHELL_ASSETS = [
-  '/css/field-console.css?v=28',
+  '/css/field-console.css?v=29',
   '/js/console-state.js?v=7',
   '/js/console-api.js?v=8',
   '/js/markdown-engine.js?v=4',
@@ -50,7 +50,7 @@ const SHELL_ASSETS = [
   '/js/raw-extract.js?v=4',
   '/js/site-export.js?v=4',
   '/js/site-export-core.js?v=3',
-  '/js/export-manifest.js?v=7',
+  '/js/export-manifest.js?v=8',
   // Every preset's console faces, not just noir's. The console re-skins its
   // typography with `data-preset` now, so precaching only Syne would have left
   // an installed PWA on aperture or passe-partout dropping to system fonts the

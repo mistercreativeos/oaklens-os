@@ -217,6 +217,8 @@ const PRESET_DISPLAY_FONT = {
   'aperture': '/fonts/archivo-latin-var.woff2',
   'passe-partout': '/fonts/fraunces-latin-var.woff2',
   'noir': '/fonts/syne-latin-var.woff2',
+  'selenium': '/fonts/fraunces-latin-var.woff2',
+  'cyanotype': '/fonts/fraunces-latin-var.woff2',
 };
 
 // Homepage split hero (noir preset). Values come from site.config.js →

@@ -6,6 +6,7 @@ import { withCors, handleCORS, demoModeRes } from './src/shared/http.js';
 import { securityHeaders, withCsp } from './src/shared/csp.js';
 import { readCachedTemp, refreshLocalTemp } from './src/edge/weather.js';
 import { pageDisabled, publicPages } from './src/shared/pages.js';
+import { resolveShortLink } from './src/shared/shortlinks.js';
 import { runArchiveCapture } from './src/cron/archive.js';
 import {
   handlePublish, handleSync, _isEmptyJsonArray, _emptyOverwriteGuard,
@@ -207,6 +208,30 @@ export default {
     if (url.pathname.startsWith('/api/cdn/')
       && (request.method === 'GET' || request.method === 'HEAD')) {
       return handleCdnProxy(request, env, url, ctx);
+    }
+
+    // BRANDED SHORT LINKS (site.config.js → shortLinks). A memorable path on
+    // the site's own domain that points somewhere else — the instance's demo,
+    // a fork, a talk. Empty on a fresh fork, in which case this costs one
+    // Map.size check per request. See src/shared/shortlinks.js for why the
+    // check sits HERE: after every worker-owned route, before the asset layer.
+    //
+    // The hostname rides along for the optional `shortLinkHost` scope. This
+    // instance scopes them to `os.` — the apex is a photographer, the
+    // subdomain is the software, and these links belong to the software.
+    if (request.method === 'GET' || request.method === 'HEAD') {
+      const shortTarget = resolveShortLink(url.pathname, url.hostname);
+      if (shortTarget) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            'Location': shortTarget,
+            // Re-pointable by design: nothing caches this hop.
+            'Cache-Control': 'no-store',
+            ...securityHeaders(url.origin, true),
+          },
+        });
+      }
     }
 
     // FIELD CONSOLE SHELL GATE — secure-by-default (opt out: site.config.js →

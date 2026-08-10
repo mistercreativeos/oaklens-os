@@ -7,7 +7,6 @@
 
 <img width="1448" height="1238" alt="image" src="https://github.com/user-attachments/assets/f12ee42f-55f8-4c47-9dc7-e9400f6fe7c4" />
 
-
 A photography site, field-notes blog and print-drop storefront that runs as a
 single Cloudflare Worker. No framework, no build step, no monthly bill, and no
 platform standing between you and the people looking at your work.

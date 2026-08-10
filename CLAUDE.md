@@ -53,8 +53,6 @@ engine code** — no real emails, coordinates, CDN domains, R2 keys, or photos i
 diff. New identity-shaped values go in `site.config.js`, read at the edge — not
 hardcoded in a handler or template.
 
----
-
 ## Definition of Done — run this gate before you call ANY change "final"
 
 This is the discipline a fresh agent skips and a senior engineer never does. All
@@ -237,7 +235,7 @@ Keep commits focused on one change; write a message that explains *why*, not jus
 
 | Area | Modules |
 |------|---------|
-| `src/shared/` | `http` (CORS/JSON + `notConfigured` 501), `csp` (per-surface CSP + pre-paint hash), `pages` (public-page list + config gating), `text` (escapeHtml/baseName/localDay), `auth` (JWT HS256 + scopes + cookies), `site` (config-derived meta/cdnBase/entity JSON-LD), `webring` (ANALOGS seat guard + token/href builders) |
+| `src/shared/` | `http` (CORS/JSON + `notConfigured` 501), `csp` (per-surface CSP + pre-paint hash), `pages` (public-page list + config gating), `text` (escapeHtml/baseName/localDay), `auth` (JWT HS256 + scopes + cookies), `site` (config-derived meta/cdnBase/entity JSON-LD), `webring` (ANALOGS seat guard + token/href builders), `shortlinks` (branded `/<code>` → 302 table + collision guards) |
 | `src/edge/` | `chrome` (HTMLRewriter: OG + nav + heroes + `injectSiteChrome`), `data` (edge-cached data-JSON loader), `weather` (Open-Meteo SWR) |
 | `src/api/` | `publish` (GitHub publish/sync + guards), `bench` (D1 queue + Backblaze RAW proxy), `drafts` (FN cloud drafts), `console-auth` (`/api/auth`·`/api/logout` + rate limit), `subscribers` (subscribe/export), `assets` (R2 upload/delete + `/api/cdn` proxy + `/api/og-cards`), `site-meta` (manifest/sitemap/feed/buffer-summary/site-settings) |
 | `src/cron/` | `archive` (daily Wayback Save-Page-Now) |

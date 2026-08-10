@@ -25,6 +25,54 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-10
+
+**New: two theme presets — `selenium` and `cyanotype`.** The folio pair:
+serif headings (Fraunces), a clean reading column, hairlines instead of
+cards — built for sites with a lot of writing. `selenium` is a cool
+neutral gray with a coral accent, named for the toner that gives darkroom
+prints their cool blacks; `cyanotype` is the same layout in Prussian-blue
+ink on cool paper, named for the contact print. Both come in Midnight and
+Daylight, both re-skin the Field Console to match, and both use faces the
+engine already ships — no new downloads. Switching is the usual one line
+(`site.config.js` → `theme.preset`), and `scripts/setup.sh` now offers all
+five presets on first run. Nothing to do — your current preset is
+untouched.
+
+---
+
+## 2026-08-09 (morning)
+
+**Fixed: a field-note draft could still be overwritten by an older copy.**
+Cloud drafts already refused a save from a device holding a stale version —
+that's the "changed on another device" warning. But the check compared
+timestamps in milliseconds, and two saves that landed inside the same
+millisecond looked identical to it, so the guard waved the second one through
+and the newer work was lost. Rare in real writing, and it was showing up as a
+test that failed about one run in three rather than as a complaint. Each save
+now always advances the draft's version, whatever the clock says. Nothing to
+do — merge and it's yours.
+
+**New: branded short links.** You can now point a memorable path on your own
+domain at any URL — `yoursite.com/prints`, `yoursite.com/talk` — and change
+where it goes later without reprinting anything you already handed out. Add a
+line to `site.config.js`:
+
+```js
+shortLinks: {
+  prints: 'https://your-print-shop.example/gallery',
+},
+```
+
+That's the whole feature. Off unless you fill it in, so merging changes
+nothing for you. A code is one lowercase word (letters, digits, hyphens) and
+it can't hide one of your own pages — if you name one after a page you have,
+it's ignored rather than shadowing it. The redirect is deliberately
+uncached, which is what lets you re-point it later.
+
+If you run a second hostname and want the links to belong only to that one,
+add `shortLinkHost: 'go.'` beside it. Leave it out on a single domain.
+
 ## 2026-08-09 (small hours)
 
 On Android Chrome, tapping a frame in the buffer or archive flashed a grey

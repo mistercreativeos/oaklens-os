@@ -3,12 +3,14 @@
    main.css · Every page imports this
    ============================================
 
-   Design system: three presets × two modes, all through L2 semantic tokens
+   Design system: five presets × two modes, all through L2 semantic tokens
    (design-spec: docs/starter-template/design-spec.md — palette source of
    truth). The preset is stamped on <html> by the worker from site.config.js.
    - aperture       contemporary studio (cobalt) — starter default
    - passe-partout  fine-art gallery (oxblood on warm paper)
    - noir           the original tech-noir DNA (#000 / #E0E0E0 / #FF0000)
+   - selenium       the folio — cool selenium gray, serif, coral accent
+   - cyanotype      the folio in Prussian-blue ink on cool paper
    New styles use semantic tokens (--bg, --fg, --accent, …) — never raw hex;
    legacy names (--black, --red, --gray-*) resolve via the compat shim below.
 
@@ -224,6 +226,97 @@
   --accent-text: #C41111;
   --on-accent: #FFFFFF;
   --accent-wash: rgba(196, 17, 17, 0.07);
+}
+
+:root[data-preset="selenium"] {
+  /* selenium · Midnight — the folio. Named for the toner that gives print
+     blacks their cool cast: a neutral-cool ground, serif display at modest
+     weight, and the coral accent carried over from the OS marketing surface.
+     Squarer geometry than passe-partout — hairlines, not cards. */
+  --bg: #101318;
+  --bg-rgb: 16, 19, 24;
+  --surface: #171B21;
+  --surface-2: #1C212A;
+  --line: #262B33;
+  --line-2: #333A44;
+  --fg: #DCD8D0;
+  --fg-strong: #EFECE6;
+  --muted: #8F8D88;
+  --faint: #6A6863;
+  --accent: #D8674A;
+  --accent-rgb: 216, 103, 74;
+  --accent-text: #E08063;
+  --on-accent: #101318;
+  --accent-wash: rgba(216, 103, 74, 0.10);
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-meta: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --r-card: 2px;
+  --r-chip: 2px;
+}
+:root[data-preset="selenium"][data-theme="light"] {
+  /* selenium · Daylight — warm-neutral paper, the accent deepened for
+     small-text contrast on light ground */
+  --bg: #F4F2EE;
+  --bg-rgb: 244, 242, 238;
+  --surface: #FBF9F6;
+  --surface-2: #FFFFFF;
+  --line: #D6D2CA;
+  --line-2: #C4BFB4;
+  --fg: #2B2E33;
+  --fg-strong: #14171B;
+  --muted: #6D7178;
+  --faint: #8E9198;
+  --accent: #B8482C;
+  --accent-rgb: 184, 72, 44;
+  --accent-text: #B8482C;
+  --on-accent: #FFFFFF;
+  --accent-wash: rgba(184, 72, 44, 0.07);
+}
+
+:root[data-preset="cyanotype"] {
+  /* cyanotype · Midnight — the folio in another darkroom. Named for the
+     Prussian-blue contact print: an inky blue-black ground with a steel-blue
+     accent lifted for dark-ground legibility. Same faces and geometry as
+     selenium — a palette sibling, not a new layout. */
+  --bg: #0D1620;
+  --bg-rgb: 13, 22, 32;
+  --surface: #14202C;
+  --surface-2: #1A2A3A;
+  --line: #22364A;
+  --line-2: #2E4762;
+  --fg: #D7E0E7;
+  --fg-strong: #EDF4F8;
+  --muted: #8299A9;
+  --faint: #5B7080;
+  --accent: #5C9FCE;
+  --accent-rgb: 92, 159, 206;
+  --accent-text: #85BADF;
+  --on-accent: #0D1620;
+  --accent-wash: rgba(92, 159, 206, 0.10);
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-meta: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --r-card: 2px;
+  --r-chip: 2px;
+}
+:root[data-preset="cyanotype"][data-theme="light"] {
+  /* cyanotype · Daylight — the print itself: Prussian ink on cool paper */
+  --bg: #F1F4F5;
+  --bg-rgb: 241, 244, 245;
+  --surface: #F9FBFB;
+  --surface-2: #FFFFFF;
+  --line: #D5DDE1;
+  --line-2: #BFCBD2;
+  --fg: #24323C;
+  --fg-strong: #0F1B24;
+  --muted: #5D7280;
+  --faint: #839299;
+  --accent: #23648E;
+  --accent-rgb: 35, 100, 142;
+  --accent-text: #23648E;
+  --on-accent: #FFFFFF;
+  --accent-wash: rgba(35, 100, 142, 0.08);
 }
 
 /* ---- COMPAT SHIM ----
