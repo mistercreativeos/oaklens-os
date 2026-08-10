@@ -25,6 +25,21 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-10 (evening)
+
+**New: dress one nav item as a button.** Give any entry in
+`site.config.js` → `nav[]` the class `cta` and it renders as a small
+bordered button in your site's accent color instead of a plain menu link —
+for the one action you want visitors to always see (the nav is sticky, so
+it travels with them). One line, works in every preset, changes nothing
+unless you opt in:
+
+```js
+{ label: 'Buy prints', href: '/support', class: 'cta' },
+```
+
+---
+
 ## 2026-08-10 (later)
 
 **Changed: new forks now start on `selenium`.** The example config ships

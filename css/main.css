@@ -442,6 +442,24 @@ html {
   color: var(--red);
 }
 
+/* A nav item dressed as THE action — for the one link an owner wants read as
+   a button rather than a menu entry. Opt-in per item via `class: 'cta'` in
+   site.config.js → nav[] (the demo's "Install It Yourself" is the worked
+   example: the nav is sticky, so the action rides along the whole visit).
+   Token-driven, so it wears every preset correctly. */
+.nav-link.cta {
+  border: 1px solid var(--accent);
+  border-radius: var(--r-chip);
+  color: var(--accent-text);
+  padding: 0.35em 0.85em;
+}
+
+.nav-link.cta:hover,
+.nav-link.cta.active {
+  background: var(--accent-wash);
+  color: var(--accent-text);
+}
+
 .nav-mail {
   font-size: 0.82rem;
   color: var(--gray-500);
