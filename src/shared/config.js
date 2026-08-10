@@ -44,6 +44,11 @@ export const BACKFILL = Object.freeze({
   location: { name: '', region: '', coords: [0, 0] },
   // Filtered against pages{} before render, so an empty nav is a valid site.
   nav: [],
+  // The backfill stays 'aperture' on purpose, even though the example config
+  // now ships 'selenium': this value only applies when a config OMITS theme{}
+  // entirely, and every such site has been rendering aperture since the
+  // template landed. Changing it here would silently re-skin those sites on
+  // their next upstream merge; new forks get selenium from the example file.
   theme: { preset: 'aperture', defaultMode: 'midnight', toggle: true },
   // Every one of these is already read with an explicit `=== true` or
   // `!== false`, so they need no protection. They are written out anyway:

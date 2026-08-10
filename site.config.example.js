@@ -27,13 +27,13 @@ export default Object.freeze({
     { label: 'Field Notes', href: '/field-notes' },
     { label: 'About', href: '/about' },
   ],
-  // Starter look: 'aperture' (contemporary studio, cobalt) is the default.
-  // 'passe-partout' (fine-art gallery, oxblood on warm paper), 'noir'
-  // (tech-noir terminal: black / white / red), 'selenium' (the folio —
-  // serif headings, coral accent, built for long reads) and 'cyanotype'
+  // Starter look: 'selenium' (the folio — serif headings, coral accent,
+  // built for long reads) is the default. 'aperture' (contemporary studio,
+  // cobalt), 'passe-partout' (fine-art gallery, oxblood on warm paper),
+  // 'noir' (tech-noir terminal: black / white / red) and 'cyanotype'
   // (the folio in Prussian-blue ink on cool paper) are one-word swaps.
   // defaultMode: 'midnight' | 'daylight' | 'auto' (follows the visitor's OS).
-  theme: { preset: 'aperture', defaultMode: 'midnight', toggle: true },
+  theme: { preset: 'selenium', defaultMode: 'midnight', toggle: true },
   // Featured image for the folio hero (the aperture/passe-partout homepage
   // hero, and noir's fallback). Ships pointing at a bundled CC0 sample frame so
   // a fresh fork renders immediately; swap for your own (a repo path or a

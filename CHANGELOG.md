@@ -25,6 +25,17 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-10 (later)
+
+**Changed: new forks now start on `selenium`.** The example config ships
+`preset: 'selenium'`, so a fresh install begins on the folio look instead of
+aperture, and `setup.sh` offers it as the pre-selected answer. **Your site
+does not change**: your config names its own preset and that always wins —
+this only affects installs that haven't happened yet. (Configs that omit
+`theme{}` entirely also keep rendering aperture, deliberately.)
+
+---
+
 ## 2026-08-10
 
 **New: two theme presets — `selenium` and `cyanotype`.** The folio pair:
