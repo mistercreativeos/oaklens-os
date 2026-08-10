@@ -70,6 +70,11 @@ describe('nav routes are exported pages', () => {
     for (const item of siteConfig.nav) {
       const path = item.href.split(/[?#]/)[0];
       if (LIVE_ONLY.has(path)) continue;
+      // An external nav link (another site entirely — the demo's "Install It
+      // Yourself" pointing at the engine's guide is the worked example) can't
+      // be an exported page by definition; in the ZIP it stays a live link,
+      // which is exactly right. Only same-site paths must ride the export.
+      if (/^https?:\/\//i.test(path)) continue;
       expect(routes[path], `nav "${item.label}" → ${item.href}`).toBeTruthy();
     }
   });
