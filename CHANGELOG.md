@@ -25,7 +25,25 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
-## 2026-08-10 (evening)
+## 2026-08-11
+
+**Fixed: writing a field note on a phone.** With the on-screen keyboard up,
+the console's Field Notes editor could end up mostly hidden behind the keys —
+its height came from a guess about how much header sat above it, and on a
+phone the guess was off by about double. The editor now sizes itself to
+exactly the space the keyboard leaves: start typing and the title block and
+draft pickers tuck away so the writing area fills the screen above the keys,
+with WRITE/PREVIEW and SAVE/STAGE still in reach; tap out of the editor and
+they return. Phone screens also drop the keyboard-shortcut hint line (those
+⌘ keys don't exist on a phone) and put the draft pickers on one row.
+
+**Fixed: the floating ⛓ LINK button on the buffer.** On phones and tablets it
+was hiding *behind* the bottom tab bar — a barely-visible sliver at the screen
+edge. It now sits on top of the bar like the rest of the floating controls,
+and steps aside while the LINK/CANCEL action bar is up on narrow screens.
+
+Also: save/stage toast messages now appear above the keyboard instead of
+under it. Safe to merge — no config changes, nothing to do.
 
 **New: dress one nav item as a button.** Give any entry in
 `site.config.js` → `nav[]` the class `cta` and it renders as a small
