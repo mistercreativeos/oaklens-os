@@ -45,6 +45,43 @@ and steps aside while the LINK/CANCEL action bar is up on narrow screens.
 Also: save/stage toast messages now appear above the keyboard instead of
 under it. Safe to merge — no config changes, nothing to do.
 
+---
+
+## 2026-08-10 (night)
+
+**New: [quickstart.md](quickstart.md) — the guide for the hour after the
+install.** `setup.md` ends the moment your site answers at an address. Nothing
+covered what comes next, so the settings and console moves that make a site
+yours were discoverable only by clicking around and hoping. This is that hour,
+one step at a time: **Part 0** your two addresses and the two ways a change goes
+live, **Part 1** eight `site.config.js` switches (your name and wordmark, the
+five looks, turning pages on and off, the Apple Music player, Web Analytics,
+`repoConnected`, the footer chips, short links), **Part 2** seven console moves
+(dropping photos in, focal points, featuring a frame on your homepage, the card
+people see when they share your link, promoting to the archive, retiring without
+breaking frame numbers, publishing).
+
+Every item says what it does, what to do, and **how you know it worked** —
+including what it looks like when it hasn't, so a non-result reads as a state
+rather than a failure.
+
+Two things in there are worth knowing even if you skip the rest:
+
+- **Cloudflare Web Analytics needs two switches, not one.** Turning it on in the
+  Cloudflare dashboard is only half. Your site's security policy blocks the
+  script it adds until `webAnalytics: true` is also set in `site.config.js`. Do
+  only the dashboard half and you get no numbers at all, with nothing visibly
+  wrong.
+- **"The card" is two different cards.** The **★** star plus the **▯** card-crop
+  button makes the tall card on *your* homepage. The **▲ Publish Card** button
+  *inside* the **◎** focal picker makes the wide card other people see when your
+  link lands in a message. Different buttons, different pictures — setting one
+  does not set the other.
+
+Nothing to do: it's a new file, it changes no behaviour, and it merges clean.
+
+## 2026-08-10 (evening)
+
 **New: dress one nav item as a button.** Give any entry in
 `site.config.js` → `nav[]` the class `cta` and it renders as a small
 bordered button in your site's accent color instead of a plain menu link —

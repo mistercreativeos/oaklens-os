@@ -2,6 +2,11 @@
 
 There are two ways to stand up an instance. Pick one.
 
+> **Already deployed and wondering what to do next?** This file is the install
+> and the operating manual. **[quickstart.md](quickstart.md)** is the half hour
+> after it — the settings and console moves that a finished install has no way to
+> discover on its own.
+
 ## First, either way: you need a repo you can push to
 
 Your site publishes by **committing to your own GitHub repo** — you write a
@@ -586,3 +591,14 @@ curl -s -X POST https://your-site.example/api/upload \
   -H 'Origin: https://your-site.example' \
   -F 'files=@/tmp/test.webp;filename=archive/test-480w.webp' | jq .
 ```
+
+---
+
+## Next
+
+Your site is up and you can sign in to the console. **[quickstart.md](quickstart.md)**
+takes it from there: picking one of the five looks, turning pages on and off,
+the Apple Music and analytics switches, setting focal points so thumbnails crop
+where you want, putting a photograph on your homepage, making the card people
+see when they share your link, and publishing. About half an hour, one step at
+a time.

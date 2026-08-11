@@ -36,7 +36,6 @@ IDENTITY_PATTERNS=(
 # Files where a reference to the live instance is intentional and allowed.
 ALLOWLIST_FILES=(
   'README.md'
-  'docs/oaklens-os-readme-draft.md'
   # The fork's README in source form: os-extract.mjs writes this file out as
   # the fork's README.md verbatim, so it earns README.md's exemption above one
   # step upstream.

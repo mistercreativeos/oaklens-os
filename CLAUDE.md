@@ -83,8 +83,8 @@ five, every time:
    > If you edited a module or the stylesheet, bumping `?v=` is not optional.
 
 3. **Update the docs your change touches.** `setup.md` (deploying and
-   operating an instance) and any part of `README.md` your change makes
-   untrue. Stale docs are a defect.
+   operating an instance), `quickstart.md` (the post-install guide), and any
+   part of `README.md` your change makes untrue. Stale docs are a defect.
 
 4. **No instance identity or secrets in the diff.** Re-read your own diff. If a
    real email/coord/domain/R2 key/photo appears, it belongs in `site.config.js`
