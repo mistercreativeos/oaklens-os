@@ -1435,8 +1435,11 @@ body.buffer-link-mode .buffer-frame.burst-selected::before { background: rgba(25
        URL-bar-hidden height, which is taller than the visible area, so a
        100vh-based view overflowed .main and let it scroll, dragging the toolbar
        off the top with no way back. .main is already bounded by the fixed
-       .layout, so 100% fills exactly what's visible and never overflows. */
-    height: 100%;
+       .layout, so 100% fills exactly what's visible and never overflows.
+       Minus the live keyboard inset: iPadOS never resizes the layout viewport
+       for the on-screen keyboard, so without it the editor bottom (and the
+       caret) sits behind the keys. */
+    height: calc(100% - var(--kb-inset));
     padding: 14px 18px 12px;
     overflow: hidden;
   }
@@ -2364,6 +2367,7 @@ body.fn-focus .layout { padding-top: var(--safe-top); }
 .toast-zone { bottom: calc(24px + var(--safe-bottom)); right: calc(24px + var(--safe-right)); }
 #upload-queue-panel { left: calc(16px + var(--safe-left)); bottom: calc(16px + var(--safe-bottom)); }
 .burst-actionbar { bottom: calc(24px + var(--safe-bottom)); }
+.buffer-link-fab { right: calc(24px + var(--safe-right)); bottom: calc(24px + var(--safe-bottom)); }
 
 /* -- Kill the rubber-band: the app shell never bounces; inner scrollers
       scroll without chaining into the (unscrollable) body. -- */
@@ -2662,9 +2666,14 @@ body.fn-bar-hidden:has(#view-fn.active) .tabbar {
                  - var(--tabbar-rsv) - var(--safe-bottom) - var(--kb-inset));
   }
 
-  /* Floating chrome climbs above the bar. */
-  .toast-zone { bottom: calc(16px + var(--tabbar-rsv) + var(--safe-bottom)); }
+  /* Floating chrome climbs above the bar. The link fab was missed when this
+     rule was written — its fixed bottom:24px left it BEHIND the glass bar
+     (z-index 200 vs the bar's 300), a barely-visible sliver at the viewport
+     edge on every phone. It climbs with the rest now. Toasts also add the
+     keyboard inset so a save/stage confirmation isn't swallowed by the keys. */
+  .toast-zone { bottom: calc(16px + var(--tabbar-rsv) + var(--safe-bottom) + var(--kb-inset)); }
   .burst-actionbar { bottom: calc(16px + var(--tabbar-rsv) + var(--safe-bottom)); }
+  .buffer-link-fab { bottom: calc(16px + var(--tabbar-rsv) + var(--safe-bottom)); }
   #upload-queue-panel { bottom: calc(12px + var(--tabbar-rsv) + var(--safe-bottom)); }
 }
 
@@ -2901,6 +2910,11 @@ body.kb-open .tabbar {
   transform: translateY(100%);
   pointer-events: none;
 }
+/* The bar is off-screen while the keys are up — stop reserving its rows.
+   Every consumer of --tabbar-rsv (view padding, the FN heights, floating
+   chrome) reclaims the 56px for the writing surface; the bar's own box keeps
+   --tabbar-h so its return slide is still a full sweep. */
+body.kb-open { --tabbar-rsv: 0px; }
 @media (max-width: 1180px), (pointer: coarse) {
   body.kb-open .modal-overlay .modal {
     padding-bottom: calc(var(--safe-bottom) + var(--kb-inset));
@@ -2953,16 +2967,49 @@ body.kb-open .tabbar {
      (inline display:flex on the wrapper needs the !important). */
   #view-fn .preview-pane .fn-pane-hdr > div { display: none !important; }
 
-  /* Height-bound again so WRITE fills the screen instead of scrolling the
-     page; ~250px covers view header + drafts row + portrait bar. Shrinks
-     with the keyboard via --kb-inset. */
-  #view-fn .fn-compose {
-    height: calc(100vh - var(--topbar-h) - var(--safe-top) - 250px
-                 - var(--tabbar-rsv) - var(--safe-bottom) - var(--kb-inset));
-    height: calc(100dvh - var(--topbar-h) - var(--safe-top) - 250px
-                 - var(--tabbar-rsv) - var(--safe-bottom) - var(--kb-inset));
-    min-height: 320px;
+  /* Height-bound as a full-height flex column tied to .main's real height —
+     the same pattern (and the same 100%-not-100vh reasoning) as the iPad-mini
+     landscape split above. The old rule here subtracted a fixed "~250px of
+     chrome" guess from 100dvh, but a phone's real pre-compose stack (title +
+     sub + meta + drafts row + rule + portrait bar) runs 450-550px, so the
+     compose overshot the viewport and the on-screen keyboard buried the
+     editor. Flex makes the geometry exact at any chrome height: the compose
+     gets whatever the header rows leave, and the calc subtracts the bar and
+     the live keyboard inset so the editor bottom rides right on the keys. */
+  #view-fn.active {
+    display: flex;
+    flex-direction: column;
+    height: calc(100% - var(--tabbar-rsv) - var(--safe-bottom) - var(--kb-inset));
+    padding: 14px 16px 10px;
+    overflow-y: auto;   /* short-viewport backstop (landscape phone) — scrolls
+                           instead of crushing the compose below min-height */
   }
+  #view-fn .view-header,
+  #view-fn > .btn-row,
+  #view-fn > .rule-perf,
+  #view-fn .fn-portrait-bar { flex: none; }
+  #view-fn .view-header { margin-bottom: 10px; padding-bottom: 10px; }
+  #view-fn .view-title  { font-size: 1.05rem; margin-bottom: 2px; }
+  #view-fn .view-sub    { font-size: var(--t-micro); }
+  #view-fn > .rule-perf { margin: 0 0 10px; }
+  #view-fn .fn-portrait-bar { margin-bottom: 10px; }
+  /* Draft pickers share one row with + NEW DRAFT instead of stacking three
+     deep — each select flexes and lets its native text truncate. */
+  #view-fn > .btn-row { flex-wrap: nowrap; margin-bottom: 10px; }
+  #view-fn > .btn-row .field-select { flex: 1 1 0; min-width: 0; }
+  #view-fn .fn-compose {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 260px;
+  }
+
+  /* Writing means the keyboard is up: collapse the chrome that holds no text
+     input (title block, draft pickers, rule) so the compose fills everything
+     above the keys. The portrait bar stays — WRITE/PREVIEW and SAVE/STAGE are
+     the tools you reach for mid-sentence. Blur the field and it all returns. */
+  body.kb-open #view-fn .view-header,
+  body.kb-open #view-fn > .btn-row,
+  body.kb-open #view-fn > .rule-perf { display: none; }
 }
 
 /* Topbar demotes to a status strip in the band: Publish lives on the tab
@@ -3096,7 +3143,22 @@ body.kb-open .tabbar {
   .btn-row { flex-wrap: wrap; }
   .stage-header { flex-wrap: wrap; gap: 8px; }
   .fn-portrait-bar { flex-wrap: wrap; gap: 8px; }
-  .fn-seg-btn { padding: 10px 12px; }
+  .fn-seg-btn { padding: 8px 10px; }
+  .fn-portrait-actions { gap: 6px; }
+  .fn-portrait-actions .btn { padding-left: 10px; padding-right: 10px; }
+
+  /* FN header earns its keep on a phone: the ⌘-shortcut hint line means
+     nothing to a thumb, and the draft pickers already carry their counts —
+     the title alone says where you are. Every row cut here is a writing row
+     gained (the compose flexes into the space, § Phase 5b). */
+  #view-fn .view-sub, #view-fn .view-meta { display: none; }
+  #view-fn .view-header { margin-bottom: 8px; padding-bottom: 8px; }
+
+  /* Link mode with 2+ frames selected: the centered action bar and the
+     bottom-right fab share one bottom line a phone doesn't have — the bar
+     (LINK/UNLINK + CANCEL) takes over and the fab yields until the
+     selection drops. They are siblings inside #view-buffer. */
+  .burst-actionbar.visible ~ .buffer-link-fab { display: none; }
 }
 
 /* ================= RAW LENS (raw-lens.js) =================
