@@ -295,3 +295,97 @@ describe('POST /api/publish — path allowlist', () => {
     expect((await res.json()).ok).toBe(true);
   });
 });
+
+// ---- Deliberate-empty vouching (allowEmpty), end-to-end through /api/publish ----
+// Deleting the LAST item on a surface serializes its manifest to [] — the exact
+// shape the empty-overwrite guard blocks. The console vouches for manifests it
+// emptied on purpose (the trashed items prove intent); the worker exempts only
+// those paths. A state-lossy session has nothing in its trash, sends no vouch,
+// and stays blocked — the 2026-07-10 posts.json wipe scenario is still caught.
+describe('POST /api/publish — allowEmpty vouching', () => {
+  const SECRET = 'test-secret-please-ignore';
+  const ctx = { waitUntil() {} };
+  const env = { SESSION_SECRET: SECRET, GITHUB_TOKEN: 'gh-token', GITHUB_REPO: 'owner/repo' };
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  async function publishReq(body) {
+    const token = await createToken(env);
+    return new Request('https://example.com/api/publish', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  // GitHub stub: main HEAD, commit plumbing, and per-path current contents for
+  // the guard's read (base64, as the contents API returns it).
+  function stubGitHub(contentsByPath) {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = String(url);
+      const m = u.match(/contents\/(.+)\?ref=main/);
+      if (m) {
+        const current = contentsByPath[decodeURIComponent(m[1])];
+        if (current === undefined) return new Response('{}', { status: 404 });
+        return new Response(JSON.stringify({ content: btoa(current) }), { status: 200 });
+      }
+      if (u.includes('git/ref/heads/main')) {
+        return new Response(JSON.stringify({ object: { sha: 'HEAD' } }), { status: 200 });
+      }
+      if (u.includes('git/commits/')) {
+        return new Response(JSON.stringify({ tree: { sha: 'tree-sha' } }), { status: 200 });
+      }
+      if (u.endsWith('/git/blobs')) {
+        return new Response(JSON.stringify({ sha: 'blob-sha' }), { status: 200 });
+      }
+      if (u.endsWith('/git/trees')) {
+        return new Response(JSON.stringify({ sha: 'new-tree-sha' }), { status: 200 });
+      }
+      if (u.endsWith('/git/commits')) {
+        return new Response(JSON.stringify({ sha: 'new-commit-sha' }), { status: 200 });
+      }
+      if (u.includes('git/refs/heads/main')) {
+        return new Response(JSON.stringify({ object: { sha: 'new-commit-sha' } }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    });
+  }
+
+  it('lets a vouched-for empty manifest publish over a non-empty main (delete the last item)', async () => {
+    stubGitHub({ 'data/audio.json': '[{"id":"t1"}]' });
+    const res = await worker.fetch(await publishReq({
+      files: [{ path: 'data/audio.json', content: '[]' }],
+      allowEmpty: ['data/audio.json'],
+    }), env, ctx);
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+  });
+
+  it('still blocks an empty manifest that is NOT vouched for, even when another one is', async () => {
+    stubGitHub({
+      'data/audio.json': '[{"id":"t1"}]',
+      'data/posts.json': '[{"id":"p1"},{"id":"p2"}]',
+    });
+    const res = await worker.fetch(await publishReq({
+      files: [
+        { path: 'data/audio.json', content: '[]' },
+        { path: 'data/posts.json', content: '[]' },
+      ],
+      allowEmpty: ['data/audio.json'],
+    }), env, ctx);
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('empty_overwrite_blocked');
+    expect(body.error).toContain('data/posts.json');
+  });
+
+  it('ignores malformed allowEmpty entries — only clean data/*.json paths exempt anything', async () => {
+    stubGitHub({ 'data/posts.json': '[{"id":"p1"}]' });
+    const res = await worker.fetch(await publishReq({
+      files: [{ path: 'data/posts.json', content: '[]' }],
+      allowEmpty: ['data/../posts.json', 42, null, 'posts/fn-001.md'],
+    }), env, ctx);
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('empty_overwrite_blocked');
+  });
+});

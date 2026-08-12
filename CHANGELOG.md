@@ -27,6 +27,15 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ## 2026-08-12
 
+**Fixed: deleting the last item on a shelf now publishes cleanly.** Trashing
+your only audio track (or the last item on any shelf) used to trap you in a
+loop: publish refused to blank the manifest, the console re-synced to recover,
+and the sync brought the deleted item straight back. Now a sync never
+resurrects something sitting in your trash, and publish accepts an emptied
+shelf when your trash shows you emptied it on purpose. The protection this
+guard exists for — a glitched session accidentally wiping live content — still
+blocks exactly as before. Nothing to do; merge and it works.
+
 **New: your site can play audio.** A track, a podcast episode, a voice memo —
 drop it on the new **Audio** shelf in the console (next to Library) and it can
 appear as a play-card on your homepage, inside a field note, or on its own page
