@@ -56,15 +56,26 @@ export function slugify(s) {
     .slice(0, 60);
 }
 
-// Strip oakpush size suffixes from dropped filenames, and trim whitespace —
-// including the invisible kind sitting right before the extension ("Earpiece
-// .jpg"), which otherwise mints variant keys with a space the author can't
-// see ("archive/Earpiece -480w.webp").
+// Characters an R2 object key may hold — the client half of the charset in
+// src/api/assets.js (R2_KEY_CHARS). The two MUST agree: whatever the console
+// records as an item's `filename` is the key the page later asks the CDN for,
+// so any character the server strips on upload and the console keeps is a file
+// stored under one name and requested under another — a 400 the visitor sees
+// as a dead image or a player that will not start. Keep this in lockstep with
+// the server list; tests/console-utils.test.js pins that they match.
+const R2_SAFE_CHARS = /[^\p{L}\p{M}\p{N}_ .+=()/-]/gu;
+
+// Strip oakpush size suffixes from dropped filenames, drop anything an R2 key
+// cannot carry, and trim whitespace — including the invisible kind sitting
+// right before the extension ("Earpiece .jpg"), which otherwise mints variant
+// keys with a space the author can't see ("archive/Earpiece -480w.webp").
 export function cleanFilename(name) {
   return (name || "")
     .trim()
     .replace(/-(480|1024|2048)w(?=\.\w+$)/, "")
-    .replace(/\s+(?=\.\w+$)/, "");
+    .replace(R2_SAFE_CHARS, "")
+    .replace(/\s+(?=\.\w+$)/, "")
+    .trim();
 }
 
 // SHA-256 of the original file bytes → 'sha256:' + first 8 hex chars.

@@ -30,11 +30,26 @@ const UPLOAD_KEY_PREFIXES = ['archive/', 'videos/', 'meta/', 'wallpaper/', 'benc
 // pre-console migrations) — the live custom CDN domain serves them fine, and
 // a zero-config fork serving through the proxy must too. '..' is rejected
 // separately wherever a key is accepted.
-const R2_KEY_CHARS = '\\w .+=()/-';
-const UPLOAD_KEY_JUNK_RE = new RegExp(`[^${R2_KEY_CHARS}]`, 'g');
+//
+// ⚠️ UNICODE IS NOT JUNK. This was `\w`, which without the `u` flag means
+// [A-Za-z0-9_] — ASCII only. Every non-Latin filename was therefore *stripped*
+// on upload while the console's registry kept the original name, so the two
+// disagreed about the key: `シルエット 日暮れ 04 街路灯.mp3` was stored as
+// `audio/04 .mp3` and then requested under its real name, which this very
+// regex rejected as a bad key (400) before R2 was ever consulted. The player
+// swallowed the failure and looked idle. R2 keys are UTF-8 and the proxy
+// percent-encodes per segment, so letters in any script are as safe here as
+// ASCII ones — the guards that actually matter are structural and unchanged:
+// no '..', an upload-prefix allowlist, and a closed extension set.
+// Control characters, quotes, backslashes and the URL delimiters (?#%&) stay
+// out; they are the ones that change how a key is parsed rather than what it
+// spells. `\p{M}` rides along with `\p{L}` because a combining mark is part of
+// the letter it sits on — dropping it silently misspells the name.
+const R2_KEY_CHARS = '\\p{L}\\p{M}\\p{N}_ .+=()/-';
+const UPLOAD_KEY_JUNK_RE = new RegExp(`[^${R2_KEY_CHARS}]`, 'gu');
 const CDN_PROXY_KEY_RE = new RegExp(
   `^(archive|meta|wallpaper|videos|homepage|about|blog|portal|bench|dev|audio)/[${R2_KEY_CHARS}]+\\.(webp|jpe?g|png|gif|mp4|webm|mp3|m4a|aac|ogg|opus|wav|flac)$`,
-  'i'
+  'iu'
 );
 
 // Content-Type fallback for a proxied object whose stored httpMetadata is

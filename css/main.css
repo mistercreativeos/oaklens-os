@@ -936,6 +936,12 @@ html {
   .ap-play:hover { color: var(--accent); transform: scale(1.08); }
 }
 .ap-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+/* A track that could not load. Dimmed rather than red-flagged: it is a missing
+   file, not an alarm, and the player carries a title attribute that says so.
+   Without this a broken track is pixel-identical to an idle one. */
+.ap.is-error { opacity: 0.45; }
+.ap.is-error .ap-play { cursor: not-allowed; }
+.ap.is-error .ap-wave { cursor: default; }
 
 /* ---- the waveform IS the seek surface ---- */
 .ap-wave {
