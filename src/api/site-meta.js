@@ -159,7 +159,7 @@ ${articles}
 
 // ---- GET /sitemap.xml ----
 
-export function handleSitemap(request, env) {
+export async function handleSitemap(request, env) {
   const HOST = new URL(request.url).origin;
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
@@ -168,6 +168,19 @@ export function handleSitemap(request, env) {
   }
   if (!pageDisabled('/archive/manifest.html')) {
     xml += `\n  <url><loc>${HOST}/archive/manifest.html</loc></url>`;
+  }
+  // /listen is listed only once it has something to play. Advertising an empty
+  // page is thin content on every fork that never uploads a track, and asking
+  // those forks to switch a page off by hand is the wrong default — so this is
+  // derived from the data, not from config. A read failure lists nothing,
+  // which is the same safe answer as an empty registry.
+  if (!pageDisabled('/listen')) {
+    try {
+      const audio = await loadDataJson(HOST, env, 'data/audio.json');
+      if (Array.isArray(audio) && audio.length) {
+        xml += `\n  <url><loc>${HOST}/listen</loc></url>`;
+      }
+    } catch { /* no registry, no listing */ }
   }
   xml += '\n</urlset>';
 
@@ -275,6 +288,127 @@ ${entries}
     status: 200,
     headers: {
       'Content-Type': 'application/atom+xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+    },
+  });
+}
+
+// ---- GET /podcast.xml (RSS 2.0 + iTunes) ----
+//
+// A SEPARATE document from /feed.xml, for two reasons that are not negotiable:
+//
+//  1. Apple Podcasts (and most apps) require RSS 2.0. /feed.xml is Atom — a
+//     real spec with sane dates, correct for a blog, and unreadable to a
+//     podcast client. Bolting <enclosure> onto it would not make it
+//     subscribable; it would just make it heavier.
+//  2. The audiences differ. Marking a track `episode` is the author saying
+//     "this belongs in a podcast app". Loose sketches, demos and voice memos
+//     stay off this feed and out of every subscriber's queue — which is the
+//     entire point of the per-track switch.
+//
+// Everything a client needs is derived: the enclosure's byte length and MIME
+// type come from the registry (recorded at upload), duration from the same
+// decode that measured the waveform. The ONE thing an instance must supply
+// before Apple will accept a submission is square channel artwork —
+// `podcast: { image: '…' }` in site.config.js. Without it the feed is still
+// valid RSS and every app that does not gate on artwork will play it, so a
+// fork is never blocked; it just is not submittable yet.
+
+const PODCAST_MAX_ENTRIES = 300;
+
+const AUDIO_EXT_MIME = {
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac',
+  ogg: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac',
+};
+
+function audioMime(entry) {
+  if (entry.mime) return entry.mime;
+  const ext = String(entry.filename || '').split('.').pop().toLowerCase();
+  return AUDIO_EXT_MIME[ext] || 'audio/mpeg';
+}
+
+// RSS 2.0 wants RFC-822. toUTCString() is RFC-1123, which every reader accepts;
+// an unparseable date falls back to the epoch rather than emitting "Invalid
+// Date" and poisoning the item.
+function rssDate(value) {
+  const d = new Date(value || 0);
+  return (isNaN(d) ? new Date(0) : d).toUTCString();
+}
+
+// itunes:duration takes seconds or H:MM:SS; seconds is unambiguous.
+function itunesDuration(sec) {
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  return s ? String(s) : '';
+}
+
+export async function handlePodcastFeed(request, env) {
+  const origin = new URL(request.url).origin;
+  let tracks;
+  try {
+    const data = await loadDataJson(origin, env, 'data/audio.json');
+    tracks = Array.isArray(data) ? data : [];
+  } catch (err) {
+    // Same split as the Atom feed: a missing registry is an un-seeded fork
+    // (empty show), any other read failure is transient and must not serve an
+    // empty feed — a podcast client that sees zero items can drop the show.
+    if (err.status === 404) {
+      tracks = [];
+    } else {
+      console.error('[podcast]', err.message);
+      return new Response('feed temporarily unavailable', { status: 503 });
+    }
+  }
+
+  const episodes = tracks
+    .filter((t) => t && t.episode && t.filename && t.slug)
+    .sort((a, b) => String(b.added_at || '').localeCompare(String(a.added_at || '')))
+    .slice(0, PODCAST_MAX_ENTRIES);
+
+  const artwork = siteConfig.podcast && siteConfig.podcast.image;
+  const artworkUrl = artwork
+    ? (/^https?:/i.test(artwork) ? artwork : `${origin}${artwork.startsWith('/') ? '' : '/'}${artwork}`)
+    : null;
+  const title = (siteConfig.podcast && siteConfig.podcast.title) || siteConfig.name;
+  const description = (siteConfig.podcast && siteConfig.podcast.description)
+    || siteConfig.tagline || '';
+
+  const items = episodes.map((t) => {
+    const link = `${origin}/listen/?a=${encodeURIComponent(t.slug)}`;
+    const url = `${cdnBase(origin)}/audio/${encodeURIComponent(t.filename)}`;
+    const dur = itunesDuration(t.duration);
+    return `    <item>
+      <title>${escapeHtml(t.title || t.slug)}</title>
+      <link>${escapeHtml(link)}</link>
+      <guid isPermaLink="true">${escapeHtml(link)}</guid>
+      <description>${escapeHtml(t.sub || '')}</description>
+      <pubDate>${rssDate(t.added_at)}</pubDate>
+      <enclosure url="${escapeHtml(url)}" length="${Number(t.size) || 0}" type="${escapeHtml(audioMime(t))}"/>${dur ? `
+      <itunes:duration>${dur}</itunes:duration>` : ''}
+      <itunes:title>${escapeHtml(t.title || t.slug)}</itunes:title>
+      <itunes:explicit>false</itunes:explicit>
+    </item>`;
+  }).join('\n');
+
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>${escapeHtml(title)}</title>
+    <link>${origin}/listen</link>
+    <description>${escapeHtml(description)}</description>
+    <language>en</language>
+    <atom:link href="${origin}/podcast.xml" rel="self" type="application/rss+xml"/>
+    <itunes:author>${escapeHtml(siteConfig.name)}</itunes:author>
+    <itunes:summary>${escapeHtml(description)}</itunes:summary>
+    <itunes:explicit>false</itunes:explicit>${artworkUrl ? `
+    <itunes:image href="${escapeHtml(artworkUrl)}"/>` : ''}
+${items}
+  </channel>
+</rss>`;
+
+  return new Response(xml, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/rss+xml; charset=utf-8',
       'Cache-Control': 'public, max-age=3600',
     },
   });

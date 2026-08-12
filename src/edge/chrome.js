@@ -41,28 +41,38 @@ function _cardKey(filename) {
 // every unfurl; cache the boolean at the edge (short TTL) so repeat crawls skip
 // the round-trip. A freshly stamped card may take up to the TTL to surface.
 const _OG_CACHE_TTL = 300; // seconds
+async function _cardExists(env, origin, key) {
+  if (!key) return false;
+  try {
+    const cache = caches.default;
+    const ck = new Request(`${origin}/__cardexists/${key}`);
+    const cached = await cache.match(ck);
+    if (cached) return (await cached.text()) === '1';
+    const exists = !!(await env.CDN.head(key));
+    await cache.put(ck, new Response(exists ? '1' : '0', {
+      headers: { 'Cache-Control': `public, max-age=${_OG_CACHE_TTL}` },
+    }));
+    return exists;
+  } catch (err) {
+    console.error('[og] card head failed:', err.message);
+    return false;
+  }
+}
 export async function _ogImage(env, origin, filename) {
   const key = _cardKey(filename);
-  if (key) {
-    try {
-      const cache = caches.default;
-      const ck = new Request(`${origin}/__cardexists/${key}`);
-      const cached = await cache.match(ck);
-      let exists;
-      if (cached) {
-        exists = (await cached.text()) === '1';
-      } else {
-        exists = !!(await env.CDN.head(key));
-        await cache.put(ck, new Response(exists ? '1' : '0', {
-          headers: { 'Cache-Control': `public, max-age=${_OG_CACHE_TTL}` },
-        }));
-      }
-      if (exists) return `${cdnBase(origin)}/${key}`;
-    } catch (err) {
-      console.error('[og] card head failed:', err.message);
-    }
-  }
+  if (key && await _cardExists(env, origin, key)) return `${cdnBase(origin)}/${key}`;
   return _frameImg(origin, filename, OG_IMG_WIDTH);
+}
+
+// The audio equivalent, keyed by slug (a track has no image basename to key
+// off). Returns null rather than a fallback when no card has been stamped:
+// audio has no photograph to fall back TO, and injectOg skips a null, so the
+// page's own og:image stands and the link unfurls as the site instead of as a
+// broken image.
+export async function _audioOgImage(env, origin, slug) {
+  if (!slug) return null;
+  const key = `meta/audio-${slug}-og.webp`;
+  return (await _cardExists(env, origin, key)) ? `${cdnBase(origin)}/${key}` : null;
 }
 
 // Parse a field-notes post's frontmatter into a flat field map (or null).
@@ -127,6 +137,40 @@ export async function getFrameOgData(url, env, page) {
   return null;
 }
 
+// Resolve { title, description, image, ogUrl } for one track on /listen, or
+// null when there's no `?a=` param or no matching registry entry (bare /listen
+// is the index, and keeps the page's own tags).
+export async function getAudioOgData(url, env) {
+  const a = url.searchParams.get('a');
+  // Bare /listen is the index. It still returns og data (rather than null) so
+  // the page gets exactly ONE injected block either way — shipping static tags
+  // as well would duplicate og:title on the per-track view, and crawlers take
+  // the first one they find.
+  const indexOg = {
+    type: 'website',
+    title: `Listen — ${siteConfig.name.toUpperCase()}`,
+    description: siteConfig.tagline || 'Audio.',
+    image: null,
+    ogUrl: `${url.origin}/listen`,
+  };
+  if (!a || !/^[a-z0-9-]+$/i.test(a)) return indexOg;
+  try {
+    const data = await loadDataJson(url.origin, env, 'data/audio.json');
+    const e = Array.isArray(data) && data.find((x) => x.slug === a);
+    if (!e) return indexOg;
+    const mins = e.duration > 0 ? `${Math.max(1, Math.round(e.duration / 60))} min` : '';
+    return {
+      title: `${e.title || 'Audio'} — ${siteConfig.name.toUpperCase()}`,
+      description: [e.sub, mins].filter(Boolean).join(' · ') || siteConfig.tagline,
+      image: await _audioOgImage(env, url.origin, e.slug),
+      ogUrl: `${url.origin}/listen/?a=${encodeURIComponent(a)}`,
+    };
+  } catch (err) {
+    console.error('[og] audio resolve failed:', err.message);
+  }
+  return indexOg;
+}
+
 // Inject per-frame og:/twitter: tags. Buffer already ships a static default
 // card, so for it we override the existing tags' content; archive and post
 // pages have no tags, so we append a fresh block.
@@ -143,17 +187,23 @@ export function injectOg(rewriter, og, hasExistingTags) {
     set('meta[name="twitter:image"]', og.image);
     return;
   }
+  // A field with no value is OMITTED rather than stamped. Frames and posts
+  // always resolve an image, but audio only has one once a waveform card has
+  // been stamped — and `<meta property="og:image" content="null">` is a
+  // broken-image unfurl, which is worse than no image tag at all.
+  const tag = (attr, name, val) =>
+    (val == null || val === '') ? null : `<meta ${attr}="${name}" content="${escapeHtml(val)}">`;
   const tags = [
-    `<meta property="og:type" content="article">`,
-    `<meta property="og:title" content="${escapeHtml(og.title)}">`,
-    `<meta property="og:description" content="${escapeHtml(og.description)}">`,
-    `<meta property="og:image" content="${escapeHtml(og.image)}">`,
-    `<meta property="og:url" content="${escapeHtml(og.ogUrl)}">`,
-    `<meta name="twitter:card" content="summary_large_image">`,
-    `<meta name="twitter:title" content="${escapeHtml(og.title)}">`,
-    `<meta name="twitter:description" content="${escapeHtml(og.description)}">`,
-    `<meta name="twitter:image" content="${escapeHtml(og.image)}">`,
-  ].join('\n');
+    tag('property', 'og:type', og.type || 'article'),
+    tag('property', 'og:title', og.title),
+    tag('property', 'og:description', og.description),
+    tag('property', 'og:image', og.image),
+    tag('property', 'og:url', og.ogUrl),
+    tag('name', 'twitter:card', og.image ? 'summary_large_image' : 'summary'),
+    tag('name', 'twitter:title', og.title),
+    tag('name', 'twitter:description', og.description),
+    tag('name', 'twitter:image', og.image),
+  ].filter(Boolean).join('\n');
   rewriter.on('head', { element(el) { el.append(tags, { html: true }); } });
 }
 

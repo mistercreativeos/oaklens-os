@@ -171,6 +171,18 @@ export default Object.freeze({
   // change or remove your listing later without an email round-trip, and what
   // protects your seat if the domain ever lapses.
   // webring: { node: 7, slug: 'your-slug' },
+  // Podcast channel details for /podcast.xml — the RSS 2.0 feed carrying every
+  // track you marked as an EPISODE on the Audio shelf. The feed serves with or
+  // without this block (title and description fall back to your site name and
+  // tagline), and R2 charges nothing for bandwidth, so the site can host a show
+  // outright. Apple Podcasts will not accept a submission without square
+  // artwork, though — 1400×1400 minimum, 3000×3000 ideal — so add `image`
+  // before you submit anywhere. Spotify and Overcast take the URL directly.
+  // podcast: {
+  //   title: 'Your Show',
+  //   description: 'What it is, in a sentence.',
+  //   image: '/assets/podcast-cover.png',
+  // },
   // Search-engine entity (Organization + WebSite JSON-LD on the homepage).
   // sameAs: only live, crawlable profile URLs — an empty list is fine.
   entity: {

@@ -78,6 +78,13 @@ export const SHAPE = Object.freeze({
   entity: { name: '', logo: '/favicon.svg', sameAs: [], codeRepository: '', codeName: '' },
   support: { blurb: '', tiers: [], note: '', disclaimer: '' },
   webring: { node: null, slug: '' },
+  // Channel-level fields for /podcast.xml. SHAPE, not BACKFILL: omitting the
+  // block means "this show is just the site" — title and description fall back
+  // to the site's own name and tagline, and no <itunes:image> is emitted.
+  // Artwork is the one field Apple requires before it will accept a
+  // submission, and it must be square; there is nothing on a photography site
+  // to derive that from, so it is asked for rather than guessed at.
+  podcast: { title: '', description: '', image: '' },
 });
 
 function isPlainObject(v) {

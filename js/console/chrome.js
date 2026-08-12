@@ -193,7 +193,7 @@ export function _initKeyboardInsets() {
 // ============== VIEW ROUTING ==============
 // Views reachable only through the More sheet — the More tab lights up as
 // their proxy in the tab bar.
-const MORE_VIEWS = ["wall", "barrel", "friends", "library", "bench"];
+const MORE_VIEWS = ["wall", "barrel", "friends", "library", "audio", "bench"];
 
 // Surfaces register themselves; the router does not know them by name. Each
 // entry is { render, onLeave? } — `render` draws the view, `onLeave` cleans up

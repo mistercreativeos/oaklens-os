@@ -22,7 +22,7 @@
   if (light) d.setAttribute('data-theme', 'light');
 })();
 </script>
-<link rel="stylesheet" href="../css/main.css?v=20">
+<link rel="stylesheet" href="../css/main.css?v=21">
 <script src="/js/mode-toggle.js?v=1" defer></script>
 <link rel="sitemap" type="application/xml" href="/sitemap.xml">
 <!-- Marked.js for markdown rendering -->
@@ -299,6 +299,75 @@
   margin-top: 8px;
 }
 
+/* ---- INLINE AUDIO + TRACKLIST ----
+   The player itself (.ap-*) is styled in css/main.css and is frameless by
+   design; these rules only place it in the column and set the type around it.
+   Nothing here paints a box either — an audio block should read like part of
+   the prose, not like an embed dropped into it. */
+.post-body .fn-audio {
+  margin: 2.4em 0;
+  padding: 0;
+}
+
+.post-body .fn-audio-head { margin-bottom: 12px; }
+
+.post-body .fn-audio-title,
+.post-body .fn-track-title {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 660;
+  font-size: 1.06rem;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--fg-strong);
+  text-decoration: none;
+  border: none;
+}
+@media (hover: hover) {
+  .post-body .fn-audio-title:hover,
+  .post-body .fn-track-title:hover { color: var(--accent); }
+}
+
+.post-body .fn-audio-sub,
+.post-body .fn-track-sub {
+  font-family: var(--font-meta);
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-top: 3px;
+}
+
+/* Consecutive audio shortcodes collapse into this — a record sleeve, not a
+   stack of widgets. Rules between rows, none around the block. */
+.post-body .fn-tracklist {
+  margin: 2.4em 0;
+  border-top: 1px solid var(--line);
+}
+
+.post-body .fn-track {
+  display: grid;
+  grid-template-columns: 2rem 1fr;
+  gap: 0 13px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.post-body .fn-track-num {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  padding-top: 3px;
+}
+
+.post-body .fn-track-main { min-width: 0; }
+.post-body .fn-track-sub { margin-bottom: 8px; }
+
+@media (max-width: 560px) {
+  .post-body .fn-track { grid-template-columns: 1.6rem 1fr; gap: 0 9px; }
+}
+
 .post-body blockquote {
   border-left: 2px solid var(--red);
   padding-left: 16px;
@@ -477,7 +546,8 @@
   <div class="footer-right">WE OBSERVE. WE DO NOT CONSUME.</div>
 </footer>
 
-<script src="/js/page-fn-post.js?v=4" defer></script>
+<script src="/js/audio-player.js?v=1" defer></script>
+<script src="/js/page-fn-post.js?v=5" defer></script>
 
 </body>
 </html>

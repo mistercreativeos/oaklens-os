@@ -19,7 +19,10 @@ import { cdnBase } from '../shared/site.js';
 //   meta/      stamped OG cards
 //   wallpaper/ wallpaper full-res
 //   bench/     RAW-processing preview JPGs (scripts/bench-upload.sh)
-const UPLOAD_KEY_PREFIXES = ['archive/', 'videos/', 'meta/', 'wallpaper/', 'bench/'];
+//   audio/     tracks, episodes, voice memos (one canonical object each — the
+//              waveform is pre-measured into data/audio.json, so unlike images
+//              there are no derived variants to store)
+const UPLOAD_KEY_PREFIXES = ['archive/', 'videos/', 'meta/', 'wallpaper/', 'bench/', 'audio/'];
 
 // Charset an R2 object key may use, shared by the upload sanitizer and the
 // /api/cdn proxy so anything the upload path can store, the proxy can serve.
@@ -30,9 +33,21 @@ const UPLOAD_KEY_PREFIXES = ['archive/', 'videos/', 'meta/', 'wallpaper/', 'benc
 const R2_KEY_CHARS = '\\w .+=()/-';
 const UPLOAD_KEY_JUNK_RE = new RegExp(`[^${R2_KEY_CHARS}]`, 'g');
 const CDN_PROXY_KEY_RE = new RegExp(
-  `^(archive|meta|wallpaper|videos|homepage|about|blog|portal|bench|dev)/[${R2_KEY_CHARS}]+\\.(webp|jpe?g|png|gif|mp4|webm)$`,
+  `^(archive|meta|wallpaper|videos|homepage|about|blog|portal|bench|dev|audio)/[${R2_KEY_CHARS}]+\\.(webp|jpe?g|png|gif|mp4|webm|mp3|m4a|aac|ogg|opus|wav|flac)$`,
   'i'
 );
+
+// Content-Type fallback for a proxied object whose stored httpMetadata is
+// missing (pre-console uploads, or a bucket seeded with rclone). An audio file
+// served as image/webp under `nosniff` simply will not play, so every
+// extension the key regex admits needs an answer here.
+const EXT_TYPES = {
+  mp4: 'video/mp4', webm: 'video/webm',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac',
+  ogg: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac',
+  webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  png: 'image/png', gif: 'image/gif',
+};
 
 // How long a proxied object may live in the colo cache. Matches the
 // Cache-Control the proxy already sends, so the browser and the edge expire
@@ -111,19 +126,35 @@ export async function handleUpload(request, env) {
 
   const MAX_IMAGE_SIZE = 25 * 1024 * 1024; // 25MB
   const MAX_VIDEO_SIZE = 64 * 1024 * 1024; // 64MB — short looping field-note clips
+  // 128MB ≈ two hours at 128kbps, so a full podcast episode fits without the
+  // author re-encoding. R2 charges nothing for egress, which is what makes
+  // self-hosting an episode feed practical at all.
+  const MAX_AUDIO_SIZE = 128 * 1024 * 1024;
   const ALLOWED_IMAGE_TYPES = ['image/webp', 'image/jpeg', 'image/png', 'image/gif'];
   const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm'];
+  // What every current browser can actually decode + play natively. Kept in
+  // sync with AUDIO_EXT_TYPES below (the proxy's Content-Type fallback).
+  const ALLOWED_AUDIO_TYPES = [
+    'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/aac',
+    'audio/ogg', 'audio/opus', 'audio/wav', 'audio/x-wav', 'audio/flac',
+  ];
 
   for (const [, file] of formData.entries()) {
     if (!(file instanceof File)) continue;
 
     const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
+    const isAudio = ALLOWED_AUDIO_TYPES.includes(file.type);
     const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
-    if (!isVideo && !isImage) {
+    if (!isVideo && !isImage && !isAudio) {
       return jsonRes({ error: 'Unsupported file type' }, 415);
     }
-    if (file.size > (isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE)) {
-      return jsonRes({ error: isVideo ? 'Video too large (64MB max)' : 'File too large (25MB max)' }, 413);
+    const cap = isAudio ? MAX_AUDIO_SIZE : isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+    if (file.size > cap) {
+      return jsonRes({
+        error: isAudio ? 'Audio too large (128MB max)'
+          : isVideo ? 'Video too large (64MB max)'
+          : 'File too large (25MB max)',
+      }, 413);
     }
 
     const rawName = file.name || ''; // e.g. "archive/basename-1024w.webp" or "videos/clip.mp4"
@@ -150,7 +181,8 @@ export async function handleUpload(request, env) {
       const buf = await file.arrayBuffer();
       await env.CDN.put(path, buf, {
         httpMetadata: {
-          contentType: file.type || (isVideo ? 'video/mp4' : 'image/webp'),
+          contentType: file.type
+            || (isAudio ? 'audio/mpeg' : isVideo ? 'video/mp4' : 'image/webp'),
           cacheControl: 'public, max-age=31536000, immutable',
         },
       });
@@ -329,7 +361,7 @@ export async function handleCdnProxy(request, env, url, ctx) {
   }
 
   const ext = key.split('.').pop().toLowerCase();
-  const fallbackType = ext === 'mp4' ? 'video/mp4' : ext === 'webm' ? 'video/webm' : 'image/webp';
+  const fallbackType = EXT_TYPES[ext] || 'image/webp';
   const headers = {
     // The stored contentType is author-controlled (set from the upload's
     // file.type), so `nosniff` keeps the browser from second-guessing it into

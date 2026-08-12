@@ -1,0 +1,223 @@
+/* ============================================================
+   PAGE-LISTEN.JS — the /listen permalink + audio index
+   ------------------------------------------------------------
+   Classic script, same posture as recent-index.js: no imports, no build step,
+   no third party. Renders from data/audio.json (and therefore from the offline
+   export's data island through its fetch shim).
+
+   Two views out of one page:
+     /listen            → the index: every track, newest first, as rows
+     /listen/?a=<slug>  → one track, full-size, with the rest listed beneath
+
+   The per-track view is what a share link points at, and what the worker
+   resolves OG tags for at the edge (src/edge/chrome.js getAudioOgData) — so
+   the unfurl is correct even though the body below renders client-side.
+   ============================================================ */
+(function () {
+  'use strict';
+
+  // ---- pure helpers (exported for the test suite) ----
+
+  // Newest first. `added_at` is the registry's own date; a missing one sorts
+  // last rather than throwing the whole list out of order.
+  function sortTracks(list) {
+    return (Array.isArray(list) ? list.slice() : [])
+      .filter(function (t) { return t && t.slug && t.filename; })
+      .sort(function (a, b) {
+        return String(b.added_at || '').localeCompare(String(a.added_at || ''));
+      });
+  }
+
+  function findTrack(list, slug) {
+    if (!slug) return null;
+    var found = (Array.isArray(list) ? list : []).find(function (t) {
+      return t && t.slug === slug;
+    });
+    return found || null;
+  }
+
+  // ?a= from a URL. Kept pure (takes a search string) so the routing is
+  // testable without a browser.
+  function slugFromSearch(search) {
+    var m = /[?&]a=([^&]*)/.exec(String(search || ''));
+    if (!m) return '';
+    try { return decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch (e) { return ''; }
+  }
+
+  var g = (typeof globalThis !== 'undefined') ? globalThis
+    : (typeof self !== 'undefined' ? self : this);
+
+  g.PageListen = {
+    sortTracks: sortTracks,
+    findTrack: findTrack,
+    slugFromSearch: slugFromSearch,
+  };
+
+  if (typeof document === 'undefined') return;
+
+  var AP = g.AudioPlayer;
+
+  function el(tag, cls) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    return e;
+  }
+
+  function href(track) {
+    return '/listen/?a=' + encodeURIComponent(track.slug || '');
+  }
+
+  var SHARE_SVG =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">'
+    + '<path d="M8 0.9 11.25 4.15 9.95 5.45 8.9 4.4 8.9 10.5 7.1 10.5 7.1 4.4 6.05 5.45 4.75 4.15Z"/>'
+    + '<path d="M2.6 6.8h2.3v6.5h6.2V6.8h2.3v8.3H2.6z"/></svg>';
+  var DOWNLOAD_SVG =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">'
+    + '<path d="M7.1 0.9h1.8v6.1l1.05-1.05 1.3 1.3L8 10.5 4.75 7.25l1.3-1.3L7.1 7Z"/>'
+    + '<path d="M2.6 11.2h2.3v2.1h6.2v-2.1h2.3v3.9H2.6z"/></svg>';
+
+  function meta(track) {
+    var bits = [];
+    var dur = AP ? AP.durationLabel(track.duration) : '';
+    if (dur) bits.push(dur);
+    var yr = String(track.added_at || '').slice(0, 4);
+    if (/^\d{4}$/.test(yr)) bits.push(yr);
+    return bits.join(' · ');
+  }
+
+  function mountPlayer(host, track, variant) {
+    if (!AP || typeof AP.create !== 'function') return;
+    host.appendChild(AP.create({
+      src: track.filename,
+      peaks: AP.peaksFromString(track.peaks),
+      duration: track.duration,
+      variant: variant,
+      title: track.title || '',
+    }).root);
+  }
+
+  // ---- the featured track ----
+  function renderFeature(host, track) {
+    var eyebrow = el('div', 'lt-eyebrow');
+    eyebrow.textContent = 'Audio';
+
+    var title = el('h1', 'lt-title');
+    title.textContent = track.title || 'Untitled';
+
+    host.appendChild(eyebrow);
+    host.appendChild(title);
+
+    if (track.sub) {
+      var sub = el('div', 'lt-sub');
+      sub.textContent = track.sub;
+      host.appendChild(sub);
+    }
+
+    var player = el('div', 'lt-player');
+    mountPlayer(player, track, 'full');
+    host.appendChild(player);
+
+    var foot = el('div', 'lt-foot');
+    var m = el('div', 'lt-meta');
+    m.textContent = meta(track);
+    foot.appendChild(m);
+
+    var share = el('button', 'lt-action');
+    share.type = 'button';
+    share.innerHTML = SHARE_SVG + '<span>Share</span>';
+    share.addEventListener('click', function () {
+      if (AP) AP.share(location.origin + href(track), track.title || '', share);
+    });
+    foot.appendChild(share);
+
+    // Off by default — a musician sharing stems opts in per track, and the
+    // file already lives at a URL either way, so this is an invitation rather
+    // than a lock.
+    if (track.download && AP) {
+      var dl = el('a', 'lt-action');
+      dl.href = AP.audioSrc(track.filename);
+      dl.setAttribute('download', '');
+      dl.innerHTML = DOWNLOAD_SVG + '<span>Download</span>';
+      foot.appendChild(dl);
+    }
+
+    host.appendChild(foot);
+  }
+
+  // ---- the list ----
+  function renderList(host, tracks, label) {
+    var head = el('div', 'lt-list-head');
+    head.textContent = label;
+    host.appendChild(head);
+
+    tracks.forEach(function (track, i) {
+      var row = el('div', 'lt-row');
+
+      var num = el('div', 'lt-num');
+      num.textContent = String(i + 1).padStart(2, '0');
+      row.appendChild(num);
+
+      var main = el('div', 'lt-row-main');
+
+      var rt = el('div', 'lt-row-title');
+      var link = el('a');
+      link.href = href(track);
+      link.textContent = track.title || 'Untitled';
+      rt.appendChild(link);
+      main.appendChild(rt);
+
+      var rs = el('div', 'lt-row-sub');
+      rs.textContent = [track.sub, meta(track)].filter(Boolean).join(' · ');
+      main.appendChild(rs);
+
+      mountPlayer(main, track, 'row');
+      row.appendChild(main);
+      host.appendChild(row);
+    });
+  }
+
+  function render() {
+    var host = document.getElementById('listen');
+    if (!host) return;
+
+    fetch('/data/audio.json')
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .catch(function () { return []; })
+      .then(function (data) {
+        var tracks = sortTracks(data);
+        var slug = slugFromSearch(location.search);
+        var featured = findTrack(tracks, slug);
+
+        host.textContent = '';
+        host.setAttribute('data-view', featured ? 'track' : 'index');
+
+        if (!tracks.length) {
+          var empty = el('div', 'lt-empty');
+          empty.textContent = '// nothing here yet';
+          host.appendChild(empty);
+          return;
+        }
+
+        if (featured) {
+          renderFeature(host, featured);
+          var rest = tracks.filter(function (t) { return t.slug !== featured.slug; });
+          if (rest.length) renderList(host, rest, 'More');
+          // The served <title> is track-neutral ("Listen — WORDMARK", composed
+          // at the edge); once we know which track this is, say so, so the tab
+          // and any bookmark carry the track name like the og:title already
+          // does. Only the leading word is swapped — the site's own suffix,
+          // whatever shape it takes, is left alone.
+          var suffix = /^Listen([\s\S]*)$/.exec(document.title);
+          if (featured.title) document.title = featured.title + (suffix ? suffix[1] : '');
+        } else {
+          renderList(host, tracks, tracks.length + (tracks.length === 1 ? ' track' : ' tracks'));
+        }
+      });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', render);
+  } else {
+    render();
+  }
+})();

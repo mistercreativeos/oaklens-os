@@ -14,9 +14,16 @@ export const PUBLIC_PAGES = ['/', '/about', '/archive', '/field-notes', '/suppor
 // pages[key] === false turns a public page off end to end: the route 404s,
 // the sitemap and Wayback cron drop it, and nav items pointing at it are
 // filtered. A missing key means enabled, so existing configs change nothing.
+// `listen` (the audio permalink + index) is deliberately absent from
+// PUBLIC_PAGES above: an instance with no audio would otherwise advertise an
+// empty page in its sitemap. handleSitemap adds it only when data/audio.json
+// actually has something in it, so the page earns its listing rather than
+// needing a fork to switch it off. It still lives here so `pages.listen:
+// false` can turn it off end to end like any other page.
 export const PAGE_ROUTES = {
   archive: '/archive', fieldNotes: '/field-notes', wall: '/wall',
   about: '/about', support: '/support',
+  listen: '/listen',
 };
 
 // Console infrastructure under /dev/ that must never be gated — disabling the

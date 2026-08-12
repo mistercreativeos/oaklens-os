@@ -90,6 +90,9 @@ const PLAN = [
   ]],
   ['focal', ['FOCAL POINT PICKER']],
   ['asset-library', ['ASSET LIBRARY']],
+  // Above fn-editor because attaching a track from the editor inserts its
+  // shortcode (fnInsertAtCursor) — same direction asset-library already runs.
+  ['audio', ['AUDIO SHELF']],
   ['publish', ['PUBLISH', 'IMPORT EXISTING DATA']],
   ['session', ['SESSION AUTH (UI)']],
   ['bench', ['BENCH']],

@@ -25,6 +25,47 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-12
+
+**New: your site can play audio.** A track, a podcast episode, a voice memo —
+drop it on the new **Audio** shelf in the console (next to Library) and it can
+appear as a play-card on your homepage, inside a field note, or on its own page
+at `/listen`. Nothing to install and nothing to configure; if you never upload
+audio, nothing about your site changes.
+
+What you get:
+
+- **A waveform player** that looks drawn into the page rather than dropped onto
+  it — no box, no border, and it takes its colors from whichever preset and
+  light/dark mode you run.
+- **Tracklists for free.** Drop two or more tracks in a row in a field note and
+  they become a numbered list; playing one stops the others. One on its own
+  stays a single player.
+- **A page per track** at `/listen/?a=<name>`, which is what a share button
+  sends. Links unfurl with the track's own title in Messages, WhatsApp and
+  Slack.
+- **A podcast feed** at `/podcast.xml`. Mark a track as an **episode** on the
+  shelf and it appears there — Apple Podcasts, Spotify and Overcast can
+  subscribe to that address directly. Cloudflare does not charge for the
+  bandwidth, so hosting a show costs you nothing extra.
+- Everything travels in **Export Site**, so a saved copy plays offline too.
+
+It is quick on purpose: the waveform is measured once when you add the file, so
+visitors' browsers draw it without downloading any audio. A track is only
+fetched when someone presses play.
+
+> **Optional, and only if you want a podcast in Apple Podcasts:** Apple will not
+> accept a feed without square cover art. Add a `podcast` block to
+> `site.config.js` (see `site.config.example.js` for the shape) pointing at a
+> square image, 1400×1400 or larger. Everywhere else works without it.
+
+**Fixed: text-only posts shared as a broken image.** A field note with no hero
+photo was sending an empty image reference to social platforms, so the preview
+showed a broken thumbnail instead of falling back to the title and summary. It
+now unfurls as a clean text preview.
+
+---
+
 ## 2026-08-11
 
 **Fixed: writing a field note on a phone.** With the on-screen keyboard up,

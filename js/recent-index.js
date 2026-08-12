@@ -7,12 +7,16 @@
    through the export's fetch() shim. No build step, no imports, no third party.
 
    Merges data/archive.json (photo cards) + data/posts.json (Field-Note text
-   cards), takes the most recent items, and renders a 3-up mixed row into
-   #recent-index. Text cards carry the adaptive-tier craft: a render-time drop
-   cap, a blinking editor caret, and statement/feature/standard sizing so short
-   posts read as intentional and long ones fill like the preview. A MISSING
-   data file (an un-seeded fork) falls back to the bundled CC0 samples — the
-   same split the archive/wall pages make (missing → samples, empty → empty).
+   cards) + data/audio.json (audio cards), takes the most recent items, and
+   renders a 3-up mixed row into #recent-index. Text cards carry the
+   adaptive-tier craft: a render-time drop cap, a blinking editor caret, and
+   statement/feature/standard sizing so short posts read as intentional and
+   long ones fill like the preview. Audio cards carry a waveform player drawn
+   from pre-measured peaks (js/audio-player.js) — no audio is fetched until
+   someone presses play. A MISSING data file (an un-seeded fork) falls back to
+   the bundled CC0 samples — the same split the archive/wall pages make
+   (missing → samples, empty → empty); audio has no samples and so treats both
+   the same.
    ============================================================ */
 (function () {
   'use strict';
@@ -114,6 +118,30 @@
     return picks.slice(0, gridSize);
   }
 
+  // ---- Audio cards: fed ONLY from the audio registry (data/audio.json), never
+  //      deduced from a post's mix of text and media. An entry the owner flags
+  //      `featured` surfaces as a play-card, exactly the way a buffer frame's
+  //      `featured` surfaces the RAW daily. Capped to one for now — a card is a
+  //      single statement; an EP is a field note with a tracklist. ----
+  var AUDIO_MAX = 1;
+  function audioPick(list, max) {
+    if (max == null) max = AUDIO_MAX;
+    return (list || [])
+      .filter(function (a) { return a && a.featured && a.filename && a.slug; })
+      .slice(0, max);
+  }
+
+  // Pinned to the SECOND slot, ahead of the RAW daily's third. Applied BEFORE
+  // pinRaw so the running order lands photo · audio · RAW — all three visible
+  // in the 3-up desktop row. (Pinning after would push RAW to the fourth slot,
+  // which desktop hides.) Pure, so the placement is pinned by the test suite.
+  var AUDIO_SLOT = 1;
+  function pinAudio(items, audioItem, gridSize) {
+    var picks = (items || []).slice();
+    picks.splice(Math.min(AUDIO_SLOT, picks.length), 0, audioItem);
+    return picks.slice(0, gridSize);
+  }
+
   // ---- dates ----
   // Mirror worker.js feedDate(): added_at (ISO) then date (YYYY-MM-DD).
   function itemDate(x) { return x.added_at || x.date || ''; }
@@ -131,7 +159,7 @@
   // recent-work grid to surface both the photography and the writing. So when
   // both datasets are non-empty but the top-N came out single-type, trade the
   // oldest pick for the newest item of the missing type, then re-sort by date.
-  function pickRecent(archive, posts, rawFeatured) {
+  function pickRecent(archive, posts, rawFeatured, audioFeatured) {
     var items = []
       .concat((archive || [])
         .filter(function (e) { return e && e.filename && e.slug; })
@@ -142,13 +170,20 @@
 
     items.sort(function (a, b) { return String(b.d).localeCompare(String(a.d)); });
 
-    // A featured RAW daily (capped to one) is PINNED to the third slot and always
-    // shows regardless of date — the rest fills newest-first around it. When
-    // nothing is featured, fall through to the normal mixed newest-first grid.
+    // Featured items are PINNED and always show regardless of date — the rest
+    // fills newest-first around them. Audio first (slot 1), then the RAW daily
+    // (slot 2); see pinAudio for why that order matters. When nothing is
+    // featured, fall through to the normal mixed newest-first grid.
+    var audio = audioPick(audioFeatured);
     var raw = rawPick(rawFeatured);
-    if (raw.length) {
-      return pinRaw(items, { kind: 'photo', raw: true, data: raw[0], d: raw[0].captured_at || '' }, GRID_SIZE);
+    var pinned = items;
+    if (audio.length) {
+      pinned = pinAudio(pinned, { kind: 'audio', data: audio[0], d: audio[0].added_at || '' }, GRID_SIZE);
     }
+    if (raw.length) {
+      pinned = pinRaw(pinned, { kind: 'photo', raw: true, data: raw[0], d: raw[0].captured_at || '' }, GRID_SIZE);
+    }
+    if (audio.length || raw.length) return pinned.slice(0, GRID_SIZE);
 
     var picks = items.slice(0, GRID_SIZE);
 
@@ -228,6 +263,8 @@
     cardFocus: cardFocus,
     rawPick: rawPick,
     pinRaw: pinRaw,
+    audioPick: audioPick,
+    pinAudio: pinAudio,
     pickRecent: pickRecent,
     sampleFrames: sampleFrames,
     sampleNote: sampleNote,
@@ -333,6 +370,94 @@
     return a;
   }
 
+  // ---- audio card ----
+  // Built from a registry entry, so every value on it was typed by the author
+  // rather than guessed from a post's contents.
+  //
+  // The whole tile links to the /listen permalink through a stretched overlay
+  // on the title's anchor. That keeps ONE anchor and ONE button in the markup:
+  // a <button> nested inside an <a> is invalid HTML and unreadable to a screen
+  // reader, which is the trap this pattern exists to avoid. CSS raises the
+  // player and the share button above the overlay so they stay pressable.
+  function listenHref(entry) {
+    return '/listen/?a=' + encodeURIComponent(entry.slug || '');
+  }
+
+  var SHARE_SVG =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">'
+    + '<path d="M8 0.9 11.25 4.15 9.95 5.45 8.9 4.4 8.9 10.5 7.1 10.5 7.1 4.4 6.05 5.45 4.75 4.15Z"/>'
+    + '<path d="M2.6 6.8h2.3v6.5h6.2V6.8h2.3v8.3H2.6z"/></svg>';
+
+  function audioCard(entry) {
+    var card = el('div', 'wk-card wk-audio');
+
+    var kicker = el('span', 'wk-kicker');
+    var dot = el('span', 'wk-dot');
+    dot.setAttribute('aria-hidden', 'true');
+    kicker.appendChild(dot);
+    kicker.appendChild(document.createTextNode('Audio'));
+
+    var title = el('div', 'wk-a-title');
+    var link = el('a');
+    link.href = listenHref(entry);
+    link.textContent = entry.title || '';
+    title.appendChild(link);
+
+    card.appendChild(kicker);
+    card.appendChild(title);
+
+    if (entry.sub) {
+      var sub = el('div', 'wk-a-sub');
+      sub.textContent = entry.sub;
+      card.appendChild(sub);
+    }
+
+    // The player is progressive enhancement: if audio-player.js failed to load
+    // the card still reads and still links to the permalink, rather than
+    // rendering as a broken tile.
+    var AP = g.AudioPlayer;
+    var hasPlayer = AP && typeof AP.create === 'function';
+    if (hasPlayer) {
+      var player = AP.create({
+        src: entry.filename,
+        peaks: AP.peaksFromString(entry.peaks),
+        duration: entry.duration,
+        variant: 'card',
+        title: entry.title || '',
+        // The card owns its own playing state so the title can scroll while
+        // the track runs — the player tells it rather than the CSS reaching in.
+        onstate: function (playing) { card.classList.toggle('is-playing', playing); },
+      });
+      card.appendChild(player.root);
+      AP.marquee(title);
+    }
+
+    var foot = el('div', 'wk-a-foot');
+    var meta = el('div', 'wk-a-meta');
+    var bits = [];
+    var dur = hasPlayer ? AP.durationLabel(entry.duration) : '';
+    if (dur) bits.push(dur);
+    var yr = yearOf(entry);
+    if (yr) bits.push(yr);
+    meta.textContent = bits.join(' · ');
+    foot.appendChild(meta);
+
+    var share = el('button', 'wk-a-share');
+    share.type = 'button';
+    share.setAttribute('aria-label', 'Share this track');
+    share.innerHTML = SHARE_SVG;
+    share.addEventListener('click', function (ev) {
+      // Sits over the stretched card link — a press here shares, never navigates.
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (hasPlayer) AP.share(location.origin + listenHref(entry), entry.title || '', share);
+    });
+    foot.appendChild(share);
+
+    card.appendChild(foot);
+    return card;
+  }
+
   // null = the data file is MISSING (an un-seeded fork), [] = it loaded empty
   // (cleared on purpose). The caller maps null to the sample fallback — the
   // same missing-vs-empty split the archive and wall pages make (manual §5.21).
@@ -348,13 +473,23 @@
     // /api/buffer-summary is a tiny precomputed endpoint (also snapshotted into
     // the offline export) — it carries the featured RAW frames so the homepage
     // never downloads the full buffer.json just to show one daily.
-    Promise.all([getJson('/data/archive.json'), getJson('/data/posts.json'), getJson('/api/buffer-summary')])
+    Promise.all([
+      getJson('/data/archive.json'),
+      getJson('/data/posts.json'),
+      getJson('/api/buffer-summary'),
+      // The audio registry. No sample fallback here on purpose: the engine
+      // ships sample FRAMES and a sample NOTE, but no sample audio file — an
+      // un-seeded fork should show no audio card rather than a play button
+      // that 404s. Missing and empty therefore mean the same thing.
+      getJson('/data/audio.json'),
+    ])
       .then(function (res) {
         var archive = withSampleFallback(res[0], sampleFrames());
         var posts = withSampleFallback(res[1], [sampleNote()]);
         var summary = (res[2] && !Array.isArray(res[2])) ? res[2] : {};
         var rawFeatured = Array.isArray(summary.featured) ? summary.featured : [];
-        var picks = pickRecent(archive, posts, rawFeatured);
+        var audio = Array.isArray(res[3]) ? res[3] : [];
+        var picks = pickRecent(archive, posts, rawFeatured, audio);
         var section = host.closest ? host.closest('.cl-work') : null;
         if (!picks.length) {
           if (section) section.hidden = true;
@@ -362,7 +497,11 @@
         }
         var frag = document.createDocumentFragment();
         picks.forEach(function (item) {
-          frag.appendChild(item.kind === 'photo' ? photoCard(item.data, item.raw) : textCard(item.data));
+          frag.appendChild(
+            item.kind === 'audio' ? audioCard(item.data)
+              : item.kind === 'photo' ? photoCard(item.data, item.raw)
+                : textCard(item.data)
+          );
         });
         host.textContent = '';
         host.appendChild(frag);

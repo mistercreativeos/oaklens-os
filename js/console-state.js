@@ -12,8 +12,9 @@
 //
 // Transitional coupling: functions here still call rendering globals that
 // js/console-ui.js defines (refreshStageIndicators, renderTrash, the render*
-// family, showView, fnNewPost, isVideoAsset, scheduleLibrarySync,
-// updatePurgeR2Button). Those resolve through the global scope at call time.
+// family incl. renderAudio, showView, fnNewPost, isVideoAsset,
+// scheduleLibrarySync, updatePurgeR2Button). Those resolve through the global
+// scope at call time.
 //
 // Mutable-array contract: sessionTrash and _pendingR2Deletes are const arrays
 // mutated in place (never reassigned), so the module bindings and the window
@@ -32,8 +33,9 @@ export const STATE = {
   barrel:     [],   // {id, date, title, url}
   friends:    [],   // {id, name, tag, location, url, added_at} — About §004 NETWORK / FRIENDS OF
   library:    [],   // {id, filename, hash, added_at, _uploaded, _uploading, _uploadError} — pre-staged, never published
+  audio:      [],   // {id, slug, filename, title, sub, duration, peaks, featured, episode, download, added_at}
   staged:     {     // tracks unpublished changes per surface
-    buffer: 0, archive: 0, posts: 0, wallpapers: 0, barrel: 0, friends: 0, library: 0
+    buffer: 0, archive: 0, posts: 0, wallpapers: 0, barrel: 0, friends: 0, library: 0, audio: 0
   }
 };
 
@@ -74,6 +76,7 @@ export function save() {
     lean.friends = lean.friends.filter(f => !f._imported);
     lean.posts = lean.posts.filter(p => !p._imported);
     lean.library = lean.library.filter(l => !l._imported);
+    lean.audio = (lean.audio || []).filter(a => !a._imported);
 
     const json = JSON.stringify(lean);
     const sizeKB = Math.round(json.length / 1024);
@@ -130,7 +133,7 @@ export function load() {
   // Without this, the entry would sail through publish and commit a filename
   // pointing at a CDN object that doesn't exist.
   let interrupted = 0;
-  for (const surface of ['buffer', 'archive', 'wallpapers', 'library']) {
+  for (const surface of ['buffer', 'archive', 'wallpapers', 'library', 'audio']) {
     for (const e of STATE[surface] || []) {
       if (e && e._uploading) {
         delete e._uploading;
@@ -188,7 +191,11 @@ export function trashItem(surface, id) {
   if ((removed._uploaded || removed._imported) && removed.filename) {
     const base = removed.filename.replace(/\.[^.]+$/, '');
     let keys;
-    if (surface === 'library' && isVideoAsset(removed)) {
+    if (surface === 'audio') {
+      // One canonical object per track — no derived variants to chase, which
+      // is the whole reason audio lives in its own flat prefix.
+      keys = [`audio/${removed.filename}`];
+    } else if (surface === 'library' && isVideoAsset(removed)) {
       // Video assets live under videos/ as the original clip + a poster webp
       keys = [
         `videos/${removed.filename}`,
@@ -219,6 +226,7 @@ export function trashItem(surface, id) {
     barrel: renderBarrel,
     friends: renderNetwork,
     library: renderLibrary,
+    audio: renderAudio,
   };
   renderers[surface]?.();
   showToast("Moved to trash: " + sessionTrash[0].label, { kind: 'warning' });
@@ -236,7 +244,7 @@ export function trashRestore(trashIndex) {
   save();
   if (trashed.surface === 'library') scheduleLibrarySync();
   renderBuffer(); renderArchive(); renderFN();
-  renderWall(); renderBarrel(); renderNetwork(); renderLibrary(); renderTrash();
+  renderWall(); renderBarrel(); renderNetwork(); renderLibrary(); renderAudio(); renderTrash();
   showToast("Restored: " + trashed.label, { kind: 'success' });
 }
 
@@ -372,8 +380,8 @@ export function resetConsole() {
   localStorage.removeItem(STORAGE_KEY);
   sessionTrash.length = 0;
   Object.assign(STATE, {
-    buffer: [], archive: [], posts: [], wallpapers: [], barrel: [], friends: [], library: [],
-    staged: { buffer: 0, archive: 0, posts: 0, wallpapers: 0, barrel: 0, friends: 0, library: 0 }
+    buffer: [], archive: [], posts: [], wallpapers: [], barrel: [], friends: [], library: [], audio: [],
+    staged: { buffer: 0, archive: 0, posts: 0, wallpapers: 0, barrel: 0, friends: 0, library: 0, audio: 0 }
   });
   refreshStageIndicators();
   renderTrash();

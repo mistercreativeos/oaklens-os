@@ -64,6 +64,10 @@ export const EXPORT_MANIFEST = {
     // an alias — both map to the same saved file, fetched once.
     { route: '/field-notes/post', file: 'field-notes/post.html', aliases: ['/field-notes/post.html'] },
     { route: '/wall', file: 'wall/index.html' },
+    // The audio permalink + index. One saved file serves both views: the
+    // per-track view is a query (?a=slug), which the page resolves client-side
+    // from the data island, so no per-track export entry is needed.
+    { route: '/listen', file: 'listen/index.html', aliases: ['/listen/'] },
     { route: '/about', file: 'about/index.html' },
     { route: '/support', file: 'support/index.html' },
     { route: '/archive/manifest.html', file: 'archive/manifest.html' },
@@ -91,6 +95,11 @@ export const EXPORT_MANIFEST = {
     // Homepage recent-work grid — classic script, copied verbatim; renders from
     // the offline data island via the fetch shim (like lighttable.js).
     'js/recent-index.js',
+    // The waveform player — classic script, copied verbatim. Its peaks travel
+    // in data/audio.json, so a player draws offline with no audio decoded;
+    // pressing play then reads the track file the imageRules below carry.
+    'js/audio-player.js',
+    'js/page-listen.js',
     'fonts/syne-latin-var.woff2',
     'fonts/syne-mono-latin.woff2',
     // Preset faces (starter template) — main.css declares all of them, so an
@@ -116,6 +125,7 @@ export const EXPORT_MANIFEST = {
     'data/barrel.json',
     'data/friends.json',
     'data/library.json',
+    'data/audio.json',
   ],
 
   // Field-note markdown: one file per published entry in `data`, at
@@ -160,5 +170,9 @@ export const EXPORT_MANIFEST = {
       source: 'data/wallpapers.json',
       expand: (e) => [...sizeVariants('wallpaper', e.filename), ...wallpaperFull(e)],
     },
+    // Audio has no derived tiers — one canonical object per track. Carrying it
+    // is what makes an exported tree PLAY offline rather than just draw the
+    // waveform (the peaks are already in data/audio.json).
+    { source: 'data/audio.json', expand: (e) => (e.filename ? [`audio/${e.filename}`] : []) },
   ],
 };

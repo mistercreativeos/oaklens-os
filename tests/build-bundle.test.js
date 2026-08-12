@@ -90,6 +90,7 @@ describe('buildBundle()', () => {
     expect(Object.keys(bundle).sort()).toEqual([
       'MANIFEST.txt',
       'data/archive.json',
+      'data/audio.json',
       'data/barrel.json',
       'data/buffer.json',
       'data/friends.json',

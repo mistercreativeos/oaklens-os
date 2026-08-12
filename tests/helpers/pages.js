@@ -28,6 +28,7 @@ export const CHROME_PAGES = [
   'archive/index.html',
   'wall/index.html',
   'field-notes/index.html',
+  'listen/index.html',
   'support/index.html',
   '404.html',
 ].filter(present);
