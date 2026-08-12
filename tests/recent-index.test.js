@@ -13,7 +13,8 @@ import { hasData } from './helpers/instance-content.js';
 
 const {
   recentStrip, recentTruncate, recentExcerpt, recentTier, recentInitial,
-  cardFocus, rawPick, pinRaw, pickRecent, sampleFrames, sampleNote, withSampleFallback,
+  cardFocus, rawPick, pinRaw, audioPick, pinAudio, pickRecent,
+  sampleFrames, sampleNote, withSampleFallback,
 } = globalThis.RecentIndex;
 
 // Corpus checks need this instance's posts; the engine tree ships none.
@@ -151,6 +152,85 @@ describe('pinRaw — featured RAW frame pinned to the third slot', () => {
   it('places RAW at the end when there are fewer items than the slot', () => {
     expect(pinRaw([{ id: 'n0' }], raw, 4).map((x) => x.id)).toEqual(['n0', 'R']);
     expect(pinRaw([], raw, 4).map((x) => x.id)).toEqual(['R']);
+  });
+});
+
+describe('audioPick — only an explicitly featured registry entry gets a card', () => {
+  const reg = [
+    { id: 'a', slug: 'one', filename: 'one.mp3', featured: true },
+    { id: 'b', slug: 'two', filename: 'two.mp3', featured: true },
+    { id: 'c', slug: 'three', filename: 'three.mp3' },
+  ];
+  it('caps to one card by default — a card is a single statement', () => {
+    expect(audioPick(reg).map((a) => a.id)).toEqual(['a']);
+  });
+  it('honors an explicit max (for when we open it up to more slots)', () => {
+    expect(audioPick(reg, 2).map((a) => a.id)).toEqual(['a', 'b']);
+  });
+  it('ignores unfeatured entries — the registry holds far more than the grid shows', () => {
+    expect(audioPick([{ id: 'c', slug: 'three', filename: 'three.mp3' }])).toEqual([]);
+  });
+  it('drops entries that could not render a working card', () => {
+    // No file to play, and no slug to link the permalink at.
+    expect(audioPick([{ id: 'x', featured: true, slug: 'x' }], 2)).toEqual([]);
+    expect(audioPick([{ id: 'y', featured: true, filename: 'y.mp3' }], 2)).toEqual([]);
+    expect(audioPick([])).toEqual([]);
+    expect(audioPick(null)).toEqual([]);
+  });
+});
+
+describe('pinAudio — featured audio pinned to the second slot', () => {
+  const aud = { id: 'A', kind: 'audio' };
+  const many = [{ id: 'n0' }, { id: 'n1' }, { id: 'n2' }, { id: 'n3' }, { id: 'n4' }];
+  it('pins audio to index 1 (2nd card) and fills the rest newest-first', () => {
+    expect(pinAudio(many, aud, 4).map((x) => x.id)).toEqual(['n0', 'A', 'n1', 'n2']);
+  });
+  it('places audio at the end when there are fewer items than the slot', () => {
+    expect(pinAudio([], aud, 4).map((x) => x.id)).toEqual(['A']);
+  });
+
+  // The ORDER of the two pins is load-bearing, not incidental: audio is pinned
+  // before the RAW daily so the running order lands photo · audio · RAW, all
+  // three inside the 3-up desktop row. Pinning audio afterwards would displace
+  // RAW to the fourth slot, which desktop CSS hides — the featured frame would
+  // silently vanish from the homepage.
+  it('composes with pinRaw so BOTH pins survive the 3-up desktop row', () => {
+    const out = pinRaw(pinAudio(many, aud, 4), { id: 'R', raw: true }, 4);
+    expect(out.map((x) => x.id)).toEqual(['n0', 'A', 'R', 'n1']);
+    expect(out.slice(0, 3).map((x) => x.id)).toEqual(['n0', 'A', 'R']);
+  });
+});
+
+describe('pickRecent — featured audio joins the grid', () => {
+  const archive = [
+    { filename: 'f1.webp', slug: 's1', added_at: '2026-08-10' },
+    { filename: 'f2.webp', slug: 's2', added_at: '2026-08-09' },
+    { filename: 'f3.webp', slug: 's3', added_at: '2026-08-08' },
+  ];
+  const posts = [{ fn_id: 'fn-1', title: 'A note', added_at: '2026-08-07' }];
+  const audio = [{ id: 'A', slug: 'take-one', filename: 'take-one.mp3', featured: true }];
+
+  it('surfaces a featured track as an audio card in the second slot', () => {
+    const picks = pickRecent(archive, posts, [], audio);
+    expect(picks[1].kind).toBe('audio');
+    expect(picks[1].data.slug).toBe('take-one');
+  });
+
+  it('shows the audio card regardless of date — it is pinned, not date-ranked', () => {
+    const old = [{ id: 'A', slug: 'old', filename: 'old.mp3', featured: true, added_at: '2019-01-01' }];
+    expect(pickRecent(archive, posts, [], old).some((p) => p.kind === 'audio')).toBe(true);
+  });
+
+  it('changes nothing when no track is featured (no regression for a site without audio)', () => {
+    const before = pickRecent(archive, posts, []);
+    const after = pickRecent(archive, posts, [], [{ id: 'A', slug: 'x', filename: 'x.mp3' }]);
+    expect(after).toEqual(before);
+    expect(after.some((p) => p.kind === 'audio')).toBe(false);
+  });
+
+  it('carries an absent registry without throwing (a fork with no audio.json)', () => {
+    expect(() => pickRecent(archive, posts, [], null)).not.toThrow();
+    expect(() => pickRecent(archive, posts, [], undefined)).not.toThrow();
   });
 });
 

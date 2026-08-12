@@ -16,7 +16,7 @@
 // Mutations (/api/* upload, publish, sync) always require the network and are
 // never intercepted or cached — this SW only serves the static shell.
 
-const CACHE = 'oaklens-console-v93';
+const CACHE = 'oaklens-console-v95';
 const SHELL = '/dev/field-console.html';
 // Same-origin shell assets. The js/ versions here must match the import map in
 // field-console.html exactly — that map is where a module's version is decided,
@@ -25,32 +25,33 @@ const SHELL = '/dev/field-console.html';
 // two in step. CSS is a plain <link>, so its ?v= still lives on the tag.
 const SHELL_ASSETS = [
   '/css/field-console.css?v=30',
-  '/js/console-state.js?v=7',
+  '/js/console-state.js?v=8',
   '/js/console-api.js?v=8',
   '/js/markdown-engine.js?v=4',
-  '/js/console-ui.js?v=58',
-  '/js/console/chrome.js?v=3',
+  '/js/console-ui.js?v=59',
+  '/js/console/chrome.js?v=4',
   '/js/console/assets.js?v=4',
   '/js/console/utils.js?v=1',
   '/js/console/sync.js?v=1',
-  '/js/console/upload.js?v=1',
+  '/js/console/upload.js?v=2',
   '/js/console/more-views.js?v=3',
   '/js/console/archive.js?v=1',
   '/js/console/buffer.js?v=2',
   '/js/console/fn-editor.js?v=3',
   '/js/console/focal.js?v=3',
   '/js/console/asset-library.js?v=1',
-  '/js/console/publish.js?v=4',
+  '/js/console/audio.js?v=1',
+  '/js/console/publish.js?v=5',
   '/js/console/session.js?v=5',
   '/js/console/bench.js?v=1',
-  '/js/console/init.js?v=4',
+  '/js/console/init.js?v=5',
   '/js/console-telemetry.js?v=1',
   '/js/raw-lens.js?v=5',
   '/js/jpeg-privacy.js?v=1',
   '/js/raw-extract.js?v=4',
   '/js/site-export.js?v=4',
   '/js/site-export-core.js?v=3',
-  '/js/export-manifest.js?v=12',
+  '/js/export-manifest.js?v=13',
   // Every preset's console faces, not just noir's. The console re-skins its
   // typography with `data-preset` now, so precaching only Syne would have left
   // an installed PWA on aperture or passe-partout dropping to system fonts the

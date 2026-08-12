@@ -643,6 +643,114 @@ async function loadPost() {
       });
     })();
 
+    // ---- Phase 7: Inline audio (<div class="audio-embed" data-slug>) ----
+    // The shortcode carries ONLY a slug: title, subtitle, duration and the
+    // pre-measured waveform all come from data/audio.json, so a track renamed
+    // in the console is renamed everywhere it was ever embedded — there is one
+    // registry and the post references it.
+    //
+    // Consecutive shortcodes collapse into a numbered TRACKLIST; a lone one
+    // stays a standalone player. That is the whole "an EP is a field note"
+    // idea, and it costs the author nothing but dropping tracks in a row.
+    await (async function() {
+      const audioEls = [...document.querySelectorAll('.audio-embed[data-slug]')];
+      if (!audioEls.length) return;
+
+      const AP = window.AudioPlayer;
+      if (!AP || typeof AP.create !== 'function') {
+        // Player script missing — drop the placeholders rather than leaving
+        // empty divs punched through the prose.
+        audioEls.forEach(el => el.remove());
+        return;
+      }
+
+      let registry = [];
+      try {
+        const res = await fetch('/data/audio.json');
+        if (res.ok) registry = await res.json();
+      } catch { /* no registry — every shortcode resolves to nothing below */ }
+      const bySlug = new Map(
+        (Array.isArray(registry) ? registry : [])
+          .filter(t => t && t.slug && t.filename)
+          .map(t => [t.slug, t])
+      );
+
+      const mount = (host, track, variant) => host.appendChild(AP.create({
+        src: track.filename,
+        peaks: AP.peaksFromString(track.peaks),
+        duration: track.duration,
+        variant,
+        title: track.title || '',
+      }).root);
+
+      const metaLine = (track) => [track.sub, AP.durationLabel(track.duration)]
+        .filter(Boolean).join(' · ');
+
+      // Group BEFORE resolving, so an unresolvable slug doesn't silently split
+      // a tracklist in two — it drops out of its run instead.
+      for (const run of AP.groupAdjacent(audioEls)) {
+        const tracks = run.map(el => bySlug.get((el.dataset.slug || '').trim()))
+          .filter(Boolean);
+        if (!tracks.length) { run.forEach(el => el.remove()); continue; }
+
+        if (tracks.length === 1) {
+          const fig = document.createElement('figure');
+          fig.className = 'fn-audio';
+          const t = tracks[0];
+          const head = document.createElement('div');
+          head.className = 'fn-audio-head';
+          const title = document.createElement('a');
+          title.className = 'fn-audio-title';
+          title.href = `/listen/?a=${encodeURIComponent(t.slug)}`;
+          title.textContent = t.title || 'Untitled';
+          head.appendChild(title);
+          const sub = metaLine(t);
+          if (sub) {
+            const s = document.createElement('div');
+            s.className = 'fn-audio-sub';
+            s.textContent = sub;
+            head.appendChild(s);
+          }
+          fig.appendChild(head);
+          mount(fig, t, 'full');
+          run[0].replaceWith(fig);
+          continue;
+        }
+
+        const list = document.createElement('div');
+        list.className = 'fn-tracklist';
+        tracks.forEach((t, i) => {
+          const row = document.createElement('div');
+          row.className = 'fn-track';
+
+          const num = document.createElement('div');
+          num.className = 'fn-track-num';
+          num.textContent = String(i + 1).padStart(2, '0');
+          row.appendChild(num);
+
+          const main = document.createElement('div');
+          main.className = 'fn-track-main';
+          const title = document.createElement('a');
+          title.className = 'fn-track-title';
+          title.href = `/listen/?a=${encodeURIComponent(t.slug)}`;
+          title.textContent = t.title || 'Untitled';
+          main.appendChild(title);
+          const sub = metaLine(t);
+          if (sub) {
+            const s = document.createElement('div');
+            s.className = 'fn-track-sub';
+            s.textContent = sub;
+            main.appendChild(s);
+          }
+          mount(main, t, 'row');
+          row.appendChild(main);
+          list.appendChild(row);
+        });
+        run[0].replaceWith(list);
+        run.slice(1).forEach(el => el.remove());
+      }
+    })();
+
   } catch (err) {
     wrap.innerHTML = isPreview
       ? `<div class="post-error">

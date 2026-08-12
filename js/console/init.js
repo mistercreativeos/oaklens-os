@@ -26,6 +26,7 @@ import { renderBuffer, bufferIngest, bufferPromote, bufferRemove, burstLinkMode,
 import { renderFN, fnHeroIngest, fnHeroClear, fnSetupEnhancements, _applyFnFrontmatter } from './fn-editor.js';
 import { FocalModal, bufferFocal, loadOgCards } from './focal.js';
 import { closeAssetLibrary } from './asset-library.js';
+import { renderAudio, audioAddFiles } from './audio.js';
 import { renderPublish, syncFromServer } from './publish.js';
 import { checkAuth, closeSettings, _updateSettingsDots, _checkSessionExpiry, _initOfflineIndicator, applyInstancePosture, _wireRingJoin, maybeShowWelcome } from './session.js';
 import { renderBench } from './bench.js';
@@ -76,6 +77,7 @@ export function registerSurfaces() {
   registerView("barrel",  renderBarrel);
   registerView("friends", renderNetwork);
   registerView("library", renderLibrary);
+  registerView("audio",   renderAudio);
   registerView("publish", renderPublish);
   registerView("bench",   () => renderBench().catch(err => console.error('Bench render error:', err)));
 
@@ -111,6 +113,7 @@ export function init() {
   wireDropzone("wall-dropzone", "wall-file-input", wallIngest);
   wireDropzone("fn-hero-slot", "fn-hero-input", fnHeroIngest);
   wireDropzone("library-dropzone", "library-file-input", libraryIngest);
+  wireDropzone("audio-dropzone", "audio-file-input", (files) => audioAddFiles(files));
   document.getElementById("fn-hero-clear")?.addEventListener("click", e => {
     e.stopPropagation();
     fnHeroClear();
@@ -192,6 +195,7 @@ export function init() {
   renderBarrel();
   renderNetwork();
   renderLibrary();
+  renderAudio();
 
   document.addEventListener("keydown", e => {
     if (e.altKey && e.key.toLowerCase() === "r") { e.preventDefault(); resetConsole(); }

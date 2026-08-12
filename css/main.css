@@ -886,6 +886,245 @@ html {
 }
 
 /* ============================================
+   AUDIO PLAYER — frameless, drawn into the page
+   --------------------------------------------
+   No box, no stroke, no background of its own: the player sits on whatever
+   surface holds it the way the drop cap and the caret do. Every color is a
+   theme token, so all five presets and both modes get it for free and
+   tests/theme-tokens.test.js stays happy — there are no hardcoded colors here.
+
+   Progress is one custom property (--ap-progress, 0–1) written by
+   js/audio-player.js; the fill row is clipped to it, so the played/unplayed
+   split IS the progress UI and there is no second scrub track.
+   ============================================ */
+
+.ap {
+  --ap-progress: 0;
+  --ap-wave-h: 34px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+}
+
+/* ---- play/pause: a bare mark, never a circle or a pill ---- */
+.ap-play {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--fg);
+  transition: color 0.15s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.ap-glyph {
+  width: 13px;
+  height: 15px;
+  fill: currentColor;
+}
+.ap-glyph-pause { display: none; }
+.ap.is-playing .ap-play { color: var(--accent); }
+.ap.is-playing .ap-glyph-play { display: none; }
+.ap.is-playing .ap-glyph-pause { display: block; }
+@media (hover: hover) {
+  .ap-play:hover { color: var(--accent); transform: scale(1.08); }
+}
+.ap-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+/* ---- the waveform IS the seek surface ---- */
+.ap-wave {
+  position: relative;
+  flex: 1 1 auto;
+  height: var(--ap-wave-h);
+  min-width: 0;
+  cursor: pointer;
+  touch-action: none;   /* drag scrubs, never scrolls the page */
+}
+.ap-wave:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+.ap-bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.ap-bar {
+  flex: 1 1 0;
+  min-width: 1px;
+  border-radius: 1px;
+  background: var(--faint);
+}
+
+/* The played half. Clipped to --ap-progress — one style write per frame, and
+   the colors stay in CSS where the theme can reach them. */
+.ap-bars-fill {
+  -webkit-clip-path: inset(0 calc(100% - var(--ap-progress) * 100%) 0 0);
+  clip-path: inset(0 calc(100% - var(--ap-progress) * 100%) 0 0);
+}
+.ap-bars-fill .ap-bar { background: var(--accent); }
+
+/* No peaks stored (legacy or hand-written entry): a quiet flat rail that still
+   seeks, rather than a collapsed player. */
+.ap-flat .ap-bars-base .ap-bar { background: var(--line); }
+
+.ap-time {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 3.2em;
+  text-align: right;
+}
+
+/* ---- variants ---- */
+.ap-card { --ap-wave-h: 40px; }
+.ap-full { --ap-wave-h: 56px; gap: 14px; }
+.ap-full .ap-play { width: 30px; height: 30px; }
+.ap-full .ap-glyph { width: 17px; height: 19px; }
+.ap-full .ap-time { font-size: 0.7rem; }
+.ap-row { --ap-wave-h: 22px; gap: 9px; }
+.ap-row .ap-play { width: 18px; height: 18px; }
+.ap-row .ap-glyph { width: 10px; height: 12px; }
+.ap-row .ap-time { font-size: 0.58rem; min-width: 3em; }
+
+/* ============================================
+   AUDIO CARD — the update card that plays
+   --------------------------------------------
+   Same tile shell as the Field-Note text card, with the waveform where the
+   tease sits. Fed only from the audio registry (data/audio.json), never
+   deduced from a post's mix of text and media — see docs/audio-card-vision.md.
+   ============================================ */
+
+.wk-audio {
+  padding: 16px 16px 14px;
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+  justify-content: center;
+}
+
+/* The title carries the only link on the card, stretched over the whole tile
+   by the ::after overlay. That keeps ONE anchor and ONE button in the markup
+   — a <button> nested inside an <a> would be invalid and unreadable to a
+   screen reader, which is the trap this pattern avoids. */
+.wk-a-title {
+  font-family: var(--font-display);
+  font-weight: 680;
+  font-size: 1.18rem;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  color: var(--fg-strong);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.wk-a-title a {
+  color: inherit;
+  text-decoration: none;
+  display: inline-block;
+}
+.wk-a-title a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+/* Long titles slide rather than truncate — but only while the card is hovered
+   or the track is playing, so a still page stays still. */
+.wk-a-title.is-long a {
+  animation: ap-title-scroll var(--ap-scroll-dur, 8s) ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.wk-audio.is-playing .wk-a-title.is-long a { animation-play-state: running; }
+@media (hover: hover) {
+  .wk-audio:hover .wk-a-title.is-long a { animation-play-state: running; }
+}
+@keyframes ap-title-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(var(--ap-scroll, 0)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wk-a-title.is-long a { animation: none; }
+}
+
+.wk-a-sub {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  line-height: 1.3;
+  color: var(--muted);
+  margin-top: -4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The player and the share button sit ABOVE the stretched link so they stay
+   pressable — without this the overlay would swallow every transport press. */
+.wk-audio .ap,
+.wk-a-share {
+  position: relative;
+  z-index: 2;
+}
+
+.wk-a-foot {
+  margin-top: 12px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wk-a-meta {
+  font-family: var(--font-meta);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Rests at --faint and surfaces on hover/focus — present when wanted, gone
+   when not. */
+.wk-a-share {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--faint);
+  transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.wk-a-share svg { width: 13px; height: 13px; fill: currentColor; }
+.wk-a-share.copied { color: var(--accent); }
+@media (hover: hover) {
+  .wk-a-share:hover { color: var(--accent); }
+}
+.wk-a-share:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+/* ============================================
    FOOTER
    ============================================ */
 

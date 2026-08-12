@@ -173,6 +173,27 @@ export function buildBundle() {
       hash: l.hash || null,
       added_at: l.added_at || null,
     })), null, 2),
+    // The audio registry — ONE home for every track, however it was attached
+    // (Audio shelf or dropped into a field note). `peaks` is the pre-measured
+    // waveform (a comma string, ~400 bytes) so no visitor ever downloads audio
+    // just to draw a card; `featured` pins the homepage card the same way a
+    // buffer frame's `featured` pins the RAW daily.
+    "data/audio.json":     JSON.stringify(STATE.audio.filter(a => !a._uploadError && !a._uploading).map(a => ({
+      id: a.id,
+      slug: a.slug,
+      filename: a.filename || null,
+      title: a.title || "",
+      sub: a.sub || "",
+      duration: a.duration || 0,
+      peaks: a.peaks || "",
+      size: a.size || 0,
+      mime: a.mime || "",
+      added_at: a.added_at || null,
+      // Omitted when unset so an ordinary track stays byte-identical.
+      ...(a.featured ? { featured: true } : {}),
+      ...(a.episode ? { episode: true } : {}),
+      ...(a.download ? { download: true } : {}),
+    })), null, 2),
   };
   // Posts as individual markdown files
   STATE.posts.forEach(p => {
@@ -385,7 +406,7 @@ export function importIntoSurface(surface, data) {
 }
 
 export function clearImported() {
-  ["buffer", "archive", "posts", "wallpapers", "barrel", "friends", "library"].forEach(surface => {
+  ["buffer", "archive", "posts", "wallpapers", "barrel", "friends", "library", "audio"].forEach(surface => {
     STATE[surface] = STATE[surface].filter(e => !e._imported);
   });
   save();
@@ -509,6 +530,7 @@ export async function syncFromServer() {
     { file: 'data/barrel.json',     surface: 'barrel' },
     { file: 'data/friends.json',    surface: 'friends' },
     { file: 'data/library.json',    surface: 'library' },
+    { file: 'data/audio.json',      surface: 'audio' },
   ];
 
   try {

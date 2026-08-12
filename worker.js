@@ -20,11 +20,11 @@ import { handleAuth, handleLogout } from './src/api/console-auth.js';
 import { handleSubscribe, handleExport } from './src/api/subscribers.js';
 import { handleUpload, handleDeleteAssets, handleCdnProxy, handleOgCards } from './src/api/assets.js';
 import {
-  getPostMeta, getFrameOgData, injectOg, injectSiteChrome,
+  getPostMeta, getFrameOgData, getAudioOgData, injectOg, injectSiteChrome,
   _frameImg, _ogImage, _navLinksHtml, HERO_PRELOAD_WIDTH,
 } from './src/edge/chrome.js';
 import {
-  handleManifest, handleSitemap, handleFeed, handleBufferSummary, handleSiteSettings,
+  handleManifest, handleSitemap, handleFeed, handlePodcastFeed, handleBufferSummary, handleSiteSettings,
   handleAnalogsToken,
 } from './src/api/site-meta.js';
 
@@ -99,6 +99,9 @@ const EXACT_ROUTES = new Map([
   ['GET /archive/manifest.html', (request, env) => handleManifest(request, env)],
   ['GET /sitemap.xml', (request, env) => handleSitemap(request, env)],
   ['GET /feed.xml', (request, env) => handleFeed(request, env)],
+  // RSS 2.0, separate from the Atom blog feed on purpose — podcast apps need
+  // RSS, and only tracks the author marked `episode` belong in one.
+  ['GET /podcast.xml', (request, env) => handlePodcastFeed(request, env)],
   ['GET /api/buffer-summary', (request, env) => handleBufferSummary(request, env)],
   ['GET /api/site/settings', (request, env) => handleSiteSettings(request, env)],
   ['GET /.well-known/analogs.txt', () => handleAnalogsToken()],
@@ -306,6 +309,7 @@ export default {
     const isArchivePage =
       !isBufferPage && (p === '/archive' || p === '/archive/' || p === '/archive/index.html');
     const isPostPage = p.includes('/field-notes/post');
+    const isListenPage = p === '/listen' || p === '/listen/' || p === '/listen/index.html';
 
     let ogData = null;
     let heroUrl = null;
@@ -313,6 +317,8 @@ export default {
       ogData = await getFrameOgData(url, env, 'archive');
     } else if (isBufferPage) {
       ogData = await getFrameOgData(url, env, 'buffer');
+    } else if (isListenPage) {
+      ogData = await getAudioOgData(url, env);
     } else if (isPostPage) {
       const postMeta = await getPostMeta(url, env);
       if (postMeta) {

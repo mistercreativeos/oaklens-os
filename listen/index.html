@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title data-site-title>Listen</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" as="font" type="font/woff2" href="/fonts/syne-latin-var.woff2" crossorigin data-font-preload>
+<script>
+/* Pre-paint mode resolution: visitor override -> config default -> OS.
+   Runs before the stylesheet so there is no flash of the wrong mode. The
+   worker stamps data-theme-default on <html> and HTMLRewriter streams the
+   document top-down, so the attribute is present by the time this runs. */
+(function () {
+  var d = document.documentElement, s = null;
+  try { s = localStorage.getItem('ol-theme'); } catch (e) {}
+  var def = d.getAttribute('data-theme-default') || 'midnight';
+  var light = s ? s === 'light'
+    : def === 'auto' ? matchMedia('(prefers-color-scheme: light)').matches
+    : def === 'daylight';
+  if (light) d.setAttribute('data-theme', 'light');
+})();
+</script>
+<link rel="stylesheet" href="../css/main.css?v=21">
+<script src="/js/mode-toggle.js?v=1" defer></script>
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<!-- No static og:/twitter: block here on purpose: the worker resolves the
+     track from ?a= and injects exactly one block (see getAudioOgData). A
+     static set would duplicate og:title on the per-track view, and crawlers
+     take the first tag they find. -->
+<style>
+/* ============================================
+   LISTEN — audio permalink + index
+   The share/OG target for a track, and the full list of everything the
+   registry holds. Player styling lives in css/main.css (.ap-*) — this file
+   only lays out the page around it.
+   ============================================ */
+
+.listen-wrap {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 56px 26px 120px;
+}
+
+/* ---- the featured track (?a=slug) ---- */
+.lt-eyebrow {
+  font-family: var(--font-meta);
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+.lt-eyebrow::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.lt-title {
+  font-family: var(--font-display);
+  font-weight: 690;
+  font-size: clamp(1.9rem, 1.1rem + 3.4vw, 3.1rem);
+  line-height: 1.06;
+  letter-spacing: -0.022em;
+  color: var(--fg-strong);
+  text-wrap: balance;
+}
+
+.lt-sub {
+  font-family: var(--font-body);
+  font-size: 1.02rem;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+.lt-player { margin: 34px 0 0; }
+
+.lt-foot {
+  margin-top: 18px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.lt-meta {
+  font-family: var(--font-meta);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-right: auto;
+}
+
+.lt-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-meta);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.lt-action svg { width: 12px; height: 12px; fill: currentColor; }
+.lt-action.copied { color: var(--accent); }
+@media (hover: hover) { .lt-action:hover { color: var(--accent); } }
+.lt-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+/* ---- the list ---- */
+.lt-list-head {
+  margin: 74px 0 4px;
+  font-family: var(--font-meta);
+  font-size: 0.58rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--line);
+}
+/* On the index view the list IS the page, so it opens at the top. */
+.listen-wrap[data-view="index"] .lt-list-head { margin-top: 34px; }
+
+.lt-row {
+  display: grid;
+  grid-template-columns: 2.1rem 1fr;
+  gap: 0 14px;
+  align-items: center;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Track number — positional, like a record sleeve. */
+.lt-num {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  align-self: start;
+  padding-top: 2px;
+}
+
+.lt-row-main { min-width: 0; }
+
+.lt-row-title {
+  font-family: var(--font-display);
+  font-weight: 620;
+  font-size: 0.98rem;
+  line-height: 1.2;
+  color: var(--fg-strong);
+  margin-bottom: 2px;
+}
+.lt-row-title a { color: inherit; text-decoration: none; }
+@media (hover: hover) { .lt-row-title a:hover { color: var(--accent); } }
+
+.lt-row-sub {
+  font-family: var(--font-meta);
+  font-size: 0.58rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lt-empty {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--faint);
+  padding: 40px 0;
+}
+
+@media (max-width: 560px) {
+  .listen-wrap { padding: 36px 20px 110px; }
+  .lt-row { grid-template-columns: 1.7rem 1fr; gap: 0 10px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="nav">
+  <a href="/" class="nav-logo" data-site-wordmark="dot-art">SITE<span class="dot-art">.NAME</span></a>
+  <div class="nav-links">
+    <a href="/" class="nav-link">Home</a>
+    <a href="/archive" class="nav-link">theArchive</a>
+    <a href="/field-notes" class="nav-link">FN//Blog</a>
+    <a href="/wall" class="nav-link">theWall</a>
+    <a href="/about" class="nav-link">About</a>
+    <a href="/dev" class="nav-link terminal">&gt;Dev</a>
+    <a href="mailto:you@example.com" class="nav-mail" title="Contact">&#9993;</a>
+  </div>
+  <button class="nav-hamburger" id="nav-toggle" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<div class="nav-mobile" id="nav-mobile">
+  <a href="/">Home</a>
+  <a href="/archive">theArchive</a>
+  <a href="/field-notes">FN//Blog</a>
+  <a href="/wall">theWall</a>
+  <a href="/about">About</a>
+  <a href="/dev">&gt;Dev</a>
+  <a href="mailto:you@example.com">&#9993; Contact</a>
+</div>
+
+<!-- ============ CONTENT ============ -->
+<!-- Rendered by js/page-listen.js from data/audio.json. -->
+<main class="listen-wrap" id="listen"></main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <div class="footer-left"><span data-site-wordmark="accent">SITE<span class="accent">.NAME</span></span> · <span data-site-location>YOUR CITY</span> · <span class="wx-telemetry"><span class="wx-label">WX</span> <span class="wx-sep">//</span> <span class="wx-data" id="wx-temp">--°</span></span> · <a href="/archive/manifest.html" class="footer-manifest">MANIFEST</a></div>
+  <div class="footer-right">WE OBSERVE. WE DO NOT CONSUME.</div>
+</footer>
+
+<script src="/js/site-common.js?v=2"></script>
+<script src="/js/audio-player.js?v=1" defer></script>
+<script src="/js/page-listen.js?v=1" defer></script>
+
+</body>
+</html>

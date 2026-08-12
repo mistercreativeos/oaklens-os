@@ -97,6 +97,10 @@ try {
         <span class="nav-icon">◎</span> Library
         <span class="nav-count" id="nav-count-library">0</span>
       </button>
+      <button class="nav-btn" data-view="audio" onclick="showView('audio')">
+        <span class="nav-icon">♪</span> Audio
+        <span class="nav-count" id="nav-count-audio">0</span>
+      </button>
       <!-- Config-gated (site.config.js -> console.bench). The edge removes this
            button, the More-sheet item and #view-bench when the flag is off. -->
       <button class="nav-btn" data-console-feature="bench" data-view="bench" onclick="showView('bench')">
@@ -329,6 +333,10 @@ try {
               <button class="fn-panel-btn" id="fn-asset-btn" onclick="openAssetLibrary(assetToPostBody, 'archive', true)" title="Insert image(s) from asset library">ASSET</button>
               <button class="fn-panel-btn" id="fn-video-btn" onclick="openAssetLibrary(assetToPostVideo, 'videos')" title="Insert a looping video banner">VIDEO</button>
               <button class="fn-panel-btn" id="fn-music-btn" onclick="fnInsertMusic()" title="Insert an Apple Music player from a share link or embed code">MUSIC</button>
+              <!-- Attaching here is the SAME ingest as the Audio shelf — the
+                   track lands in the one registry and its shortcode drops at
+                   the cursor. Two in a row become a tracklist. -->
+              <button class="fn-panel-btn" id="fn-audio-btn" onclick="fnAttachAudio()" title="Attach your own audio — it lands on the Audio shelf and plays here">AUDIO</button>
               <button class="fn-collapse-btn" id="fn-collapse-btn" onclick="fnToggleFrontmatter()" title="Add a title, location and date">TITLE ▾</button>
               <button class="fn-focus-btn" onclick="fnToggleFocus()" title="Focus mode (Esc to exit)">◎ FOCUS</button>
               <button class="fn-panel-btn fn-bar-toggle" id="fn-bar-toggle" onclick="toggleFnBar()" title="Hide tab bar" aria-label="Hide tab bar" aria-pressed="false">▾ BAR</button>
@@ -562,6 +570,39 @@ Capture first. Process later."></textarea>
           <div class="stage-title">STAGED ASSETS · <span class="count" id="library-count">0</span></div>
         </div>
         <div class="archive-list" id="library-display"></div>
+      </div>
+    </section>
+
+    <!-- ============ AUDIO SHELF ============
+         One registry for every track, however it arrived: dropped here, or
+         attached inside a field note (♪ AUDIO in the FN toolbar). The waveform
+         is measured once on drop and travels in data/audio.json, so the public
+         player never downloads audio to draw a card. Promote-to-card lives on
+         every row so featuring never means walking back to this shelf. -->
+    <section class="view" id="view-audio">
+      <div class="view-header">
+        <div>
+          <div class="view-title">AUDIO <em>SHELF</em></div>
+          <div class="view-sub">// TRACKS · EPISODES · VOICE MEMOS — ONE HOME, PLAYED FROM ANYWHERE</div>
+        </div>
+        <div class="view-meta">
+          <div><span class="accent">WAVEFORM MEASURED ON DROP</span></div>
+          <div id="audio-stats">— tracks</div>
+        </div>
+      </div>
+
+      <div class="dropzone" id="audio-dropzone">
+        <input type="file" id="audio-file-input" class="dz-hidden-input" multiple accept="audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac">
+        <div class="dz-icon">♪</div>
+        <div class="dz-prompt">DROP AUDIO TO ADD IT TO THE SHELF</div>
+        <div class="dz-hint">mp3 · m4a · aac · ogg · opus · wav · flac — up to 128MB, so a full episode fits</div>
+      </div>
+
+      <div class="stage-section">
+        <div class="stage-header">
+          <div class="stage-title">TRACKS · <span class="count" id="audio-count">0</span></div>
+        </div>
+        <div class="archive-list" id="audio-display"></div>
       </div>
     </section>
     <section class="view" id="view-bench" data-console-feature="bench">
@@ -850,6 +891,10 @@ Capture first. Process later."></textarea>
       <span class="sheet-icon">◎</span> Library
       <span class="sheet-count" id="sheet-count-library">0</span>
     </button>
+    <button class="sheet-item" data-view="audio" onclick="sheetGo('audio')">
+      <span class="sheet-icon">♪</span> Audio
+      <span class="sheet-count" id="sheet-count-audio">0</span>
+    </button>
     <button class="sheet-item" data-console-feature="bench" data-view="bench" onclick="sheetGo('bench')">
       <span class="sheet-icon">▣</span> Bench
       <span class="sheet-count" id="sheet-count-bench">0</span>
@@ -1124,30 +1169,31 @@ Capture first. Process later."></textarea>
   "imports": {
     "/js/console-telemetry.js": "/js/console-telemetry.js?v=1",
     "/js/console-api.js":       "/js/console-api.js?v=8",
-    "/js/console-state.js":     "/js/console-state.js?v=7",
-    "/js/console-ui.js":        "/js/console-ui.js?v=58",
-    "/js/console/chrome.js":    "/js/console/chrome.js?v=3",
+    "/js/console-state.js":     "/js/console-state.js?v=8",
+    "/js/console-ui.js":        "/js/console-ui.js?v=59",
+    "/js/console/chrome.js":    "/js/console/chrome.js?v=4",
     "/js/console/assets.js":    "/js/console/assets.js?v=4",
     "/js/console/utils.js":     "/js/console/utils.js?v=1",
     "/js/console/sync.js":      "/js/console/sync.js?v=1",
-    "/js/console/upload.js":    "/js/console/upload.js?v=1",
+    "/js/console/upload.js":    "/js/console/upload.js?v=2",
     "/js/console/more-views.js": "/js/console/more-views.js?v=3",
     "/js/console/archive.js":   "/js/console/archive.js?v=1",
     "/js/console/buffer.js":    "/js/console/buffer.js?v=2",
     "/js/console/fn-editor.js": "/js/console/fn-editor.js?v=3",
     "/js/console/focal.js":     "/js/console/focal.js?v=3",
     "/js/console/asset-library.js": "/js/console/asset-library.js?v=1",
-    "/js/console/publish.js":   "/js/console/publish.js?v=4",
+    "/js/console/audio.js":     "/js/console/audio.js?v=1",
+    "/js/console/publish.js":   "/js/console/publish.js?v=5",
     "/js/console/session.js":   "/js/console/session.js?v=5",
     "/js/console/bench.js":     "/js/console/bench.js?v=1",
-    "/js/console/init.js":      "/js/console/init.js?v=4",
+    "/js/console/init.js":      "/js/console/init.js?v=5",
     "/js/markdown-engine.js":   "/js/markdown-engine.js?v=4",
     "/js/jpeg-privacy.js":      "/js/jpeg-privacy.js?v=1",
     "/js/raw-lens.js":          "/js/raw-lens.js?v=5",
     "/js/raw-extract.js":       "/js/raw-extract.js?v=4",
     "/js/site-export.js":       "/js/site-export.js?v=4",
     "/js/site-export-core.js":  "/js/site-export-core.js?v=3",
-    "/js/export-manifest.js":   "/js/export-manifest.js?v=12"
+    "/js/export-manifest.js":   "/js/export-manifest.js?v=13"
   }
 }
 </script>

@@ -93,7 +93,7 @@ export function _requeueNetFailedUploads() {
 // also filters it out as a belt-and-suspenders guarantee.
 export function _failedUploads() {
   const out = [];
-  for (const surface of ['buffer', 'archive', 'wallpapers', 'library']) {
+  for (const surface of ['buffer', 'archive', 'wallpapers', 'library', 'audio']) {
     for (const e of (STATE[surface] || [])) {
       // _uploading with no live queue item = orphan (load() normally converts
       // these, but belt-and-suspenders: never let one slip past a publish)
@@ -199,7 +199,7 @@ export function _uploadCancelRemaining() {
 // The queue deals in STATE keys; the view registry is keyed by view name, and
 // the two disagree for wallpapers. Kept here rather than in chrome because it is
 // the queue's vocabulary, not the router's.
-const _VIEW_OF_SURFACE = { buffer: 'buffer', archive: 'archive', wallpapers: 'wall', library: 'library' };
+const _VIEW_OF_SURFACE = { buffer: 'buffer', archive: 'archive', wallpapers: 'wall', library: 'library', audio: 'audio' };
 
 export function _uploadRetry(entryId) {
   const item = _uploadQueue.find(i => i.entryId === entryId);
