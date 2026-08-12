@@ -33,6 +33,10 @@ const PRESET_BLOCKS = {
   'passe-partout · Daylight': ':root[data-preset="passe-partout"][data-theme="light"] {',
   'noir · Midnight': ':root[data-preset="noir"] {',
   'noir · Daylight': ':root[data-preset="noir"][data-theme="light"] {',
+  'selenium · Midnight': ':root[data-preset="selenium"] {',
+  'selenium · Daylight': ':root[data-preset="selenium"][data-theme="light"] {',
+  'cyanotype · Midnight': ':root[data-preset="cyanotype"] {',
+  'cyanotype · Daylight': ':root[data-preset="cyanotype"][data-theme="light"] {',
 };
 
 describe('preset × mode blocks', () => {

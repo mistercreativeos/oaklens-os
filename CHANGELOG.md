@@ -25,6 +25,135 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-11
+
+**Fixed: writing a field note on a phone.** With the on-screen keyboard up,
+the console's Field Notes editor could end up mostly hidden behind the keys —
+its height came from a guess about how much header sat above it, and on a
+phone the guess was off by about double. The editor now sizes itself to
+exactly the space the keyboard leaves: start typing and the title block and
+draft pickers tuck away so the writing area fills the screen above the keys,
+with WRITE/PREVIEW and SAVE/STAGE still in reach; tap out of the editor and
+they return. Phone screens also drop the keyboard-shortcut hint line (those
+⌘ keys don't exist on a phone) and put the draft pickers on one row.
+
+**Fixed: the floating ⛓ LINK button on the buffer.** On phones and tablets it
+was hiding *behind* the bottom tab bar — a barely-visible sliver at the screen
+edge. It now sits on top of the bar like the rest of the floating controls,
+and steps aside while the LINK/CANCEL action bar is up on narrow screens.
+
+Also: save/stage toast messages now appear above the keyboard instead of
+under it. Safe to merge — no config changes, nothing to do.
+
+---
+
+## 2026-08-10 (night)
+
+**New: [quickstart.md](quickstart.md) — the guide for the hour after the
+install.** `setup.md` ends the moment your site answers at an address. Nothing
+covered what comes next, so the settings and console moves that make a site
+yours were discoverable only by clicking around and hoping. This is that hour,
+one step at a time: **Part 0** your two addresses and the two ways a change goes
+live, **Part 1** eight `site.config.js` switches (your name and wordmark, the
+five looks, turning pages on and off, the Apple Music player, Web Analytics,
+`repoConnected`, the footer chips, short links), **Part 2** seven console moves
+(dropping photos in, focal points, featuring a frame on your homepage, the card
+people see when they share your link, promoting to the archive, retiring without
+breaking frame numbers, publishing).
+
+Every item says what it does, what to do, and **how you know it worked** —
+including what it looks like when it hasn't, so a non-result reads as a state
+rather than a failure.
+
+Two things in there are worth knowing even if you skip the rest:
+
+- **Cloudflare Web Analytics needs two switches, not one.** Turning it on in the
+  Cloudflare dashboard is only half. Your site's security policy blocks the
+  script it adds until `webAnalytics: true` is also set in `site.config.js`. Do
+  only the dashboard half and you get no numbers at all, with nothing visibly
+  wrong.
+- **"The card" is two different cards.** The **★** star plus the **▯** card-crop
+  button makes the tall card on *your* homepage. The **▲ Publish Card** button
+  *inside* the **◎** focal picker makes the wide card other people see when your
+  link lands in a message. Different buttons, different pictures — setting one
+  does not set the other.
+
+Nothing to do: it's a new file, it changes no behaviour, and it merges clean.
+
+## 2026-08-10 (evening)
+
+**New: dress one nav item as a button.** Give any entry in
+`site.config.js` → `nav[]` the class `cta` and it renders as a small
+bordered button in your site's accent color instead of a plain menu link —
+for the one action you want visitors to always see (the nav is sticky, so
+it travels with them). One line, works in every preset, changes nothing
+unless you opt in:
+
+```js
+{ label: 'Buy prints', href: '/support', class: 'cta' },
+```
+
+---
+
+## 2026-08-10 (later)
+
+**Changed: new forks now start on `selenium`.** The example config ships
+`preset: 'selenium'`, so a fresh install begins on the folio look instead of
+aperture, and `setup.sh` offers it as the pre-selected answer. **Your site
+does not change**: your config names its own preset and that always wins —
+this only affects installs that haven't happened yet. (Configs that omit
+`theme{}` entirely also keep rendering aperture, deliberately.)
+
+---
+
+## 2026-08-10
+
+**New: two theme presets — `selenium` and `cyanotype`.** The folio pair:
+serif headings (Fraunces), a clean reading column, hairlines instead of
+cards — built for sites with a lot of writing. `selenium` is a cool
+neutral gray with a coral accent, named for the toner that gives darkroom
+prints their cool blacks; `cyanotype` is the same layout in Prussian-blue
+ink on cool paper, named for the contact print. Both come in Midnight and
+Daylight, both re-skin the Field Console to match, and both use faces the
+engine already ships — no new downloads. Switching is the usual one line
+(`site.config.js` → `theme.preset`), and `scripts/setup.sh` now offers all
+five presets on first run. Nothing to do — your current preset is
+untouched.
+
+---
+
+## 2026-08-09 (morning)
+
+**Fixed: a field-note draft could still be overwritten by an older copy.**
+Cloud drafts already refused a save from a device holding a stale version —
+that's the "changed on another device" warning. But the check compared
+timestamps in milliseconds, and two saves that landed inside the same
+millisecond looked identical to it, so the guard waved the second one through
+and the newer work was lost. Rare in real writing, and it was showing up as a
+test that failed about one run in three rather than as a complaint. Each save
+now always advances the draft's version, whatever the clock says. Nothing to
+do — merge and it's yours.
+
+**New: branded short links.** You can now point a memorable path on your own
+domain at any URL — `yoursite.com/prints`, `yoursite.com/talk` — and change
+where it goes later without reprinting anything you already handed out. Add a
+line to `site.config.js`:
+
+```js
+shortLinks: {
+  prints: 'https://your-print-shop.example/gallery',
+},
+```
+
+That's the whole feature. Off unless you fill it in, so merging changes
+nothing for you. A code is one lowercase word (letters, digits, hyphens) and
+it can't hide one of your own pages — if you name one after a page you have,
+it's ignored rather than shadowing it. The redirect is deliberately
+uncached, which is what lets you re-point it later.
+
+If you run a second hostname and want the links to belong only to that one,
+add `shortLinkHost: 'go.'` beside it. Leave it out on a single domain.
+
 ## 2026-08-09 (small hours)
 
 On Android Chrome, tapping a frame in the buffer or archive flashed a grey

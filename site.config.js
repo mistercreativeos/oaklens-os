@@ -27,11 +27,13 @@ export default Object.freeze({
     { label: 'Field Notes', href: '/field-notes' },
     { label: 'About', href: '/about' },
   ],
-  // Starter look: 'aperture' (contemporary studio, cobalt) is the default.
-  // 'passe-partout' (fine-art gallery, oxblood on warm paper) and 'noir'
-  // (tech-noir terminal: black / white / red) are one-word swaps.
+  // Starter look: 'selenium' (the folio — serif headings, coral accent,
+  // built for long reads) is the default. 'aperture' (contemporary studio,
+  // cobalt), 'passe-partout' (fine-art gallery, oxblood on warm paper),
+  // 'noir' (tech-noir terminal: black / white / red) and 'cyanotype'
+  // (the folio in Prussian-blue ink on cool paper) are one-word swaps.
   // defaultMode: 'midnight' | 'daylight' | 'auto' (follows the visitor's OS).
-  theme: { preset: 'aperture', defaultMode: 'midnight', toggle: true },
+  theme: { preset: 'selenium', defaultMode: 'midnight', toggle: true },
   // Featured image for the folio hero (the aperture/passe-partout homepage
   // hero, and noir's fallback). Ships pointing at a bundled CC0 sample frame so
   // a fresh fork renders immediately; swap for your own (a repo path or a
@@ -100,6 +102,18 @@ export default Object.freeze({
   //   waiting to be built — see docs/bench-decision.md. Leave this alone until
   //   then; switching it on just shows an empty tab.
   console: { bench: false },
+  // BRANDED SHORT LINKS. `{ code: 'https://…' }` makes yoursite.com/<code>
+  // a 302 to that URL — a link on your own domain that you can re-point
+  // later without reprinting anything you already handed out. Empty here, so
+  // a fresh site redirects nothing. A code is one lowercase word (letters,
+  // digits, hyphens) and cannot shadow one of your own pages.
+  //   shortLinks: { prints: 'https://…', talk: 'https://…' },
+  shortLinks: {},
+  // If you run more than one hostname and want the short links to belong to
+  // only one of them, name its prefix — e.g. 'links.' or 'go.'. Empty (the
+  // default) means they answer wherever your site answers, which is what you
+  // want on a single domain.
+  shortLinkHost: '',
   // Squarespace-era redirect table in worker.js — template forks have no
   // such history.
   legacyRedirects: false,

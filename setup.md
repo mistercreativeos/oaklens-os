@@ -2,6 +2,11 @@
 
 There are two ways to stand up an instance. Pick one.
 
+> **Already deployed and wondering what to do next?** This file is the install
+> and the operating manual. **[quickstart.md](quickstart.md)** is the half hour
+> after it — the settings and console moves that a finished install has no way to
+> discover on its own.
+
 ## First, either way: you need a repo you can push to
 
 Your site publishes by **committing to your own GitHub repo** — you write a
@@ -473,6 +478,49 @@ poweredBy: false,
 No hard feelings and no licence problem — the MIT licence never asked for
 attribution on your pages.
 
+## Short links on your own domain (optional)
+
+Sooner or later you'll want to say a link out loud, or print one on a card, or
+post one where the full URL looks terrible. You can make your own domain do
+that. In `site.config.js`:
+
+```js
+shortLinks: {
+  prints: 'https://your-print-shop.example/gallery',
+  talk:   'https://some-conference.example/schedule/you',
+},
+```
+
+Now `yoursite.com/prints` sends people to your shop. The real value shows up
+later: when the shop moves, you change this one line and every card, post and
+business card you already handed out keeps working.
+
+A few rules, all of them friendly:
+
+- **One lowercase word** — letters, digits and hyphens. No slashes, no dots.
+- **It can't hide your own pages.** Name one `about` and it's simply ignored;
+  your About page still wins. Same for anything the site itself uses.
+- **The destination has to be a full URL**, starting `https://`.
+- **Nothing is cached**, on purpose — that's what lets you re-point a link and
+  have it take effect immediately instead of a year from now.
+
+Leave the setting out entirely and nothing redirects, which is how a fresh site
+ships.
+
+**If you run more than one hostname**, you can give the links to just one of
+them:
+
+```js
+shortLinkHost: 'go.',
+```
+
+Now `go.yoursite.com/prints` works and `yoursite.com/prints` doesn't — it stays
+a normal path on your main site. Useful if, like this site, you keep a
+subdomain for a different side of what you do and want the links to belong
+there rather than to everything. Leave it out on a single domain. (One thing to
+know: scoped links won't answer on `localhost`, so test them on the real
+address.)
+
 ## Console access (secure by default)
 
 The Field Console document (`/dev/field-console`) is served only to an
@@ -543,3 +591,14 @@ curl -s -X POST https://your-site.example/api/upload \
   -H 'Origin: https://your-site.example' \
   -F 'files=@/tmp/test.webp;filename=archive/test-480w.webp' | jq .
 ```
+
+---
+
+## Next
+
+Your site is up and you can sign in to the console. **[quickstart.md](quickstart.md)**
+takes it from there: picking one of the five looks, turning pages on and off,
+the Apple Music and analytics switches, setting focal points so thumbnails crop
+where you want, putting a photograph on your homepage, making the card people
+see when they share your link, and publishing. About half an hour, one step at
+a time.

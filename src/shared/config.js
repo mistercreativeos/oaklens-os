@@ -44,11 +44,23 @@ export const BACKFILL = Object.freeze({
   location: { name: '', region: '', coords: [0, 0] },
   // Filtered against pages{} before render, so an empty nav is a valid site.
   nav: [],
+  // The backfill stays 'aperture' on purpose, even though the example config
+  // now ships 'selenium': this value only applies when a config OMITS theme{}
+  // entirely, and every such site has been rendering aperture since the
+  // template landed. Changing it here would silently re-skin those sites on
+  // their next upstream merge; new forks get selenium from the example file.
   theme: { preset: 'aperture', defaultMode: 'midnight', toggle: true },
   // Every one of these is already read with an explicit `=== true` or
   // `!== false`, so they need no protection. They are written out anyway:
   // BACKFILL plus SHAPE is meant to be a complete, readable statement of the
   // config shape, and a flag that only exists in a comment gets forgotten.
+  // Branded short links, `{ code: 'https://…' }`. An empty table is a complete
+  // statement of "this instance redirects nothing", so it backfills rather
+  // than shaping — there are no sub-keys to fill in, the keys ARE the data.
+  shortLinks: {},
+  // Hostname prefix the short links answer on, or '' for every host this site
+  // serves — which is the right default, because a fork has one domain.
+  shortLinkHost: '',
   legacyRedirects: false,
   webAnalytics: false,
   appleMusicEmbeds: false,

@@ -5,6 +5,8 @@
 [![CI](https://github.com/oaklensart/oaklens-os/actions/workflows/ci.yml/badge.svg)](https://github.com/oaklensart/oaklens-os/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 
+<img width="1448" height="1238" alt="image" src="https://github.com/user-attachments/assets/f12ee42f-55f8-4c47-9dc7-e9400f6fe7c4" />
+
 A photography site, field-notes blog and print-drop storefront that runs as a
 single Cloudflare Worker. No framework, no build step, no monthly bill, and no
 platform standing between you and the people looking at your work.
@@ -111,6 +113,11 @@ Open `site.config.js` and fill in every field: your name, your tagline, your
 contact address, your city. Then connect the repo to Cloudflare so publishing
 goes live on its own. Both are walked through in [setup.md](setup.md).
 
+Then read **[quickstart.md](quickstart.md)** — it picks up the moment your site
+answers, and walks you through the settings and console moves you'd otherwise
+have to find by clicking around: picking a look, turning pages on, cropping
+thumbnails properly, putting a photograph on your homepage, and hitting publish.
+
 ## What it costs
 
 Nothing, for a normal portfolio. But you do have to put a payment method on
@@ -183,6 +190,7 @@ For the curious, or anyone deciding whether to trust it:
 |------|--------------|
 | [Install guide](https://os.oaklens.art/install) | The interactive walkthrough, one step at a time |
 | [setup.md](setup.md) | Deploying and operating an instance: accounts, secrets, storage, the console |
+| [quickstart.md](quickstart.md) | Your first half hour after the install: the config switches and console moves, one at a time |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in the engine, and whether you need to do anything about it |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | The engine-vs-instance model and the ground rules |
 | [SECURITY.md](SECURITY.md) | How to report a vulnerability privately |
