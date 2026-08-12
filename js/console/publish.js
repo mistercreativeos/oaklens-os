@@ -34,6 +34,7 @@ import { ymd } from './utils.js';
 import { scheduleLibrarySync, updatePurgeR2Button, _librarySyncFailed } from './sync.js';
 import { _uploadsPending, _failedUploads, _requeueNetFailedUploads } from './upload.js';
 import { renderWall, renderBarrel, renderNetwork, renderLibrary } from './more-views.js';
+import { renderAudio } from './audio.js';
 import { renderArchive } from './archive.js';
 import { renderBuffer } from './buffer.js';
 import { renderFN, mergeCloudDrafts, fnScheduleCloudDraft, fnCurrentId } from './fn-editor.js';
@@ -381,6 +382,7 @@ export async function handleImportFiles(fileList) {
     renderWall();
     renderBarrel();
     renderLibrary();
+    renderAudio();
     renderPublish();
     document.getElementById("sync-status").textContent =
       `✓ Imported: ${results.join(" · ")}`;
@@ -389,14 +391,41 @@ export async function handleImportFiles(fileList) {
   document.getElementById("import-file-input").value = "";
 }
 
+// Manifests that are empty ON PURPOSE: the author trashed the last
+// previously-published (_imported) item(s) this session, and the trash proves
+// it. Sent as `allowEmpty` so the worker's empty-overwrite guard skips exactly
+// these paths and no others — a session that LOST its state has an empty
+// trash, vouches for nothing, and the guard still catches the accidental wipe
+// it was built for (the 2026-07-10 posts.json 12 → 0). Without this, deleting
+// the only item on a surface wedged publish permanently: the guard refused
+// 1 → 0, and the retry-sync re-imported the deleted item.
+const SURFACE_MANIFEST = {
+  buffer: 'data/buffer.json', archive: 'data/archive.json',
+  posts: 'data/posts.json', wallpapers: 'data/wallpapers.json',
+  barrel: 'data/barrel.json', friends: 'data/friends.json',
+  library: 'data/library.json', audio: 'data/audio.json',
+};
+export function _vouchedEmptyManifests() {
+  return Object.entries(SURFACE_MANIFEST)
+    .filter(([surface]) => STATE[surface].length === 0
+      && sessionTrash.some(t => t.surface === surface && t.item._imported))
+    .map(([, path]) => path);
+}
+
 export function importIntoSurface(surface, data) {
   if (!Array.isArray(data)) return;
   STATE[surface] = STATE[surface].filter(e => !e._imported);
-  
+
   const existingIds = new Set(STATE[surface].map(e => e.id));
-  
+  // An item sitting in the session trash is a pending deletion, not a gap to
+  // refill. Until the deletion publishes, main still lists the item — so a
+  // sync in between must not resurrect it (delete → auto-sync → item back).
+  const trashedIds = new Set(
+    sessionTrash.filter(t => t.surface === surface).map(t => t.item.id)
+  );
+
   const imported = data
-    .filter(entry => !existingIds.has(entry.id))
+    .filter(entry => !existingIds.has(entry.id) && !trashedIds.has(entry.id))
     .map(entry => ({
       ...entry,
       _imported: true,
@@ -418,6 +447,7 @@ export function clearImported() {
   renderBarrel();
   renderNetwork();
   renderLibrary();
+  renderAudio();
   renderPublish();
   document.getElementById("sync-status").textContent = "";
   toast("✓ imported data cleared", "success");
@@ -594,7 +624,7 @@ export async function syncFromServer() {
         save();
         refreshStageIndicators();
         renderBuffer(); renderArchive(); renderFN();
-        renderWall(); renderBarrel(); renderNetwork(); renderLibrary(); renderPublish();
+        renderWall(); renderBarrel(); renderNetwork(); renderLibrary(); renderAudio(); renderPublish();
       }
       const asked = data.repo ? ` — the worker asked for github.com/${data.repo}` : '';
       if (statusEl) statusEl.textContent = `✕ nothing synced from GitHub (${verdict.error})`;
@@ -606,7 +636,7 @@ export async function syncFromServer() {
       save();
       refreshStageIndicators();
       renderBuffer(); renderArchive(); renderFN();
-      renderWall(); renderBarrel(); renderNetwork(); renderLibrary(); renderPublish();
+      renderWall(); renderBarrel(); renderNetwork(); renderLibrary(); renderAudio(); renderPublish();
       if (statusEl) statusEl.textContent =
         `✓ synced ${new Date().toLocaleTimeString()} · ${results.join(' · ')}`;
       logEvent(`✓ sync · ${results.join(' · ')}`, 'info');
@@ -676,7 +706,7 @@ export async function publishToServer() {
     }
 
     logLine('▸ Committing to GitHub via worker…');
-    const data = await publishFiles(files, getSyncedSha());
+    const data = await publishFiles(files, getSyncedSha(), _vouchedEmptyManifests());
     // main == this commit now — advance the base so the next publish isn't
     // flagged stale against the revision we just superseded.
     setSyncedSha(data.sha);

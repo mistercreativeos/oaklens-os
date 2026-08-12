@@ -225,9 +225,20 @@ export async function handlePublish(request, env) {
   // Safety guard: never let a publish blank a live data manifest. Only pay the
   // extra GitHub round-trips when an incoming manifest is actually empty — the
   // normal (non-empty) publish path is untouched.
+  //
+  // body.allowEmpty: manifests the console VOUCHES are deliberately empty — the
+  // author trashed the last item(s), and the trash held previously-published
+  // entries to prove it. The accident this guard exists for (a stale session
+  // serializing lost state) leaves the trash empty, so it still trips. Without
+  // this, deleting the only item on a surface wedged publish permanently: the
+  // guard refused 1 → 0, and the retry-sync re-imported the deleted item.
+  const allowEmpty = Array.isArray(body.allowEmpty)
+    ? body.allowEmpty.filter((p) => typeof p === 'string' && /^data\/[^/]+\.json$/.test(p))
+    : [];
   const suspects = body.files.filter(
     (f) => f && typeof f.path === 'string'
       && /^data\/[^/]+\.json$/.test(f.path) && _isEmptyJsonArray(f.content)
+      && !allowEmpty.includes(f.path)
   );
   if (suspects.length) {
     const currentByPath = {};

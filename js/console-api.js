@@ -265,13 +265,15 @@ export function deleteAssets(keys) {
 }
 
 // ============== PUBLISH / SYNC (GitHub via worker) ==============
-export function publishFiles(files, baseSha) {
+export function publishFiles(files, baseSha, allowEmpty) {
   // retries: 0 — NOT idempotent. A lost response can mean the commit landed;
   // a blind retry would stack a duplicate commit. The publish flow tells the
   // user to verify instead.
   // baseSha: the main HEAD this bundle was built on. The worker rejects the
   // publish (409 stale_base) if main has moved since — see console-ui publish flow.
-  return apiFetch('/api/publish', { method: 'POST', ...jsonBody({ files, baseSha }),
+  // allowEmpty: data manifests the console vouches are deliberately emptied
+  // (last item trashed this session) — exempted from the empty-overwrite guard.
+  return apiFetch('/api/publish', { method: 'POST', ...jsonBody({ files, baseSha, allowEmpty }),
     timeoutMs: API_TIMEOUTS.commit,
     tel: { channel: 'publish', label: 'COMMIT ▲' } });
 }
