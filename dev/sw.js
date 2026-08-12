@@ -16,7 +16,7 @@
 // Mutations (/api/* upload, publish, sync) always require the network and are
 // never intercepted or cached — this SW only serves the static shell.
 
-const CACHE = 'oaklens-console-v95';
+const CACHE = 'oaklens-console-v96';
 const SHELL = '/dev/field-console.html';
 // Same-origin shell assets. The js/ versions here must match the import map in
 // field-console.html exactly — that map is where a module's version is decided,
@@ -31,7 +31,7 @@ const SHELL_ASSETS = [
   '/js/console-ui.js?v=59',
   '/js/console/chrome.js?v=4',
   '/js/console/assets.js?v=4',
-  '/js/console/utils.js?v=1',
+  '/js/console/utils.js?v=2',
   '/js/console/sync.js?v=1',
   '/js/console/upload.js?v=2',
   '/js/console/more-views.js?v=3',

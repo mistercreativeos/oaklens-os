@@ -315,7 +315,7 @@
       root: root,
       audio: audio,
       pause: function () { try { audio.pause(); } catch (e) {} },
-      play: function () { try { audio.play(); } catch (e) {} },
+      play: function () { try { start(); } catch (e) {} },
     };
 
     function knownDuration() {
@@ -343,12 +343,50 @@
       if (typeof o.onstate === 'function') o.onstate(playing);
     }
 
+    // -- failure has to be visible --
+    // Every play() rejection and every media error used to land in an empty
+    // catch, so a track that could not load looked exactly like a track nobody
+    // had pressed yet: the button did nothing in Chromium, and Safari flashed
+    // play→pause and settled. That is the worst possible reading of a broken
+    // file, because it blames the click. The player now says so — on itself,
+    // to assistive tech, and once in the console for whoever is debugging.
+    function fail(why) {
+      root.classList.add('is-error');
+      root.classList.remove('is-playing');
+      time.textContent = '—';
+      play.setAttribute('aria-label', 'Unavailable');
+      root.setAttribute('title', 'This track could not be loaded.');
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[audio-player] ' + (o.title || 'track') + ': ' + why, audio.src);
+      }
+    }
+
+    // A media error is the file's fault (404, wrong type, codec) and is final.
+    audio.addEventListener('error', function () {
+      var code = audio.error && audio.error.code;
+      fail('could not load' + (code ? ' (media error ' + code + ')' : ''));
+    });
+
+    function start() {
+      var p = audio.play();
+      // Older browsers return undefined rather than a promise.
+      if (p && typeof p.catch === 'function') {
+        p.catch(function (err) {
+          // NotAllowedError is the autoplay policy talking, not a broken file —
+          // the visitor pressed the button, so this only fires for programmatic
+          // starts, and it must not paint a track as unavailable.
+          if (err && err.name === 'NotAllowedError') return;
+          fail(err && err.name ? err.name : 'playback failed');
+        });
+      }
+    }
+
     play.addEventListener('click', function (e) {
       // The card wraps this player in a link; a press here is a transport
       // control, never navigation.
       e.preventDefault();
       e.stopPropagation();
-      if (audio.paused) audio.play().catch(function () {});
+      if (audio.paused) start();
       else audio.pause();
     });
 
@@ -409,7 +447,7 @@
       else if (ev.key === 'Home') audio.currentTime = 0;
       else if (ev.key === 'End') audio.currentTime = Math.max(0, total - 0.25);
       else if (ev.key === ' ' || ev.key === 'Enter') {
-        if (audio.paused) audio.play().catch(function () {}); else audio.pause();
+        if (audio.paused) start(); else audio.pause();
       } else handled = false;
       if (handled) { ev.preventDefault(); ev.stopPropagation(); paint(); }
     });

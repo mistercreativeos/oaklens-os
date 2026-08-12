@@ -63,6 +63,22 @@ describe('/api/cdn key validation', () => {
     }
   });
 
+  // Non-Latin filenames. `\w` in the old charset meant ASCII, so every one of
+  // these was stripped on upload and then 400'd on the way back out — a real
+  // Japanese-titled track stored as 'audio/04 .mp3' and requested under its
+  // actual name. R2 keys are UTF-8; there was never a storage reason for this.
+  it('serves keys in non-Latin scripts', async () => {
+    for (const key of [
+      'audio/シルエット 日暮れ 04 街路灯.mp3',
+      'archive/Ελλάδα-480w.webp',
+      'archive/фотография-1024w.webp',
+      'archive/café-münchen-480w.webp',   // combining marks survive too
+    ]) {
+      const res = await proxyGet(key, makeCdn([key]));
+      expect(res.status, key).toBe(200);
+    }
+  });
+
   it('still 404s (not 400s) a well-formed key that is not in R2', async () => {
     const res = await proxyGet('archive/missing-480w.webp', makeCdn([]));
     expect(res.status).toBe(404);
@@ -133,6 +149,27 @@ describe('/api/upload key sanitization', () => {
     expect(cdn.stored).toHaveLength(1);
     const res = await proxyGet(cdn.stored[0], cdn);
     expect(res.status).toBe(200);
+  });
+
+  it('stores a non-Latin filename unchanged, and serves it back', async () => {
+    // The whole bug in one test: the console records this exact name in
+    // data/audio.json, so an upload that stores anything else produces a
+    // player pointed at a key that does not exist.
+    const name = 'audio/シルエット 日暮れ 04 街路灯.mp3';
+    const cdn = makeCdn();
+    const res = await upload(name, cdn);
+    expect(res.status).toBe(200);
+    expect(cdn.stored).toEqual([name]);
+    expect((await proxyGet(cdn.stored[0], cdn)).status).toBe(200);
+  });
+
+  it('still strips the characters that change how a key parses', async () => {
+    // Widening to Unicode letters must not admit URL delimiters, quotes,
+    // backslashes or control characters.
+    const cdn = makeCdn();
+    const res = await upload('archive/a?b#c%d&e"f\\g-480w.webp', cdn);
+    expect(res.status).toBe(200);
+    expect(cdn.stored).toEqual(['archive/abcdefg-480w.webp']);
   });
 
   it('still rejects keys outside the allowed prefixes and ..', async () => {
