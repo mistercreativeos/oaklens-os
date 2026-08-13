@@ -193,7 +193,7 @@ export function _initKeyboardInsets() {
 // ============== VIEW ROUTING ==============
 // Views reachable only through the More sheet — the More tab lights up as
 // their proxy in the tab bar.
-const MORE_VIEWS = ["wall", "barrel", "friends", "library", "audio", "bench"];
+const MORE_VIEWS = ["wall", "barrel", "friends", "library", "audio", "pulse", "bench"];
 
 // Surfaces register themselves; the router does not know them by name. Each
 // entry is { render, onLeave? } — `render` draws the view, `onLeave` cleans up
@@ -260,21 +260,31 @@ export function showView(name) {
 }
 export function openPublishView() { showView("publish"); }
 
-// ============== MORE SHEET (tab bar secondary surfaces) ==============
-export function openMoreSheet() {
-  const ov = document.getElementById("more-sheet");
+// ============== BOTTOM SHEETS ==============
+//
+// Any `.sheet-overlay` opens and closes the same way, so the mechanics live here
+// once. Generalised when Pulse needed a second sheet (its recent list, which the
+// mobile layout has no room for as a rail): copying the two-frame open and the
+// 380ms teardown into a second module is how two sheets end up animating
+// differently a year later.
+export function openSheet(id) {
+  const ov = document.getElementById(id);
   if (!ov) return;
   ov.classList.remove("hidden");
   // Two-frame open so the slide/fade transitions run from their start values.
   requestAnimationFrame(() => requestAnimationFrame(() => ov.classList.add("open")));
 }
 
-export function closeMoreSheet() {
-  const ov = document.getElementById("more-sheet");
+export function closeSheet(id) {
+  const ov = document.getElementById(id);
   if (!ov || ov.classList.contains("hidden")) return;
   ov.classList.remove("open");
   setTimeout(() => ov.classList.add("hidden"), 380);   // past --dur-3
 }
+
+// ---- the More sheet (tab bar secondary surfaces) ----
+export function openMoreSheet() { openSheet("more-sheet"); }
+export function closeMoreSheet() { closeSheet("more-sheet"); }
 
 export function sheetGo(view) {
   closeMoreSheet();

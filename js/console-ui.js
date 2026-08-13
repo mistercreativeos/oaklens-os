@@ -66,5 +66,7 @@ export * from './console/publish.js';
 export * from './console/session.js';
 // the darkroom RAW queue (D1 + the signed B2 download proxy)
 export * from './console/bench.js';
+// the pulse composer: six starter packs, one POST, no publish
+export * from './console/pulse.js';
 // the composition root — wires every seam, boots on DOMContentLoaded
 export * from './console/init.js';

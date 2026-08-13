@@ -36,7 +36,7 @@ try {
 <script async src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" integrity="sha384-KRanV2NRwHPanp7iM6nlLQC5jPCTscSYMko30dLJHzNXJaUNtcucWv+SOi3jV3PE" crossorigin="anonymous"></script>
 <script async src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
 
-<link rel="stylesheet" href="/css/field-console.css?v=30">
+<link rel="stylesheet" href="/css/field-console.css?v=36">
 </head>
 <body>
 
@@ -49,6 +49,16 @@ try {
     <span class="sys-lamp-led" id="sys-lamp-led"></span>
     <span class="sys-lamp-label" id="sys-lamp-label">SYS.BOOT</span>
   </button>
+  <!-- Pulse lives in the More sheet like the other secondary surfaces, but it is
+       the one surface you reach for one-handed and in a hurry — so it also gets
+       a chip up here, in the same cluster as the lamp and the settings pair.
+       Two taps through a sheet is fine for the Wall; it is not fine for "post
+       what I am doing right now." ☺ is deliberately the plainest glyph there
+       is: it needs no legend in any language, and like ☀ it defaults to text
+       presentation, so it renders monochrome beside its neighbours instead of
+       turning into a colour emoji. The same glyph marks Pulse in the More sheet
+       so the two are obviously one thing. -->
+  <button class="settings-btn" id="pulse-topbar-btn" onclick="showView('pulse')" title="Post a pulse" aria-label="Post a pulse">☺</button>
   <button class="settings-btn theme-btn" id="theme-toggle" onclick="themeToggle()" title="Switch STUDIO / DAYLIGHT mode" aria-label="Toggle light or dark mode">☀</button>
   <button class="settings-btn" id="settings-topbar-btn" onclick="openSettings()" title="Console Settings">
     ⚙<span class="settings-status-dot" id="settings-dot"></span>
@@ -605,6 +615,28 @@ Capture first. Process later."></textarea>
         <div class="archive-list" id="audio-display"></div>
       </div>
     </section>
+    <!-- PULSE — the one view in this console that is bounded to the viewport
+         rather than scrolling like a document. Its header is deliberately
+         thinner than every other view's: the studio canvas below claims the
+         remaining height exactly, and a two-line header would spend a fifth of a
+         phone screen on saying what you already know you tapped.
+
+         The "this is already live" line lives up here in the meta rather than in
+         a note under the card, because every OTHER write in this console means
+         "staged, waiting for you to publish" and a pulse does not. Cheap to say
+         in the header; a whole block of vertical space to say under the card. -->
+    <section class="view view--bounded" id="view-pulse">
+      <div class="view-header view-header--tight">
+        <div>
+          <div class="view-title">PULSE <em>NOW</em></div>
+        </div>
+        <div class="view-meta">
+          <div><span class="accent">LIVE IN SECONDS — NO PUBLISH, NO DEPLOY</span></div>
+          <div>CLEARS ITSELF</div>
+        </div>
+      </div>
+      <div id="pulse-body"></div>
+    </section>
     <section class="view" id="view-bench" data-console-feature="bench">
       <div class="view-header">
         <div>
@@ -895,6 +927,9 @@ Capture first. Process later."></textarea>
       <span class="sheet-icon">♪</span> Audio
       <span class="sheet-count" id="sheet-count-audio">0</span>
     </button>
+    <button class="sheet-item" data-view="pulse" onclick="sheetGo('pulse')">
+      <span class="sheet-icon">☺</span> Pulse
+    </button>
     <button class="sheet-item" data-console-feature="bench" data-view="bench" onclick="sheetGo('bench')">
       <span class="sheet-icon">▣</span> Bench
       <span class="sheet-count" id="sheet-count-bench">0</span>
@@ -913,6 +948,23 @@ Capture first. Process later."></textarea>
     <div class="sheet-grabber"></div>
     <div class="sheet-title" id="action-sheet-title"></div>
     <div id="action-sheet-items"></div>
+  </div>
+</div>
+
+<!-- ============ PULSE — RECENT (phone only) ============
+     On a wide screen the recent pulses are a rail beside the card. Under 900px
+     that rail is display:none and this sheet is its replacement, because the
+     list is the reason the log exists: you post a good one, and weeks later you
+     want it back. It is opened only by #pulse-log-btn, which is itself hidden
+     above 900px — so nothing can raise this on desktop.
+
+     Rows are rendered by renderPulseLog() into #pulse-log-mobile, the same
+     markup the desktop rail gets. -->
+<div class="sheet-overlay hidden" id="pulse-log-sheet" onclick="if(event.target===this)_pulseCloseLog()">
+  <div class="sheet" role="menu" aria-label="Recent pulses">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-title">Recent pulses — tap one to load it</div>
+    <div class="pulse-rail-body pulse-log-sheet-body" id="pulse-log-mobile"></div>
   </div>
 </div>
 
@@ -1167,11 +1219,11 @@ Capture first. Process later."></textarea>
 <script type="importmap">
 {
   "imports": {
-    "/js/console-telemetry.js": "/js/console-telemetry.js?v=1",
-    "/js/console-api.js":       "/js/console-api.js?v=9",
+    "/js/console-telemetry.js": "/js/console-telemetry.js?v=2",
+    "/js/console-api.js":       "/js/console-api.js?v=11",
     "/js/console-state.js":     "/js/console-state.js?v=8",
-    "/js/console-ui.js":        "/js/console-ui.js?v=59",
-    "/js/console/chrome.js":    "/js/console/chrome.js?v=4",
+    "/js/console-ui.js":        "/js/console-ui.js?v=61",
+    "/js/console/chrome.js":    "/js/console/chrome.js?v=7",
     "/js/console/assets.js":    "/js/console/assets.js?v=4",
     "/js/console/utils.js":     "/js/console/utils.js?v=2",
     "/js/console/sync.js":      "/js/console/sync.js?v=1",
@@ -1186,7 +1238,9 @@ Capture first. Process later."></textarea>
     "/js/console/publish.js":   "/js/console/publish.js?v=6",
     "/js/console/session.js":   "/js/console/session.js?v=5",
     "/js/console/bench.js":     "/js/console/bench.js?v=1",
-    "/js/console/init.js":      "/js/console/init.js?v=5",
+    "/js/pulse-packs.js":       "/js/pulse-packs.js?v=2",
+    "/js/console/pulse.js":     "/js/console/pulse.js?v=2",
+    "/js/console/init.js":      "/js/console/init.js?v=6",
     "/js/markdown-engine.js":   "/js/markdown-engine.js?v=4",
     "/js/jpeg-privacy.js":      "/js/jpeg-privacy.js?v=1",
     "/js/raw-lens.js":          "/js/raw-lens.js?v=5",

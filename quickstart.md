@@ -471,6 +471,41 @@ about a minute and reload your site.
 - **Publishing triggers a rebuild.** So it's also how a config change you pushed
   earlier gets picked up, if you happened to do both.
 
+### 16 · Post a pulse — the one thing that skips all of the above
+
+**What it does.** Puts a small card on your homepage — a glyph, a line, a colour
+— that goes live in about a minute and clears itself after eighteen hours.
+
+**Do it.** Tap the **☺** in the top bar (it's also in **MORE**). Tap a lane, tap
+a starter to fill the card, edit the line, pick a colour, hit **POST PULSE ▲**.
+
+**The thing worth understanding.** Everything else in this guide stages up and
+waits for step 15. A pulse does not. It saves straight to your database and
+appears — **no publish, no rebuild, no build minutes.** That's the whole reason
+it exists: a card you might post three times a day can't cost a deploy each time.
+
+**A few things about it:**
+
+- **You type into the card itself.** What you're looking at is what your homepage
+  will draw — the colour, and the text size, which steps up for a short line and
+  down for a long one.
+- **Every card says PULSE.** That's fixed, on your site and everyone else's. It's
+  the word that tells a first-time visitor what the tile is. The two footer cells
+  are yours — free text, or leave them empty and the row doesn't render.
+- **All six starter packs are yours** whatever you make — photography, writing,
+  music, filmmaking, tech, podcasting. Tapping one fills the card so you can edit
+  the line before sending. They're a starting point, not a menu.
+- **TAKE DOWN** removes the live one early and your homepage goes straight back
+  to your work. **RESET CARD** is the other one — it only empties what you're
+  writing and never touches your site.
+- **Posted a good one?** It's kept. Tap **RECENT** under the card (on a phone) or
+  look at the left-hand list (on a laptop) to load any past pulse back onto the
+  card and send it again.
+
+**If it says it needs a database table**, that's the migration from setup.md —
+run `npx wrangler d1 migrations apply <your-database-name> --remote`. Nothing
+else breaks while you get to it; your homepage just carries on without a card.
+
 ---
 
 ## Part 3 — Where to go next

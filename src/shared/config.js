@@ -50,6 +50,13 @@ export const BACKFILL = Object.freeze({
   // template landed. Changing it here would silently re-skin those sites on
   // their next upstream merge; new forks get selenium from the example file.
   theme: { preset: 'aperture', defaultMode: 'midnight', toggle: true },
+  // Pulse — the homepage's immediate card. BACKFILL, not SHAPE: the TTL is
+  // load-bearing (a pulse with no expiry outlives its moment and makes a site
+  // read abandoned), so a config that omits pulse{} still gets a working one.
+  // One key only: the starter packs are bundled engine content, the console's
+  // glyph tray follows whichever pack is open, and the card's label is a
+  // constant — so none of the three needs configuring.
+  pulse: { ttlHours: 18 },
   // Every one of these is already read with an explicit `=== true` or
   // `!== false`, so they need no protection. They are written out anyway:
   // BACKFILL plus SHAPE is meant to be a complete, readable statement of the

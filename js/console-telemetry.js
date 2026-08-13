@@ -165,7 +165,12 @@ export function toggleLedger(force) {
 //   sticky:  no auto-dismiss until a later non-sticky update (batch progress)
 // Identical kind+message repeats coalesce into one toast with a ×n counter.
 const _toasts = new Map();     // key -> { el, timer, count }
-const TOAST_MS = { info: 2400, success: 2400, error: 6000 };
+// `warn` sits between the two: longer than an acknowledgement, shorter than a
+// failure you may need to copy. It was missing until 2026-08-13, so every warn
+// silently inherited the 2400ms info lifetime via the `|| TOAST_MS.info`
+// fallback below — including "A pulse needs a line or a glyph", which is the
+// first toast a new fork owner is likely to trigger.
+const TOAST_MS = { info: 2400, success: 2400, warn: 4000, error: 6000 };
 const TOAST_FADE_MS = 300;
 const TOAST_MAX = 4;
 let _overflowCount = 0;

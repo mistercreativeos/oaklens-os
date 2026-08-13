@@ -373,11 +373,15 @@ if [ -z "${db_name:-}" ] || [ "$db_name" = "YOUR_DB_NAME" ]; then
   warn "Couldn't tell which database to use, so this step was skipped."
   info "Once wrangler.jsonc has a database name in it, re-run this script."
 else
-  # Console tables (fn_drafts + bench_entries) are wrangler migrations
+  # Console tables (fn_drafts + bench_entries + pulses) are wrangler migrations
   # (migrations/), so this is the same idempotent command the one-click
   # Deploy path runs from the package.json `deploy` script. --remote matters:
   # without it the tables are written to a local file that the live site
   # never reads, and everything looks fine until it isn't.
+  #
+  # Deliberately unnamed: this applies migrations/*.sql wholesale, so a table
+  # added by a later engine version rides along with no edit here. (The portal
+  # schemas below are named explicitly because they are NOT migrations.)
   if npx wrangler d1 migrations apply "$db_name" --remote >/dev/null 2>&1; then
     good "Console tables ready (migrations applied)."
   else

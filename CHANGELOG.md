@@ -25,7 +25,65 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
-## 2026-08-12
+## 2026-08-13
+
+**New: Pulse — post what you're doing, straight to your homepage.** A fourth kind
+of card on your front page: a glyph, a line, and a colour. Open the console,
+tap **Pulse**, pick a starter or write your own, and send. It is live in about a
+minute.
+
+Three things worth knowing:
+
+- **It does not need a publish.** Every other thing you write here stages up and
+  waits for you to hit publish, which rebuilds your site. A pulse skips all of
+  that — it saves straight to your database and appears. Post as many as you
+  like; none of them cost a build.
+- **It clears itself after 18 hours.** A pulse is about right now, and a stale one
+  makes a site look abandoned. When it expires your homepage closes over the gap
+  on its own. Change the window with `pulse: { ttlHours: 18 }` in
+  `site.config.js`, or take one down early with **TAKE DOWN** — your homepage
+  goes straight back to your work. (**RESET CARD** is the other button: it only
+  empties what you're writing, and never touches your site.)
+- **Six starter packs ship with it** — photography, writing, music, filmmaking,
+  tech, podcasting — and you get all six, whatever you make. They are starting
+  points: tapping one fills the card so you can edit the line before sending.
+
+**Every card says PULSE**, and there is nothing to configure about that. It is
+the one word telling a first-time visitor what the tile is, so it is the same on
+your site and everyone else's. The footer cells underneath are yours and free
+text — a take number, a kiln temperature, a chapter, nothing at all.
+
+You compose it by typing **into the card itself**: what you are looking at is
+what your homepage will draw, colour and text size included. The whole screen
+fits without scrolling, on a laptop and on a phone. Twelve glyphs per lane are a
+tap away, and every pulse you post is kept — **RECENT** brings a good one back
+onto the card so you can send it again.
+
+### ⚠️ ACTION REQUIRED — Pulse needs a new table in your database
+
+**Only if you're updating an existing site.** A fresh install creates it for you.
+
+Run this once:
+
+```bash
+npx wrangler d1 migrations apply <your-database-name> --remote
+```
+
+That creates the `pulses` table (setup.md, "Your database tables"). It's safe to
+re-run — the migration does nothing if the table is already there.
+
+**Why you have to do it by hand.** If you connected your repo to Cloudflare, the
+Deploy command we told you to use is `npx wrangler deploy`, and that one skips
+migrations. So merging this update brings you the code but not the table. We're
+building a button in the console to do this for you; until then, it's one command.
+
+**Nothing breaks while you get to it.** Your site carries on exactly as before —
+the console just tells you Pulse needs its table, and your homepage runs without
+a pulse card.
+
+---
+
+## 2026-08-12 (earlier)
 
 **Fixed: deleting the last item on a shelf now publishes cleanly.** Trashing
 your only audio track (or the last item on any shelf) used to trap you in a

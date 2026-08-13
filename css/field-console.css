@@ -99,6 +99,11 @@
   --line-3: #3a3a3a;
   --ok:   #27c93f;
   --warn: #e6a817;
+  /* Raw channels for the same two, so a glow can be composited at alpha
+     instead of hardcoding rgba(0,255,0,…) beside a token that is not that
+     colour. Used by the SYS lamp's LED; see the TELEMETRY block. */
+  --ok-rgb:   39, 201, 63;
+  --warn-rgb: 230, 168, 23;
 
   /* On-media: overlays that sit on photos/video are theme-INDEPENDENT —
      always dark glass + light ink, in both modes. */
@@ -162,6 +167,8 @@
   --line-3: #b3aea2;
   --ok:   #0f7a2a;
   --warn: #9a6d00;
+  --ok-rgb:   15, 122, 42;
+  --warn-rgb: 154, 109, 0;
 
   --shadow-1: 0 4px 14px rgba(60,50,30,0.18);
   --shadow-2: 0 8px 28px rgba(60,50,30,0.22);
@@ -1156,6 +1163,10 @@ body.fn-focus .fn-focus-btn { color: var(--accent); border-color: var(--accent);
   animation: toast-in 200ms ease;
 }
 .toast.success { border-left-color: var(--green); }
+/* `warn` had no rule until 2026-08-13, so warns rendered with the plain
+   default border while success and error were colour-coded — a severity the
+   toast system accepted and then did not show. */
+.toast.warn { border-left-color: var(--warn); }
 .toast.error { border-left-color: var(--accent); }
 @keyframes toast-in {
   from { opacity: 0; transform: translateX(20px); }
@@ -2164,6 +2175,17 @@ body.sidebar-collapsed .sidebar { display: none; }
 :root {
   --tel-amber: var(--warn);
   --tel-gray:  #555;
+  --tel-gray-rgb: 85, 85, 85;
+  /* The LED housing, matching the pulse card's component in css/main.css: a
+     dark bezel and an inset specular so the part reads as seated on a board
+     rather than painted on. Flipped for DAYLIGHT below — on paper a near-black
+     ring with a blown white highlight looks like a printing error. */
+  --led-bezel: rgba(0, 0, 0, 0.9);
+  --led-spec:  rgba(255, 255, 255, 0.4);
+}
+:root[data-theme="light"], html[data-theme="light"] {
+  --led-bezel: rgba(0, 0, 0, 0.28);
+  --led-spec:  rgba(255, 255, 255, 0.75);
 }
 
 .sys-lamp {
@@ -2176,11 +2198,24 @@ body.sidebar-collapsed .sidebar { display: none; }
   cursor: pointer;
   font-family: var(--font-mono);
 }
+/* An SMD component, not a painted square. It was already square — "reads
+   hardware, unlike the round auth dot" — and on 2026-08-13 it became the same
+   surface-mount part the pulse card wears (.wk-p-led, css/main.css), so the two
+   live indicators in this system are recognisably one component.
+
+   What did NOT change is the STATE LANGUAGE below. Only `idle` took the SMD
+   data-stutter, because "alive and listening" is exactly what an activity light
+   says. `busy` keeps its HDD chatter and `error` its double-blink: those carry
+   meaning, and flattening every state to one blink would erase it. */
 .sys-lamp-led {
-  width: 8px;
-  height: 8px;              /* square: reads "hardware", unlike the round auth dot */
+  width: 6px;
+  height: 6px;
   flex: none;
+  border-radius: 1px;
   background: var(--tel-gray);
+  border: 1px solid var(--led-bezel);
+  box-shadow: inset 0 0 2px var(--led-spec);
+  --led-rgb: var(--tel-gray-rgb);
 }
 .sys-lamp-label {
   font-size: var(--t-micro);
@@ -2190,20 +2225,26 @@ body.sidebar-collapsed .sidebar { display: none; }
   color: var(--text-dim);
 }
 
+/* Each state sets --led-rgb and the glow composites from it, rather than a
+   hardcoded rgba() sitting next to a token that is a different colour — the old
+   `background: var(--green)` was paired with `rgba(0,255,0,0.35)`, which is not
+   what --green is. Now the lamp re-themes with the preset like everything else. */
 #sys-lamp[data-state="idle"] .sys-lamp-led {
   background: var(--green);
-  box-shadow: 0 0 6px rgba(0, 255, 0, 0.35);
-  animation: lamp-breathe 4s ease-in-out infinite;
+  --led-rgb: var(--ok-rgb);
+  animation: lamp-smd 2s steps(1, end) infinite;
 }
 #sys-lamp[data-state="busy"] .sys-lamp-led {
   background: var(--tel-amber);
-  box-shadow: 0 0 8px rgba(230, 168, 23, 0.5);
+  --led-rgb: var(--warn-rgb);
+  box-shadow: inset 0 0 2px var(--led-spec), 0 0 8px rgba(var(--led-rgb), 0.5);
   animation: lamp-flicker 0.48s steps(1) infinite;
 }
 #sys-lamp[data-state="busy"] .sys-lamp-label { color: var(--tel-amber); }
 #sys-lamp[data-state="error"] .sys-lamp-led {
   background: var(--accent);
-  box-shadow: 0 0 8px rgba(var(--brand-rgb), 0.55);
+  --led-rgb: var(--brand-rgb);
+  box-shadow: inset 0 0 2px var(--led-spec), 0 0 8px rgba(var(--led-rgb), 0.55);
   animation: lamp-error 3s linear infinite;
 }
 #sys-lamp[data-state="error"] .sys-lamp-label { color: var(--accent); }
@@ -2214,7 +2255,20 @@ body.sidebar-collapsed .sidebar { display: none; }
 #sys-lamp[data-state="offline"] .sys-lamp-label { color: var(--tel-gray); }
 #sys-lamp[data-state="logged-out"] .sys-lamp-led { background: var(--accent-dim); }
 
-@keyframes lamp-breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+/* IDLE: the data-read stutter — two quick beats, then a long dark rest. Same
+   shape as the pulse card's LED (@keyframes wk-p-led, css/main.css). The trough
+   keeps the inset specular and drops only the outer glow, so the part never
+   flattens to a painted square between beats. */
+@keyframes lamp-smd {
+  0%, 10%, 20%, 100% {
+    opacity: 0.3;
+    box-shadow: inset 0 0 2px var(--led-spec);
+  }
+  5%, 15% {
+    opacity: 1;
+    box-shadow: inset 0 0 2px var(--led-spec), 0 0 12px rgba(var(--led-rgb), 0.7);
+  }
+}
 /* Irregular steps() chatter — an HDD light, not a smooth pulse */
 @keyframes lamp-flicker {
   0% { opacity: 1; } 18% { opacity: 0.3; } 32% { opacity: 0.9; }
@@ -3562,3 +3616,702 @@ body.rl-lock { overflow: hidden; }
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
 }
 .fn-hdr-stats { font-variant-numeric: tabular-nums; }
+
+/* ============================================
+   PULSE STUDIO (view-pulse)
+   --------------------------------------------
+   A BOUNDED SURFACE, not a document. Every other view in this console is a page
+   that scrolls; this one fills the main pane exactly and never scrolls the page
+   at either breakpoint. That is the whole redesign, and it came from a specific
+   report (docs/maintenance/2026-08-13-pulse-rename-and-studio.md):
+
+     "You have to scroll down past presets to reach the textarea, scroll further
+      down past glyphs and color dropdowns to reach the action buttons, and
+      scroll all the way back up to see the live preview card."
+
+   The old block was built mobile-first and its three rules were sound — one-
+   handed reach, every choice visible, 16px inputs. What it was NOT built as was
+   a surface bounded by the viewport, so the sum came to three screens and the
+   two sticky compensations (a pinned preview, a floating action bar) stacked
+   until the action bar covered the inputs it was added to keep reachable.
+
+   So the fixes are structural rather than more stickiness:
+
+     1. The view is a flex column at exactly the height of the main pane. The
+        two RAILS scroll inside themselves; the page does not. Nothing is
+        `position: sticky` and nothing floats over anything.
+     2. The card is the stage, and on a phone it is the first thing under the
+        header — you are making a thing that looks like something, and you type
+        INTO it rather than into a field somewhere below it.
+     3. Starters are a rail you glance at on desktop and one horizontal strip on
+        mobile. They were taking ~60% of the screen for inspiration you may not
+        want on any given post.
+
+   What carried over unchanged: 16px input floor (below that iOS zooms the page
+   on focus and the author loses their place), 44px minimum on anything
+   tappable, and the surgical-update discipline in js/console/pulse.js.
+
+   The card preview is restated here in CONSOLE tokens because the console does
+   not load css/main.css. Deliberate duplication; see the note on that block.
+   ============================================ */
+
+/* ---- the bounded shell ----
+   .main is `height: 100%; overflow-y: auto`, so a view that is itself 100% tall
+   with its own overflow hidden fills the pane and cannot scroll it. Same
+   specificity as `.view.active`, later in the file, so it wins on source order. */
+.view--bounded.active {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 18px 24px 20px;
+  overflow: hidden;
+  min-height: 0;
+}
+.view-header--tight {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  flex: 0 0 auto;
+}
+.view-header--tight .view-title { margin-bottom: 0; }
+
+#pulse-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.pulse-studio {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+/* ---- the lane reel ----
+   One row, scrolling sideways rather than wrapping onto a second. The old block
+   wrapped deliberately ("a hidden option is one you never pick") and that was
+   right when lanes were the top of a long form. Here the reel is 44px of a
+   bounded screen and a horizontal swipe is the cheapest gesture on a phone —
+   wrapping would spend a second row of the card's height on six chips. */
+.pulse-lanes {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  /* Same reasoning as .pulse-strip below: a sideways swipe on the reel must not
+     chain into the page or trip the browser's back gesture. */
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.pulse-lanes::-webkit-scrollbar { display: none; }
+.pulse-lanes-label {
+  flex: 0 0 auto;
+  font-size: var(--t-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-right: 2px;
+}
+.pulse-lane {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: 22px;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.pulse-lane:hover { border-color: var(--line-3); color: var(--ink-1); }
+.pulse-lane.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ---- the canvas: rails either side of the stage ---- */
+.pulse-canvas {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr) minmax(0, 260px);
+  gap: 16px;
+}
+
+.pulse-rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.pulse-rail-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line-2);
+  font-size: var(--t-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.pulse-rail-head .pulse-rail-hint { color: var(--ink-x); }
+/* THIS is what keeps the page still: the rails own their overflow. */
+.pulse-rail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.pulse-rail-body::-webkit-scrollbar { width: 4px; }
+.pulse-rail-body::-webkit-scrollbar-thumb { background: var(--line-3); border-radius: 2px; }
+.pulse-rail-empty {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* A starter, or a past pulse to send again — same tile, same gesture, so the
+   two rails read as one idea: tap it, it lands on the card, you edit it. */
+.pulse-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 9px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-1);
+  border-radius: 7px;
+  color: var(--ink-1);
+  font-family: inherit;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pulse-tile:hover { border-color: var(--accent); background: var(--surface-3, var(--surface-2)); }
+.pulse-tile-glyph { flex: 0 0 auto; font-size: 1.2rem; }
+.pulse-tile-text { min-width: 0; }
+.pulse-tile.is-live { border-color: var(--accent); }
+.pulse-tile-meta {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+/* ---- the stage: card, palette, dock ---- */
+.pulse-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 0;
+  position: relative;
+}
+.pulse-stage-status {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--t-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+/* The tier readout lives HERE and not in the card's footer — that footer is the
+   author's own free text, and writing a system word into it would be the same
+   mistake the discipline label was (see PULSE_LABEL, src/shared/pulse.js). */
+.pulse-stage-status .pulse-tier { color: var(--ink-2); }
+
+/* RECENT — the phone's way into the log.
+   Hidden by default and shown only under 900px, i.e. exactly where
+   `.pulse-rail { display: none }` takes the desktop rail away. Gating the
+   TRIGGER rather than the sheet is deliberate: the sheet's own presentation
+   comes from the console's band query (max-width: 1180px), (pointer: coarse),
+   which `_sheetMode()` in chrome.js also reads. Gating the panel at 900px would
+   desync the two between 901px and 1180px and give it a desktop teardown with a
+   mobile animation. */
+.pulse-log-btn {
+  display: none;
+  margin-left: auto;
+  min-height: 32px;
+  padding: 0 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: 16px;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--t-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.pulse-log-btn:hover { border-color: var(--accent); color: var(--ink-1); }
+
+/* The sheet's list. Reuses .pulse-rail-body for the scroller and .pulse-tile for
+   the rows, so the phone and the desktop rail are the same list in two frames.
+   The height cap is the sheet's own: tall enough to be worth opening, short
+   enough that the grabber stays on screen to drag it shut. */
+.pulse-log-sheet-body {
+  max-height: min(52vh, 420px);
+  padding: 4px 0 10px;
+}
+
+.pulse-palette {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--line-2);
+  border-radius: 26px;
+}
+.pulse-swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: rgb(var(--chip-rgb));
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.pulse-swatch:hover { transform: scale(1.12); }
+.pulse-swatch.active {
+  border-color: var(--ink-1);
+  box-shadow: 0 0 10px rgba(var(--chip-rgb), 0.6);
+}
+.pulse-swatch[data-value="signal"] { --chip-rgb: var(--brand-rgb); }
+.pulse-swatch[data-value="ember"]  { --chip-rgb: 214, 72, 60; }
+.pulse-swatch[data-value="dawn"]   { --chip-rgb: 198, 138, 46; }
+.pulse-swatch[data-value="flow"]   { --chip-rgb: 62, 158, 104; }
+.pulse-swatch[data-value="velvet"] { --chip-rgb: 138, 104, 214; }
+.pulse-swatch[data-value="tide"]   { --chip-rgb: 58, 134, 176; }
+
+/* ---- the dock ----
+   IN FLOW, as the last row of a bounded column. The old bar was
+   `position: sticky` over the content with 190px of view padding underneath to
+   claw back the space it covered — which is exactly the "glass bar floats over
+   inputs" complaint. A bounded column does not need the trick. */
+.pulse-dock {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 400px;
+}
+.pulse-dock .btn { min-height: 48px; font-size: 0.76rem; letter-spacing: 0.1em; }
+#pulse-post-btn { flex: 1 1 auto; }
+
+/* ---- the glyph tray ----
+   A popover over the stage rather than a permanent row: the glyphs follow the
+   open lane and are a shortcut, not the vocabulary — the author can type any
+   emoji into the card's own glyph slot. */
+.pulse-tray {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 96px;
+  display: none;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--line-3);
+  border-radius: 12px;
+  box-shadow: var(--shadow-3, 0 12px 32px rgba(0, 0, 0, 0.6));
+}
+.pulse-tray.open { display: flex; }
+.pulse-glyph {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.pulse-glyph:hover { border-color: var(--accent); transform: scale(1.08); }
+.pulse-glyph--clear {
+  font-family: inherit;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+/* ---- the footer fold ----
+   Two free-text cells, collapsed. Optional metadata should cost one row on a
+   phone, not a section. (There is no label field: the card names itself.) */
+.pulse-more {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 400px;
+}
+.pulse-more > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  font-size: var(--t-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  cursor: pointer;
+  list-style: none;
+}
+.pulse-more > summary::-webkit-details-marker { display: none; }
+.pulse-more > summary::before { content: "+"; font-size: 0.95rem; color: var(--ink-x); }
+.pulse-more[open] > summary { color: var(--ink-2); }
+.pulse-more[open] > summary::before { content: "\2013"; }
+.pulse-foot-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 6px; }
+
+/* The direct-edit field is inside the card and carries no visible label — the
+   card's own PULSE kicker is the visible title. Screen readers still need one,
+   so the <label> is present and hidden the accessible way (clipped, not
+   display:none, which would take it out of the accessibility tree too). */
+.pulse-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 16px floor — below it iOS zooms the page on focus. */
+.pulse-input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  color: var(--ink-1);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.45;
+  padding: 11px 12px;
+  border-radius: 6px;
+  outline: none;
+}
+.pulse-input::placeholder { color: var(--ink-x); }
+.pulse-input:focus { border-color: var(--accent); }
+
+/* ---- the card, in console tokens ----
+   The card classes (.wk-pulse, .wk-p-*) are styled in css/main.css for the
+   public page, and the console does NOT load that stylesheet — it has its own
+   token system. The first cut of this feature rendered the markup with no rules
+   matching it at all, so the preview came out as two lines of unstyled text.
+   These rules restate the card in console tokens. Deliberate duplication, and
+   the trade is worth naming: the alternative is pulling a whole second
+   stylesheet into the console for one card. If the public card's proportions
+   change, change them here too. */
+.pulse-card-slot {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.pulse-card-slot .wk-pulse {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  max-width: 310px;
+  aspect-ratio: 4/5;
+  max-height: 100%;
+  padding: 16px;
+  border-radius: 10px;
+  position: relative;
+  overflow: hidden;
+  --pulse-rgb: var(--brand-rgb);
+  /* The same derived ground the public card uses (css/main.css .wk-pulse): a
+     veil over the surface plus the palette's hue, rather than a hardcoded
+     near-black. Restated in console tokens for the reason above. */
+  --pulse-veil: rgba(0, 0, 0, 0.55);
+  --led-bezel: rgba(0, 0, 0, 0.9);
+  --led-spec: rgba(255, 255, 255, 0.4);
+  background:
+    radial-gradient(circle at 84% 8%, rgba(var(--pulse-rgb), 0.20) 0%, transparent 58%),
+    linear-gradient(168deg, rgba(var(--pulse-rgb), 0.11) 0%, rgba(var(--pulse-rgb), 0.03) 58%, rgba(var(--pulse-rgb), 0) 100%),
+    linear-gradient(var(--pulse-veil), var(--pulse-veil)),
+    var(--surface-2);
+  border: 1px solid rgba(var(--pulse-rgb), 0.28);
+}
+/* The console has its own DAYLIGHT mode; the veil and the LED housing invert
+   there too, so the card keeps telling the truth about what the homepage draws. */
+:root[data-theme="light"] .pulse-card-slot .wk-pulse,
+html[data-theme="light"] .pulse-card-slot .wk-pulse {
+  --pulse-veil: rgba(255, 255, 255, 0.45);
+  --led-bezel: rgba(0, 0, 0, 0.28);
+  --led-spec: rgba(255, 255, 255, 0.75);
+  border-color: rgba(var(--pulse-rgb), 0.34);
+}
+.pulse-card-slot .wk-pulse[data-state="ember"]  { --pulse-rgb: 214, 72, 60; }
+.pulse-card-slot .wk-pulse[data-state="dawn"]   { --pulse-rgb: 198, 138, 46; }
+.pulse-card-slot .wk-pulse[data-state="flow"]   { --pulse-rgb: 62, 158, 104; }
+.pulse-card-slot .wk-pulse[data-state="velvet"] { --pulse-rgb: 138, 104, 214; }
+.pulse-card-slot .wk-pulse[data-state="tide"]   { --pulse-rgb: 58, 134, 176; }
+
+.pulse-card-slot .wk-pulse > * { position: relative; z-index: 1; }
+
+.pulse-card-slot .wk-p-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.56rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(var(--pulse-rgb));
+  flex: 0 0 auto;
+}
+.pulse-card-slot .wk-p-label { display: inline-flex; align-items: center; gap: 6px; overflow: hidden; }
+/* The same SMD component the public card wears (css/main.css .wk-p-led). Static
+   here on purpose: this is a card you are composing, not one that is live yet —
+   the blink is the homepage saying "right now", and it would be a small lie in
+   an editor. */
+.pulse-card-slot .wk-p-led {
+  width: 6px; height: 6px; flex: 0 0 auto;
+  border-radius: 1px;
+  background: rgb(var(--pulse-rgb));
+  border: 1px solid var(--led-bezel);
+  box-shadow:
+    inset 0 0 2px var(--led-spec),
+    0 0 8px rgba(var(--pulse-rgb), 0.55);
+}
+.pulse-card-slot .wk-p-time { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+.pulse-card-slot .wk-p-center {
+  display: flex; flex-direction: column; justify-content: center;
+  flex: 1 1 auto; gap: 10px; min-height: 0;
+}
+.pulse-card-slot .wk-p-glyph {
+  line-height: 1;
+  font-size: 2.6rem;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: transform 0.15s;
+}
+.pulse-card-slot .wk-p-glyph:hover { transform: scale(1.08); }
+.pulse-card-slot .wk-p-glyph:focus-visible { outline: 1px dashed rgba(var(--pulse-rgb), 0.8); outline-offset: 3px; }
+/* Placeholder state — an empty glyph slot still needs a target you can hit. */
+.pulse-card-slot .wk-p-glyph:empty::before {
+  content: "\FF0B";
+  font-size: 1.3rem;
+  color: rgba(var(--pulse-rgb), 0.5);
+}
+
+/* THE DIRECT-EDIT FIELD. It is a real <textarea> wearing the rendered card's
+   type, so the line you are looking at is the line the homepage will draw —
+   including the tier step, which is applied to this element by the same
+   [data-tier] rules that size .wk-p-text. Transparent, no chrome until focus:
+   the card should look like a card, not like a form with a card around it. */
+.pulse-card-slot .wk-p-text {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  line-height: 1.3;
+  color: var(--ink-1);
+  width: 100%;
+  flex: 0 1 auto;
+  min-height: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 3px 4px;
+  margin: -3px -4px;
+  resize: none;
+  outline: none;
+  overflow-y: auto;
+}
+.pulse-card-slot textarea.wk-p-text::placeholder { color: rgba(var(--pulse-rgb), 0.55); }
+.pulse-card-slot textarea.wk-p-text:focus {
+  border-color: rgba(var(--pulse-rgb), 0.55);
+  background: rgba(0, 0, 0, 0.16);
+}
+:root[data-theme="light"] .pulse-card-slot textarea.wk-p-text:focus,
+html[data-theme="light"] .pulse-card-slot textarea.wk-p-text:focus {
+  background: rgba(255, 255, 255, 0.4);
+}
+/* The same three tiers the public card uses, so what you approve here is what a
+   visitor gets. They size the textarea because the textarea IS the line. */
+.pulse-card-slot .wk-pulse[data-tier="statement"] .wk-p-text { font-size: 1.7rem; line-height: 1.16; }
+.pulse-card-slot .wk-pulse[data-tier="statement"] .wk-p-glyph { font-size: 3rem; }
+.pulse-card-slot .wk-pulse[data-tier="feature"] .wk-p-text { font-size: 1.36rem; }
+.pulse-card-slot .wk-pulse[data-tier="feature"] .wk-p-glyph { font-size: 2.2rem; }
+.pulse-card-slot .wk-pulse[data-tier="standard"] .wk-p-text { font-size: 1.08rem; }
+.pulse-card-slot .wk-pulse[data-tier="standard"] .wk-p-glyph { font-size: 1.6rem; }
+.pulse-card-slot .wk-pulse[data-tier="glyph"] .wk-p-glyph { font-size: 4rem; align-self: center; }
+
+.pulse-card-slot .wk-p-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex: 0 0 auto;
+  padding-top: 9px; border-top: 1px solid rgba(var(--pulse-rgb), 0.25);
+  font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+/* `display: flex` above outranks the user-agent's `[hidden] { display: none }`
+   (0,2,0 beats 0,1,0), so hiding the empty footer needs saying explicitly.
+   Without this the row renders on every card and the composer stops telling the
+   truth: the public card drops it entirely when both cells are empty. */
+.pulse-card-slot .wk-p-foot[hidden] { display: none; }
+.pulse-card-slot .wk-p-foot-left { color: rgb(var(--pulse-rgb)); }
+.pulse-card-slot .wk-p-foot span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- the mobile strip ----
+   The starter rail becomes one horizontal snap row directly under the card.
+   Desktop hides it; the rails hide on mobile. Only one of the two is ever
+   rendered visible, so there is no duplicate tab order. */
+.pulse-strip { display: none; }
+
+@media (max-width: 900px) {
+  .view--bounded.active {
+    /* --tabbar-rsv, NOT --tabbar-h. The bar's own box is --tabbar-h; what
+       CONTENT should reserve for it is --tabbar-rsv, which drops to 0 when the
+       bar slides away under the soft keyboard. Pulse is a typing surface, so
+       this is the one view where reserving rows the bar is no longer occupying
+       costs the most — exactly when the screen is shortest. */
+    padding: 12px 14px calc(10px + var(--tabbar-rsv, 56px) + var(--safe-bottom, 0px));
+  }
+  .view-header--tight {
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+  }
+  .view-header--tight .view-meta { font-size: 0.55rem; letter-spacing: 0.1em; }
+
+  .pulse-canvas {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  /* Rails off. Everything the quick path needs is on the stage; the log is
+     reference material and a phone has no room to hold both.
+     The starter rail's replacement is .pulse-strip below; the recent rail's is
+     the #pulse-log-sheet bottom sheet, opened by the button that appears here. */
+  .pulse-rail { display: none; }
+  .pulse-log-btn { display: inline-flex; align-items: center; }
+
+  .pulse-stage {
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    gap: 10px;
+  }
+  /* The card leads. On a phone whatever is at the top is the only thing you are
+     guaranteed to see, and this is the thing you are making. */
+  .pulse-card-slot { flex: 1 1 auto; }
+  .pulse-card-slot .wk-pulse {
+    max-width: 100%;
+    aspect-ratio: auto;
+    height: 100%;
+    max-height: 100%;
+  }
+  .pulse-card-slot .wk-pulse[data-tier="statement"] .wk-p-text { font-size: 1.5rem; }
+
+  .pulse-strip {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 6px;
+    width: 100%;
+    overflow-x: auto;
+    /* PROXIMITY, not mandatory. The chips are different widths (they carry the
+       starter lines), and mandatory snapping on variable-width items fights the
+       finger — it drags the strip back mid-flick and can strand a chip half off
+       screen. Proximity settles when you are already close and otherwise leaves
+       the scroll alone. */
+    scroll-snap-type: x proximity;
+    /* A horizontal swipe must not chain into the page or the browser's back
+       gesture. The console sets this posture globally for its shells; these two
+       reels are newer and missed it. */
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .pulse-strip::-webkit-scrollbar { display: none; }
+  .pulse-chip {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: min(72vw, 260px);
+    min-height: 44px;
+    padding: 0 11px;
+    background: var(--surface-2);
+    border: 1px solid var(--line-2);
+    border-radius: 8px;
+    color: var(--ink-1);
+    font-family: inherit;
+    font-size: 0.76rem;
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .pulse-chip-glyph { flex: 0 0 auto; }
+  /* THE TRUNCATION HAS TO LIVE ON THE SPAN, not on the button.
+     `text-overflow: ellipsis` applies to a BLOCK CONTAINER's inline content; a
+     flex container's children are flex items, not inline content, so the
+     property on .pulse-chip did exactly nothing and `overflow: hidden` clipped
+     mid-word — "Tones are sing", "Zero ope". `min-width: 0` is the other half:
+     a flex item's default `min-width: auto` refuses to shrink below its content,
+     so without it the span never overflows and never ellipsises. */
+  .pulse-chip-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pulse-chip:active { border-color: var(--accent); }
+
+  .pulse-palette { padding: 5px 10px; gap: 6px; }
+  .pulse-swatch { width: 24px; height: 24px; }
+
+  .pulse-dock { max-width: 100%; gap: 6px; }
+  .pulse-dock .btn { min-height: 46px; font-size: 0.72rem; }
+  .pulse-more { max-width: 100%; }
+
+  .pulse-tray { bottom: 50%; max-width: 88vw; }
+}
+
+@media (min-width: 901px) {
+  .pulse-strip { display: none; }
+}

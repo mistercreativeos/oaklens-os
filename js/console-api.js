@@ -303,6 +303,27 @@ export function deleteDraft(id) {
     retries: 1, tel: { channel: 'draft', label: 'DRAFT ✕' } });
 }
 
+// ============== PULSE ==============
+// The one write path in the console that does NOT stage anything for publish:
+// a pulse lands in D1 and is live in seconds, with no commit and no build. That
+// is the whole point of the feature, so these deliberately do not touch
+// STATE's staging counters.
+export function postPulse(pulse) {
+  return apiFetch('/api/pulse', { method: 'POST', ...jsonBody(pulse),
+    tel: { channel: 'pulse', label: 'PULSE ▲' } });
+}
+export function retirePulse() {
+  return apiFetch('/api/pulse', { method: 'DELETE',
+    retries: 1,   // idempotent — retiring a retired pulse is a no-op
+    tel: { channel: 'pulse', label: 'PULSE ✕' } });
+}
+// latch:false — the log is a convenience list. A fork whose D1 has not been
+// migrated yet should see the composer, not a red lamp.
+export function fetchPulseLog(limit) {
+  return apiFetch(`/api/pulse/log?limit=${encodeURIComponent(limit || 30)}`,
+    { retries: 1, tel: { channel: 'pulse', label: 'PULSE ▼', latch: false } });
+}
+
 // ============== OG CARDS ==============
 // latch:false — badge decoration; a failure belongs in the ledger, not the lamp.
 export function fetchOgCards() {

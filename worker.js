@@ -16,6 +16,7 @@ import {
   handleDeleteBenchEntry, handleClearDoneBenchEntries, handleBenchRawDownload,
 } from './src/api/bench.js';
 import { handleGetDrafts, handlePutDraft, handleDeleteDraft } from './src/api/drafts.js';
+import { handleGetPulse, handlePostPulse, handleDeletePulse, handlePulseLog } from './src/api/pulse.js';
 import { handleAuth, handleLogout } from './src/api/console-auth.js';
 import { handleSubscribe, handleExport } from './src/api/subscribers.js';
 import { handleUpload, handleDeleteAssets, handleCdnProxy, handleOgCards } from './src/api/assets.js';
@@ -122,6 +123,12 @@ const EXACT_ROUTES = new Map([
   ['PUT /api/drafts', (request, env) => handlePutDraft(request, env)],
   ['DELETE /api/drafts', (request, env) => handleDeleteDraft(request, env)],
   ['GET /api/og-cards', (request, env) => handleOgCards(request, env)],
+  // Pulse. The GET is public and edge-cached (60s) — it feeds the homepage card
+  // the way /api/buffer-summary feeds the RAW daily. The rest is console-only.
+  ['GET /api/pulse', (request, env) => handleGetPulse(request, env)],
+  ['POST /api/pulse', (request, env) => handlePostPulse(request, env)],
+  ['DELETE /api/pulse', (request, env) => handleDeletePulse(request, env)],
+  ['GET /api/pulse/log', (request, env) => handlePulseLog(request, env)],
 ]);
 
 // Demo mode (site.config.js → demoMode: true): every route that writes —
@@ -144,6 +151,10 @@ export const DEMO_LOCKED_ROUTES = new Set([
   'DELETE /api/bench/done',
   'PUT /api/drafts',
   'DELETE /api/drafts',
+  // A demo console must not be able to write to the demo's own homepage.
+  // The pulse READ stays open — the demo should show a pulse card like any site.
+  'POST /api/pulse',
+  'DELETE /api/pulse',
 ]);
 
 // ---- Main handler ----

@@ -27,6 +27,7 @@ import { renderFN, fnHeroIngest, fnHeroClear, fnSetupEnhancements, _applyFnFront
 import { FocalModal, bufferFocal, loadOgCards } from './focal.js';
 import { closeAssetLibrary } from './asset-library.js';
 import { renderAudio, audioAddFiles } from './audio.js';
+import { _pulseCloseLog } from './pulse.js';
 import { renderPublish, syncFromServer } from './publish.js';
 import { checkAuth, closeSettings, _updateSettingsDots, _checkSessionExpiry, _initOfflineIndicator, applyInstancePosture, _wireRingJoin, maybeShowWelcome } from './session.js';
 import { renderBench } from './bench.js';
@@ -125,6 +126,7 @@ export function init() {
   _wireSheetDrag("focal-modal", () => FocalModal.close());
   _wireSheetDrag("asset-library-modal", closeAssetLibrary);
   _wireSheetDrag("more-sheet", closeMoreSheet);
+  _wireSheetDrag("pulse-log-sheet", _pulseCloseLog);
 
   let _lastFocusSync = 0;
   checkAuth();
@@ -221,6 +223,7 @@ export function init() {
     if (e.key !== "Escape") return;
     if (!document.getElementById("action-sheet")?.classList.contains("hidden")) { closeActionSheet(); return; }
     if (!document.getElementById("more-sheet")?.classList.contains("hidden")) { closeMoreSheet(); return; }
+    if (!document.getElementById("pulse-log-sheet")?.classList.contains("hidden")) { _pulseCloseLog(); return; }
     if (burstLinkMode) { exitBurstLinkMode(); return; }
   });
 }

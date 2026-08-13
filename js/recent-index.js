@@ -76,6 +76,27 @@
     return 'standard';
   }
 
+  // ---- tierLen: how long a line is TO A READER. String.length counts UTF-16
+  //      code units, which over-counts everything interesting: an emoji with a
+  //      variation selector is 2, a ZWJ sequence 3+, and "日暮れ" is fine but a
+  //      surrogate-pair character is not. Over-counting tiers a short line as a
+  //      long one and costs it the display treatment. Intl.Segmenter counts
+  //      graphemes — what a person would call a character. Shared by the pulse
+  //      card and the field-note text card so both ladders agree, and mirrored
+  //      server-side by pulseTierLen() in src/shared/pulse.js. ----
+  var _seg = null;
+  function tierLen(text) {
+    var s = String(text == null ? '' : text);
+    if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+      if (!_seg) _seg = new Intl.Segmenter('en', { granularity: 'grapheme' });
+      var n = 0;
+      // eslint-disable-next-line no-unused-vars
+      for (var _ of _seg.segment(s)) n += 1;
+      return n;
+    }
+    return (typeof Array.from === 'function' ? Array.from(s) : s.split('')).length;
+  }
+
   // ---- drop-cap initial: the first grapheme, but only when it is a Latin
   //      letter. A leading quote / number / emoji / non-Latin char (or an empty
   //      excerpt) returns '' and the caller skips the cap — never render a
@@ -142,6 +163,55 @@
     return picks.slice(0, gridSize);
   }
 
+  // ---- Pulse: the live card, pinned to the FIRST slot ----
+  // Fed from /api/pulse (D1), not from a data file — posting a pulse must not
+  // cost a deploy. It only exists while it is fresh; the endpoint hands back
+  // nothing once it expires, so the grid heals with no cleanup here.
+  function pulsePick(payload) {
+    var m = payload && payload.pulse;
+    if (!m) return null;
+    // A pulse needs a line or a glyph. An empty tile on the homepage is not a
+    // statement, it is a bug that looks like a decision.
+    var hasText = !!(m.text && m.text.trim());
+    var hasGlyph = !!(m.glyphs && m.glyphs.trim());
+    return (hasText || hasGlyph) ? m : null;
+  }
+
+  // THE PIN BUDGET. Desktop shows 3 of the 4 tiles, and audio (slot 1) + the
+  // RAW daily (slot 2) are already pinned. A third pin would mean a homepage
+  // where NOTHING is actually recent — three owner-chosen tiles and no work.
+  // So: the pulse always wins slot 0, and at most TWO pins are visible at once.
+  // When a pulse is live, the OLDER of (featured audio, featured RAW) yields its
+  // pin and drops back into the newest-first pool to compete on date like
+  // anything else. At least one tile is always genuinely recent.
+  var PULSE_SLOT = 0;
+  var VISIBLE_PINS = 2;
+  function pinPulse(items, pulseItem, gridSize) {
+    var picks = (items || []).slice();
+    picks.splice(Math.min(PULSE_SLOT, picks.length), 0, pulseItem);
+    return picks.slice(0, gridSize);
+  }
+
+  // Which of the two content pins keeps its slot when a pulse is live. Newer
+  // wins; a missing date sorts last. Pure, so the rule is pinned by tests.
+  // A pulse's tier comes off the SAME ladder the text cards use — recentTier —
+  // measured in graphemes. The one extra rung is `glyph`: a pulse with no words
+  // at all is a legitimate post, and it wants the whole tile for its mark
+  // rather than a display line's worth of space with nothing in it.
+  function pulseTier(pulse) {
+    var text = (pulse && pulse.text) || '';
+    if (!text.trim()) return 'glyph';
+    return recentTier(tierLen(text.trim()));
+  }
+
+  function yieldOlderPin(audioItem, rawItem) {
+    if (!audioItem || !rawItem) return { audio: audioItem, raw: rawItem, yielded: null };
+    var ad = String(audioItem.d || '');
+    var rd = String(rawItem.d || '');
+    if (ad >= rd) return { audio: audioItem, raw: null, yielded: 'raw' };
+    return { audio: null, raw: rawItem, yielded: 'audio' };
+  }
+
   // ---- dates ----
   // Mirror worker.js feedDate(): added_at (ISO) then date (YYYY-MM-DD).
   function itemDate(x) { return x.added_at || x.date || ''; }
@@ -159,7 +229,7 @@
   // recent-work grid to surface both the photography and the writing. So when
   // both datasets are non-empty but the top-N came out single-type, trade the
   // oldest pick for the newest item of the missing type, then re-sort by date.
-  function pickRecent(archive, posts, rawFeatured, audioFeatured) {
+  function pickRecent(archive, posts, rawFeatured, audioFeatured, pulse) {
     var items = []
       .concat((archive || [])
         .filter(function (e) { return e && e.filename && e.slug; })
@@ -176,14 +246,25 @@
     // featured, fall through to the normal mixed newest-first grid.
     var audio = audioPick(audioFeatured);
     var raw = rawPick(rawFeatured);
+    var live = pulsePick(pulse);
+
+    var audioItem = audio.length ? { kind: 'audio', data: audio[0], d: audio[0].added_at || '' } : null;
+    var rawItem = raw.length ? { kind: 'photo', raw: true, data: raw[0], d: raw[0].captured_at || '' } : null;
+
+    // With a live pulse there are three candidate pins for two visible slots —
+    // the older content pin yields and rejoins the pool (see yieldOlderPin).
+    if (live && audioItem && rawItem) {
+      var kept = yieldOlderPin(audioItem, rawItem);
+      audioItem = kept.audio;
+      rawItem = kept.raw;
+    }
+
     var pinned = items;
-    if (audio.length) {
-      pinned = pinAudio(pinned, { kind: 'audio', data: audio[0], d: audio[0].added_at || '' }, GRID_SIZE);
-    }
-    if (raw.length) {
-      pinned = pinRaw(pinned, { kind: 'photo', raw: true, data: raw[0], d: raw[0].captured_at || '' }, GRID_SIZE);
-    }
-    if (audio.length || raw.length) return pinned.slice(0, GRID_SIZE);
+    if (audioItem) pinned = pinAudio(pinned, audioItem, GRID_SIZE);
+    if (rawItem) pinned = pinRaw(pinned, rawItem, GRID_SIZE);
+    // Pulse goes on LAST so it lands in slot 0 ahead of the others.
+    if (live) pinned = pinPulse(pinned, { kind: 'pulse', data: live, d: '' }, GRID_SIZE);
+    if (live || audioItem || rawItem) return pinned.slice(0, GRID_SIZE);
 
     var picks = items.slice(0, GRID_SIZE);
 
@@ -259,7 +340,12 @@
     recentTruncate: recentTruncate,
     recentExcerpt: recentExcerpt,
     recentTier: recentTier,
+    tierLen: tierLen,
     recentInitial: recentInitial,
+    pulsePick: pulsePick,
+    pinPulse: pinPulse,
+    yieldOlderPin: yieldOlderPin,
+    pulseTier: pulseTier,
     cardFocus: cardFocus,
     rawPick: rawPick,
     pinRaw: pinRaw,
@@ -326,7 +412,9 @@
 
   function textCard(post) {
     var excerpt = recentTruncate(recentStrip(post.body), TEASE_MAX);
-    var tier = recentTier(excerpt.length);
+    // Grapheme-counted, like the pulse card: a tease in Japanese or one carrying
+    // emoji used to over-count and tier a step too small.
+    var tier = recentTier(tierLen(excerpt));
     var initial = recentInitial(excerpt);
 
     var a = el('a', 'wk-card wk-text');
@@ -458,6 +546,76 @@
     return card;
   }
 
+  // ---- pulse card ----
+  // Every value on it was typed by the author. The tile is NOT a link — a pulse
+  // goes nowhere — so it is a plain <div> with no pointer affordance, rather
+  // than an <a> that lies about being clickable.
+  //
+  // THE LABEL IS A CONSTANT, not a field. A card that titled itself from the
+  // starter pack the author happened to tap read PHOTOGRAPHY on one post and
+  // TECH / DEV on the next, which told a cold reader nothing about what the tile
+  // was. Every pulse says PULSE — including rows written before the change, so
+  // the value is never read off the record.
+  //
+  // ⚠️ Mirrors PULSE_LABEL in src/shared/pulse.js. This file is a CLASSIC SCRIPT
+  // on public pages and cannot import from src/, which is the same reason
+  // tierLen is duplicated below. tests/pulse-card.test.js asserts the two agree.
+  var PULSE_LABEL = 'PULSE';
+
+  function pulseCard(pulse) {
+    var card = el('div', 'wk-card wk-pulse');
+    card.setAttribute('data-state', pulse.state || 'signal');
+    card.setAttribute('data-tier', pulseTier(pulse));
+
+    var kicker = el('div', 'wk-p-kicker');
+    var label = el('span', 'wk-p-label');
+    var led = el('span', 'wk-p-led');
+    led.setAttribute('aria-hidden', 'true');
+    label.appendChild(led);
+    label.appendChild(document.createTextNode(PULSE_LABEL));
+    kicker.appendChild(label);
+    // The author's clock at the moment of posting, frozen server-side. Never
+    // recomputed here: rendering it from the visitor's Date() would show a
+    // reader in another time zone a time the author never experienced.
+    if (pulse.localTime) {
+      var time = el('span', 'wk-p-time');
+      time.textContent = pulse.localTime;
+      kicker.appendChild(time);
+    }
+    card.appendChild(kicker);
+
+    var center = el('div', 'wk-p-center');
+    if (pulse.glyphs && pulse.glyphs.trim()) {
+      var glyph = el('div', 'wk-p-glyph');
+      glyph.textContent = pulse.glyphs.trim();
+      // Emoji are decoration here, not content — a screen reader announcing
+      // "film frames red circle" before the line is noise, and the line
+      // already says what the pulse is.
+      glyph.setAttribute('aria-hidden', 'true');
+      center.appendChild(glyph);
+    }
+    if (pulse.text && pulse.text.trim()) {
+      var text = el('div', 'wk-p-text');
+      text.textContent = pulse.text.trim();
+      center.appendChild(text);
+    }
+    card.appendChild(center);
+
+    // Two free-text cells, both empty unless the author filled them — and with
+    // nothing in either, the row does not render at all.
+    if ((pulse.footLeft && pulse.footLeft.trim()) || (pulse.footRight && pulse.footRight.trim())) {
+      var foot = el('div', 'wk-p-foot');
+      var left = el('span', 'wk-p-foot-left');
+      left.textContent = pulse.footLeft || '';
+      var right = el('span', 'wk-p-foot-right');
+      right.textContent = pulse.footRight || '';
+      foot.appendChild(left);
+      foot.appendChild(right);
+      card.appendChild(foot);
+    }
+    return card;
+  }
+
   // null = the data file is MISSING (an un-seeded fork), [] = it loaded empty
   // (cleared on purpose). The caller maps null to the sample fallback — the
   // same missing-vs-empty split the archive and wall pages make (manual §5.21).
@@ -482,6 +640,11 @@
       // un-seeded fork should show no audio card rather than a play button
       // that 404s. Missing and empty therefore mean the same thing.
       getJson('/data/audio.json'),
+      // The live pulse (D1, via a 60s-cached endpoint). Not a data file: posting
+      // one must not cost a deploy. Every degraded state — no D1, unmigrated,
+      // nothing posted, everything expired — answers { pulse: null }, so this
+      // resolves to "no pulse card" and never to a broken grid.
+      getJson('/api/pulse'),
     ])
       .then(function (res) {
         var archive = withSampleFallback(res[0], sampleFrames());
@@ -489,7 +652,8 @@
         var summary = (res[2] && !Array.isArray(res[2])) ? res[2] : {};
         var rawFeatured = Array.isArray(summary.featured) ? summary.featured : [];
         var audio = Array.isArray(res[3]) ? res[3] : [];
-        var picks = pickRecent(archive, posts, rawFeatured, audio);
+        var pulse = (res[4] && !Array.isArray(res[4])) ? res[4] : null;
+        var picks = pickRecent(archive, posts, rawFeatured, audio, pulse);
         var section = host.closest ? host.closest('.cl-work') : null;
         if (!picks.length) {
           if (section) section.hidden = true;
@@ -498,9 +662,10 @@
         var frag = document.createDocumentFragment();
         picks.forEach(function (item) {
           frag.appendChild(
-            item.kind === 'audio' ? audioCard(item.data)
-              : item.kind === 'photo' ? photoCard(item.data, item.raw)
-                : textCard(item.data)
+            item.kind === 'pulse' ? pulseCard(item.data)
+              : item.kind === 'audio' ? audioCard(item.data)
+                : item.kind === 'photo' ? photoCard(item.data, item.raw)
+                  : textCard(item.data)
           );
         });
         host.textContent = '';
