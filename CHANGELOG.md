@@ -25,6 +25,36 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-13 (later the same day)
+
+**This is a creative platform, not a photography platform.** Nothing in your
+site changed and there is nothing to merge carefully — this is a rewrite of how
+the project describes itself, and the reason it's here is that one line of it
+lands in *your* config.
+
+The engine used to call itself "a photography site, field-notes blog and
+print-drop storefront." It doesn't any more. It's a digital studio you own:
+portfolio, blog, audio and storefront. That was already true in the code — the
+audio layer, the podcast feed, text-only cards sized to their own writing, and
+six starter packs covering photography, writing, music, filmmaking, tech and
+podcasting all shipped in the days before this — but the landing page and the
+install guide still promised "a real photography website", which is the sentence
+that tells everyone else the door isn't for them.
+
+**The one thing that touches your files:** the starter tagline in
+`site.config.example.js` changed from `'Photography portfolio'` to
+`'Selected work'`. If you already filled your own tagline in — which the install
+guide asks you to do at step 7 — this changes nothing for you. If you never did,
+your site currently says "Photography portfolio" and you can put whatever you
+like there.
+
+**If you shoot, nothing was taken away.** RAW ingest, EXIF extraction, permanent
+frame numbers, dark frames and the privacy scrub are all still here and still
+what they were. They stopped being the definition of the product. They didn't
+stop being.
+
+---
+
 ## 2026-08-13
 
 **New: Pulse — post what you're doing, straight to your homepage.** A fourth kind

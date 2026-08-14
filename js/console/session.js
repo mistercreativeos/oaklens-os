@@ -16,7 +16,7 @@
 
 import { SESSION_KEY, getToken, setToken, clearToken, _tokenSecondsLeft, isLoggedIn, login, logoutServer, fetchSiteSettings } from '../console-api.js';
 import { showToast, setSystemState } from '../console-telemetry.js';
-import { toast, hideOverlay, renderBuildStamp } from './chrome.js';
+import { toast, hideOverlay, renderBuildStamp, renderViewportStamp } from './chrome.js';
 import { _librarySyncFailed } from './sync.js';
 import { _hasNetFailedUploads } from './upload.js';
 import { syncFromServer, _resumeAfterReconnect, _syncPendingReconnect } from './publish.js';
@@ -80,6 +80,7 @@ export function openSettings() {
   _renderSettingsStatus();
   _renderSiteSettings();
   renderBuildStamp();   // async; the panel fills in a tick later
+  renderViewportStamp();
   document.getElementById('settings-modal').classList.remove('hidden', 'closing');
 }
 
@@ -240,7 +241,11 @@ export function copySiteSettingsPrompt() {
       `  pages: ${Object.entries(s.pages).map(([k, v]) => `${k}:${v}`).join(', ')}`
     : '  (unavailable — describe your current setup)';
   const prompt =
-`You are the AI maintainer for my Oaklens OS photography site.
+// Deliberately does NOT name a discipline. Every fork owner copies this
+// straight into an assistant, so "my Oaklens OS photography site" (what it said
+// until 2026-08-13) handed a writer or a musician a prompt that described
+// someone else's practice — and the assistant would then reason from it.
+`You are the AI maintainer for my Oaklens OS site.
 
 Current settings (from /api/site/settings):
 ${cur}

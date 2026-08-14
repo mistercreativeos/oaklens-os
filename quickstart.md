@@ -92,7 +92,7 @@ engines read.
 
 ```js
 name: 'Your Studio',
-tagline: 'Photography portfolio',
+tagline: 'Selected work',
 email: 'you@example.com',
 contactName: 'You',
 wordmark: { stem: 'YOUR STUDIO', accent: '' },

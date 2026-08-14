@@ -17,7 +17,7 @@
 
 import { STATE, load, restoreSidebar, restoreFnBar, resetConsole } from '../console-state.js';
 import { isLoggedIn } from '../console-api.js';
-import { registerView, registerLongPress, refreshStageIndicators, themeInit, wireDropzone, _wireSheetDrag, _initKeyboardInsets, _initStickyHeaders, _initLongPress, closeActionSheet, closeMoreSheet } from './chrome.js';
+import { registerView, registerLongPress, refreshStageIndicators, themeInit, wireDropzone, _wireSheetDrag, _initKeyboardInsets, _initViewportFrame, _initStickyHeaders, _initLongPress, closeActionSheet, closeMoreSheet } from './chrome.js';
 import { updatePurgeR2Button } from './sync.js';
 import { _libraryUploadsPending } from './upload.js';
 import { renderWall, renderBarrel, renderNetwork, renderLibrary, wallIngest, libraryIngest } from './more-views.js';
@@ -173,6 +173,9 @@ export function init() {
     navigator.serviceWorker.register('/dev/sw.js').catch(() => {});
   }
   _initOfflineIndicator();
+  // Before the keyboard watcher: it reads the same viewport, and the safe-area
+  // correction decides how tall the bottom chrome is.
+  _initViewportFrame();
   _initKeyboardInsets();
   _initStickyHeaders();
   _initLongPress();

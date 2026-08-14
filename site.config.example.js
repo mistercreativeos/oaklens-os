@@ -6,7 +6,7 @@
 // runtime, so a fresh fork works on *.workers.dev with zero extra config.
 export default Object.freeze({
   name: 'Your Studio',
-  tagline: 'Photography portfolio',
+  tagline: 'Selected work',
   email: 'you@example.com',
   contactName: 'You',
   // The display wordmark: nav logo, footer, page <title>, console chrome.
@@ -40,7 +40,7 @@ export default Object.freeze({
   // `/api/cdn/…` key once you've uploaded frames).
   folioHero: {
     image: '/assets/samples/sample-hero-2048w.webp',
-    alt: 'Featured photograph',
+    alt: 'Featured work',
   },
   // Homepage split hero — NOIR preset only (a two-panel tool/code + photo hero
   // instead of the folio hero). Omit it and noir falls back to the folio hero.

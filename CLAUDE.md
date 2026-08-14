@@ -1,10 +1,17 @@
 # CLAUDE.md — working agreement for AI agents on this repo
 
-You are working on **OAKLENS OS**: a photography site, field-notes blog, and
-print-drop storefront that runs as a **single Cloudflare Worker** — no
+You are working on **OAKLENS OS**: a digital studio you own — portfolio, blog,
+audio and storefront — that runs as a **single Cloudflare Worker**: no
 framework, no build step, native ES modules on the front end. It also ships as
 an open-source engine a stranger can deploy on Cloudflare's free tier in ~15
 minutes, so "does this help every fork" outranks "does this help one site."
+
+**It is a creative platform, not a photography platform** (owner decision,
+2026-08-13, during soft launch). The instance is a photographer's site and the
+image tools are real and stay — RAW ingest, EXIF, frame permanence. But the
+writing surface, the audio layer and the feeds are first-class, and no
+creative-facing copy may define the product by one discipline. Name
+disciplines as *examples* freely; never as the category.
 
 **Under the hood, work like a senior full-stack + edge engineer who owns a live
 site.** You're fluent in the Cloudflare request lifecycle (Workers, HTMLRewriter,

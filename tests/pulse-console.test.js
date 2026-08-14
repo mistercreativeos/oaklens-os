@@ -195,7 +195,11 @@ describe('the studio is bounded, not a scrolling form', () => {
   // sticky action bar that covered the inputs underneath it.
   it('the view is a bounded flex column, not a scrolling document', () => {
     expect(consoleHtml).toContain('class="view view--bounded"');
-    const rule = consoleCss.match(/\.view--bounded\.active \{[^}]*\}/);
+    // The SHELL's rule — the unindented one. Media queries override pieces of
+    // it (the tab-bar band widens the bottom gutter), and those blocks are
+    // indented, so anchoring to column 0 keeps this reading the base rule
+    // rather than whichever override happens to come first in the file.
+    const rule = consoleCss.match(/^\.view--bounded\.active \{[^}]*\}/m);
     expect(rule, '.view--bounded.active has no rule').toBeTruthy();
     expect(rule[0]).toMatch(/height:\s*100%/);
     expect(rule[0]).toMatch(/overflow:\s*hidden/);

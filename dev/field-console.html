@@ -36,7 +36,7 @@ try {
 <script async src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" integrity="sha384-KRanV2NRwHPanp7iM6nlLQC5jPCTscSYMko30dLJHzNXJaUNtcucWv+SOi3jV3PE" crossorigin="anonymous"></script>
 <script async src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
 
-<link rel="stylesheet" href="/css/field-console.css?v=36">
+<link rel="stylesheet" href="/css/field-console.css?v=39">
 </head>
 <body>
 
@@ -408,9 +408,13 @@ Capture first. Process later."></textarea>
           </div>
         </div>
 
-        <div class="preview-pane">
-          <div class="fn-pane-hdr">
-            <span>RENDERED PREVIEW</span>
+        <!-- No "RENDERED PREVIEW" caption. A pane you cannot type into, sitting
+             beside one you can, explains itself the moment you type — and on a
+             tablet that label was spending the width that cut ▲ STAGE POST in
+             half. The name survives for screen readers on the region itself,
+             where it costs no pixels. -->
+        <div class="preview-pane" role="region" aria-label="Rendered preview">
+          <div class="fn-pane-hdr fn-pane-hdr--actions">
             <div style="display: flex; gap: 8px;">
               <button class="btn btn-sm btn-ghost" onclick="fnPreview()">PREVIEW</button>
               <button class="btn btn-sm btn-ghost" onclick="fnStage('draft')">SAVE DRAFT</button>
@@ -1097,6 +1101,17 @@ Capture first. Process later."></textarea>
           // reading…
         </div>
       </div>
+      <!-- What the device gives the console to draw in. An installed web app is
+           a black box from the outside: when a layout comes up wrong on someone's
+           tablet there is otherwise no way to see whether the screen's safe-area
+           numbers are wrong or the window is simply shorter than it looks. Those
+           two produce an identical gap and want opposite fixes. -->
+      <div class="modal-section">
+        <div class="modal-section-title">Display</div>
+        <div id="settings-display" style="font-size:0.65rem; letter-spacing:1px; line-height:2; color:var(--text-faint);">
+          // measuring…
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeSettings()">Close</button>
@@ -1223,12 +1238,12 @@ Capture first. Process later."></textarea>
     "/js/console-api.js":       "/js/console-api.js?v=11",
     "/js/console-state.js":     "/js/console-state.js?v=8",
     "/js/console-ui.js":        "/js/console-ui.js?v=61",
-    "/js/console/chrome.js":    "/js/console/chrome.js?v=7",
+    "/js/console/chrome.js":    "/js/console/chrome.js?v=9",
     "/js/console/assets.js":    "/js/console/assets.js?v=4",
     "/js/console/utils.js":     "/js/console/utils.js?v=2",
     "/js/console/sync.js":      "/js/console/sync.js?v=1",
     "/js/console/upload.js":    "/js/console/upload.js?v=2",
-    "/js/console/more-views.js": "/js/console/more-views.js?v=3",
+    "/js/console/more-views.js": "/js/console/more-views.js?v=4",
     "/js/console/archive.js":   "/js/console/archive.js?v=1",
     "/js/console/buffer.js":    "/js/console/buffer.js?v=2",
     "/js/console/fn-editor.js": "/js/console/fn-editor.js?v=3",
@@ -1236,11 +1251,11 @@ Capture first. Process later."></textarea>
     "/js/console/asset-library.js": "/js/console/asset-library.js?v=1",
     "/js/console/audio.js":     "/js/console/audio.js?v=1",
     "/js/console/publish.js":   "/js/console/publish.js?v=6",
-    "/js/console/session.js":   "/js/console/session.js?v=5",
+    "/js/console/session.js":   "/js/console/session.js?v=7",
     "/js/console/bench.js":     "/js/console/bench.js?v=1",
     "/js/pulse-packs.js":       "/js/pulse-packs.js?v=2",
     "/js/console/pulse.js":     "/js/console/pulse.js?v=2",
-    "/js/console/init.js":      "/js/console/init.js?v=6",
+    "/js/console/init.js":      "/js/console/init.js?v=7",
     "/js/markdown-engine.js":   "/js/markdown-engine.js?v=4",
     "/js/jpeg-privacy.js":      "/js/jpeg-privacy.js?v=1",
     "/js/raw-lens.js":          "/js/raw-lens.js?v=5",
