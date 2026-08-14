@@ -7,13 +7,18 @@
 
 <img width="1448" height="1238" alt="image" src="https://github.com/user-attachments/assets/f12ee42f-55f8-4c47-9dc7-e9400f6fe7c4" />
 
-A photography site, field-notes blog and print-drop storefront that runs as a
-single Cloudflare Worker. No framework, no build step, no monthly bill, and no
-platform standing between you and the people looking at your work.
+A digital studio you own: portfolio, blog, audio and storefront on a single
+Cloudflare Worker. No framework, no build step, no monthly bill, and no platform
+standing between you and the people looking at your work.
 
-You publish from a console in your browser: drop photos straight off the camera
-or phone, write the post on the train, hit publish. The site commits to **your**
-GitHub repo and rebuilds itself. Nothing you make lives anywhere you can't reach.
+You publish from a console in your browser: drop pictures straight off the
+camera or phone, put up the track you mixed last night, write the post on the
+train, hit publish. The site commits to **your** GitHub repo and rebuilds
+itself. Nothing you make lives anywhere you can't reach.
+
+Whatever you make is what it's for. It began as one photographer's site and the
+image tools show it — but the writing surface, the audio layer and the feeds are
+first-class, not accessories, and nothing here assumes a camera.
 
 **New to this?** Follow the
 [interactive install guide](https://os.oaklens.art/install). It walks you
@@ -42,16 +47,24 @@ your own domain later changes nothing in the code.
 - **A console built for the field.** Cull, write and publish from a phone or an
   iPad on a café table. Two viewing modes: high-contrast for direct sun, OLED
   black for editing in the dark.
-- **Photos in, web-ready out.** Drop JPEGs or camera RAW files in the browser
+- **Pictures in, web-ready out.** Drop JPEGs or camera RAW files in the browser
   and they're resized, variant-generated and live in seconds. GPS and EXIF are
   stripped on the way out, so your art ships and your location doesn't.
-- **Permanent frame numbers.** Every published image gets a number (`f#234`) and
-  a SHA-256 fingerprint at intake. Numbers are never reused or reordered, and
-  retiring a frame leaves a dark placeholder behind, so no link to your work
-  ever breaks.
-- **Field Notes that cite the work.** Write in Markdown, link any frame by its
-  number, and the link opens a preview inline. Words and images stay tied
-  together across years.
+- **Audio that's part of the site, not embedded from one.** Attach a file and
+  the console measures its waveform once; every surface then draws bars from
+  numbers, and nothing downloads until someone presses play. You get a player on
+  the homepage, a permanent address per track, numbered tracklists inside posts,
+  and a real RSS 2.0 podcast feed at `/podcast.xml`. No library, no iframe, no
+  CSP change.
+- **Writing that stands on its own.** Field Notes is Markdown with a live
+  editor, and a post with no picture in it still gets a homepage card — sized to
+  the writing, so a single good line lands like a pull quote instead of rattling
+  around in a frame built for something else.
+- **Permanent numbers.** Every published image gets a number (`f#234`) and a
+  SHA-256 fingerprint at intake. Numbers are never reused or reordered, and
+  retiring one leaves a dark placeholder behind, so no link to your work ever
+  breaks. Cite a number in a post and the link opens a preview inline — words
+  and work stay tied together across years.
 - **Survives a bad connection.** Lose signal and your work is held locally, then
   uploads when you're back. Close the tab mid-upload and it pauses rather than
   publishing something half-formed.
@@ -84,7 +97,7 @@ cd YOUR-REPO
 One click, in your browser, and it has to happen before the next step.
 
 Cloudflare dashboard, then **Storage & databases**, then **R2 Object Storage**,
-then **Add R2 subscription to my account**. R2 is where your photographs live,
+then **Add R2 subscription to my account**. R2 is where your pictures and audio live,
 and it is the only piece here that a new Cloudflare account does not already
 have switched on. No command can do it for you.
 
@@ -116,14 +129,14 @@ goes live on its own. Both are walked through in [setup.md](setup.md).
 Then read **[quickstart.md](quickstart.md)** — it picks up the moment your site
 answers, and walks you through the settings and console moves you'd otherwise
 have to find by clicking around: picking a look, turning pages on, cropping
-thumbnails properly, putting a photograph on your homepage, and hitting publish.
+thumbnails properly, putting your own work on the homepage, and hitting publish.
 
 ## What it costs
 
-Nothing, for a normal portfolio. But you do have to put a payment method on
+Nothing, for a normal site. But you do have to put a payment method on
 file, and we would rather you heard that here than at step 2.
 
-**Cloudflare asks for a payment method to switch on R2**, the photo storage.
+**Cloudflare asks for a payment method to switch on R2**, the media storage.
 Card, Apple Pay, Google Pay, PayPal or bank, plus a billing address. The
 checkout says **Due today $0.00** and **$0/month**, and you are agreeing to be
 charged only for usage above the free allowance. Nothing else in this install
@@ -135,20 +148,21 @@ something you can check:
 
 | Free every month | What that is, in this site's terms |
 |---|---|
-| **10 GB of storage** | A photograph is stored in three sizes and averages about **350 KB** all in, so roughly **25,000 photographs**. A written post with one hero image costs the same as one photograph. If you also keep full resolution originals in there, think **1,000 to 1,500** instead. |
-| **1 million uploads** | Three writes per photograph, so about **300,000 photographs uploaded per month**. You will not meet this. |
-| **10 million image reads** | Repeat views are served from Cloudflare's edge cache and cost **zero** reads, so in practice this is hundreds of thousands of page views. |
+| **10 GB of storage** | An image is stored in three sizes and averages about **350 KB** all in, so roughly **25,000 pictures**. The same 10 GB is about **170 hours of audio** at podcast quality. Writing is free in any practical sense — a post is a few kilobytes. If you also keep full resolution originals in there, think **1,000 to 1,500** instead. |
+| **1 million uploads** | Three writes per image, so about **300,000 pictures uploaded per month**. You will not meet this. |
+| **10 million reads** | Repeat views are served from Cloudflare's edge cache and cost **zero** reads, so in practice this is hundreds of thousands of page views. |
 
 The limit you would actually meet first is not R2 at all. It is the Worker's
 **100,000 requests a day**, which is roughly **2,000 to 3,000 page views a day**
-for a photo-heavy site, or somewhere around 60,000 to 90,000 a month. That is a
+for a media-heavy site, or somewhere around 60,000 to 90,000 a month. That is a
 lot of traffic for a portfolio, and if you get there consistently you are having
 a good year. Cloudflare's own pricing pages are the source of truth for what
 happens past it, not this README.
 
 The honest caveat: free tiers have limits, and R2 storage and Worker requests
-are the ones you'd meet first. A personal site with thousands of photos sits
-well inside them. A site serving serious traffic will eventually cross into paid
+are the ones you'd meet first. A personal site with thousands of pictures, or a
+few hundred hours of audio, sits well inside them. A site serving serious
+traffic will eventually cross into paid
 usage, and Cloudflare's own pricing pages are the source of truth there, not
 this README.
 

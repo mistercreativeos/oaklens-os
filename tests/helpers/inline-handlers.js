@@ -25,7 +25,16 @@ import { join, relative } from 'node:path';
 
 export const ROOT = join(import.meta.dirname, '../..');
 
-const SKIP_DIRS = new Set(['node_modules', '.git', '.wrangler', 'coverage']);
+// `docs/` is skipped for the same reason tests/guards.test.js skips it: it never
+// travels to a fork, it is `.assetsignore`'d, and nothing in it is served. What
+// it DOES hold is design artifacts — owner-written HTML specimens and interface
+// mockups, kept verbatim as records. Those are not the app, and scanning them
+// produces only false positives: a mockup handler like
+// `onclick="loadRecent('📸', 'Chasing light. Losing my mind.', …)"` makes the
+// scanner read `mind` and `light` as unreachable function calls. This guard
+// exists to protect the console and the public pages; an archived mockup is
+// neither, and it must not be able to fail the suite.
+const SKIP_DIRS = new Set(['node_modules', '.git', '.wrangler', 'coverage', 'docs']);
 
 // on<event>="..." / on<event>='...'. Inside a JS template literal the quote is
 // backslash-escaped, so allow an optional leading backslash.

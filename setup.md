@@ -63,8 +63,24 @@ Two things the engine does so that flow can work at all:
   runs that script on the button path — the button does *not* apply migrations
   on its own). The migration files are idempotent, so re-running them is
   always safe. And if a deploy ever happens without them, nothing breaks
-  loudly: draft and bench features answer "not configured yet" with the exact
-  command to run, instead of erroring.
+  loudly: the features that need a table answer "not configured yet" with the
+  exact command to run, instead of erroring.
+
+  Three tables get created, one per feature that needs one:
+
+  | Table | Feature |
+  |---|---|
+  | `fn_drafts` | Field Notes cloud drafts — write on one device, finish on another |
+  | `bench_entries` | the Bench, the RAW-file queue |
+  | `pulses` | **Pulse** — the immediate card on your homepage |
+
+  ⚠️ **Adding a table later is the one case this does not cover.** If you
+  connected your repo (below), your Deploy command is `npx wrangler deploy`,
+  which skips the migration step — so an engine update that adds a table brings
+  you the code and not the table. When that happens the console says so plainly
+  and names the command; run
+  `npx wrangler d1 migrations apply <your-database-name> --remote` once and it is
+  fixed. `pulses` is the first table this has applied to.
 
 ## Before either way: switch on R2
 

@@ -689,7 +689,7 @@ export function renderNetwork() {
   document.getElementById("friends-stats").textContent = `${STATE.friends.length} nodes`;
   const list = document.getElementById("friends-list");
   if (!STATE.friends.length) {
-    list.innerHTML = `<div class="empty">// NO NODES · ADD A PHOTOGRAPHER-RUN SITE TO POPULATE ABOUT §004</div>`;
+    list.innerHTML = `<div class="empty">// NO NODES · ADD A CREATOR-RUN SITE TO POPULATE ABOUT §004</div>`;
     return;
   }
   list.innerHTML = STATE.friends.map(f => {

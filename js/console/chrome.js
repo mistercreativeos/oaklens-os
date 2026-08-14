@@ -173,16 +173,29 @@ function _wireLongPress({ hostId, itemSelector, title, actions, enabled }) {
 // bottom-pinned chrome would sit behind the keys without this. We publish the
 // stolen height as --kb-inset and flag body.kb-open so CSS can duck the tab
 // bar and shrink the writing surface to what is actually visible.
+//
+// THE DEADBAND IS LOAD-BEARING, not a tidy-up. iPadOS 26 web apps report a
+// visual viewport that is persistently tens of px shorter than the layout
+// viewport with no keyboard anywhere — so the raw difference is not "the
+// keyboard", it is a standing offset. Published as-is it silently shortens
+// every surface that subtracts --kb-inset (the FN compose, now the Pulse
+// studio) for the entire session, which looks like a layout bug and is
+// invisible to reason about. Anything under the same 80px that already
+// gates body.kb-open is not a keyboard, so it publishes zero.
+export const KB_MIN = 80;
+
 export function _initKeyboardInsets() {
   const vv = window.visualViewport;
   if (!vv) return;
   let raf = 0;
   const update = () => {
     raf = 0;
-    const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-    document.documentElement.style.setProperty("--kb-inset", inset + "px");
-    // >80px = a real keyboard, not a URL-bar twitch or floating mini-keyboard drift.
-    document.body.classList.toggle("kb-open", inset > 80);
+    const raw = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    // >80px = a real keyboard, not a URL-bar twitch, a floating mini-keyboard,
+    // or the iPadOS 26 standing offset.
+    const open = raw > KB_MIN;
+    document.documentElement.style.setProperty("--kb-inset", (open ? raw : 0) + "px");
+    document.body.classList.toggle("kb-open", open);
   };
   const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
   vv.addEventListener("resize", schedule);
@@ -193,7 +206,7 @@ export function _initKeyboardInsets() {
 // ============== VIEW ROUTING ==============
 // Views reachable only through the More sheet — the More tab lights up as
 // their proxy in the tab bar.
-const MORE_VIEWS = ["wall", "barrel", "friends", "library", "audio", "bench"];
+const MORE_VIEWS = ["wall", "barrel", "friends", "library", "audio", "pulse", "bench"];
 
 // Surfaces register themselves; the router does not know them by name. Each
 // entry is { render, onLeave? } — `render` draws the view, `onLeave` cleans up
@@ -260,21 +273,31 @@ export function showView(name) {
 }
 export function openPublishView() { showView("publish"); }
 
-// ============== MORE SHEET (tab bar secondary surfaces) ==============
-export function openMoreSheet() {
-  const ov = document.getElementById("more-sheet");
+// ============== BOTTOM SHEETS ==============
+//
+// Any `.sheet-overlay` opens and closes the same way, so the mechanics live here
+// once. Generalised when Pulse needed a second sheet (its recent list, which the
+// mobile layout has no room for as a rail): copying the two-frame open and the
+// 380ms teardown into a second module is how two sheets end up animating
+// differently a year later.
+export function openSheet(id) {
+  const ov = document.getElementById(id);
   if (!ov) return;
   ov.classList.remove("hidden");
   // Two-frame open so the slide/fade transitions run from their start values.
   requestAnimationFrame(() => requestAnimationFrame(() => ov.classList.add("open")));
 }
 
-export function closeMoreSheet() {
-  const ov = document.getElementById("more-sheet");
+export function closeSheet(id) {
+  const ov = document.getElementById(id);
   if (!ov || ov.classList.contains("hidden")) return;
   ov.classList.remove("open");
   setTimeout(() => ov.classList.add("hidden"), 380);   // past --dur-3
 }
+
+// ---- the More sheet (tab bar secondary surfaces) ----
+export function openMoreSheet() { openSheet("more-sheet"); }
+export function closeMoreSheet() { closeSheet("more-sheet"); }
 
 export function sheetGo(view) {
   closeMoreSheet();
@@ -421,6 +444,129 @@ export async function renderBuildStamp() {
     `<div style="margin-top:6px; word-break:break-word;">${
       mods.length ? mods.map(escapeHTML).join(' · ') : '// no import map — modules are unversioned'
     }</div>`;
+}
+
+// What the device actually gives the console to draw in, next to the build
+// stamp and for the same reason: an installed PWA is a black box from the
+// outside. A layout that comes up wrong on someone's tablet is otherwise
+// diagnosed by guessing at numbers nobody can see — and the two guesses that
+// produce an identical-looking gap at the bottom of the screen (a wrong
+// safe-area inset vs. a viewport shorter than its window) are told apart by
+// exactly these values. iPadOS 26's windowed web apps are the live case:
+// env(safe-area-inset-*) is unreliable there, so what the CSS believes and
+// what the screen shows have to be readable side by side.
+//
+// The insets are read back off a probe element rather than assumed, because
+// env() is only resolvable in CSS — JS has no other way to see it.
+export function _viewportReadout() {
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:fixed;visibility:hidden;pointer-events:none;left:0;top:0;" +
+    "padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) " +
+    "env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);";
+  document.body.appendChild(probe);
+  const cs = getComputedStyle(probe);
+  const px = (v) => Math.round(parseFloat(v) || 0);
+  const safe = {
+    top: px(cs.paddingTop), right: px(cs.paddingRight),
+    bottom: px(cs.paddingBottom), left: px(cs.paddingLeft),
+  };
+  probe.remove();
+
+  const vv = window.visualViewport;
+  const modes = ["standalone", "fullscreen", "minimal-ui", "browser"];
+  return {
+    safe,
+    layout: { w: window.innerWidth, h: window.innerHeight },
+    visual: vv
+      ? { w: Math.round(vv.width), h: Math.round(vv.height), offsetTop: Math.round(vv.offsetTop) }
+      : null,
+    screen: { w: window.screen?.width ?? 0, h: window.screen?.height ?? 0 },
+    dpr: window.devicePixelRatio || 1,
+    mode: modes.find((m) => matchMedia(`(display-mode: ${m})`).matches) || "unknown",
+  };
+}
+
+// ============== THE BOTTOM DOUBLE-COUNT (iPadOS 26) ==============
+// Measured on an iPad Mini, iPadOS 26.5.2, console installed to the Home Screen:
+//
+//   layout 744x1101 · screen 744x1133 · safe area t32 r0 b20 l0
+//
+// `layout + safe-top` is exactly `screen`, and the topbar's own geometry
+// confirms the canvas starts at screen y=0 — content really does draw under the
+// status bar, which is what viewport-fit=cover asks for. So the 32px the system
+// reserved for the status bar did not come off the top: it is stranded at the
+// BOTTOM, outside the canvas, and nothing the page does can paint there.
+//
+// The bug we CAN fix is that the device then also reports a 20px bottom inset.
+// That inset means "leave room, the home indicator overlaps you" — and it does
+// not overlap us, because the system already held 32px below the canvas for it.
+// Paying it twice pushes the tab bar's icons a further 20px up from an edge
+// they were already short of, which is most of what "the console doesn't fill
+// the window" looks like.
+//
+// So: pad only for whatever the inset asks BEYOND what the system already held.
+// The formula can only ever reduce padding, never add it, so the worst case if
+// a device reports something strange is losing up to one inset of clearance —
+// not chrome pushed off-screen. Browser tabs are left alone: there the
+// difference between the window and the screen is just a window, not an inset.
+// Takes the readout rather than fetching it, so the arithmetic is a pure
+// function of six numbers and can be checked against a real device's reading
+// without a real device.
+export function _correctSafeBottom(readout) {
+  const r = readout || _viewportReadout();
+  if (r.mode !== "standalone" && r.mode !== "fullscreen") return null;
+
+  // screen.width/height do not swap with orientation on every engine — take the
+  // axis by size and compare like with like.
+  const portrait = r.layout.h >= r.layout.w;
+  const screenH = portrait
+    ? Math.max(r.screen.w, r.screen.h)
+    : Math.min(r.screen.w, r.screen.h);
+  if (!screenH) return null;
+
+  const held = Math.max(0, screenH - r.layout.h);
+  const pad = Math.max(0, r.safe.bottom - held);
+  document.documentElement.style.setProperty("--sys-below", held + "px");
+  document.documentElement.style.setProperty("--safe-bottom", pad + "px");
+  return { held, pad };
+}
+
+export function _initViewportFrame() {
+  const apply = () => _correctSafeBottom();
+  apply();
+  // Orientation flips both the insets and which screen axis is the height.
+  window.addEventListener("resize", apply);
+  window.addEventListener("orientationchange", apply);
+}
+
+export function renderViewportStamp() {
+  const el = document.getElementById("settings-display");
+  if (!el) return;
+  const r = _viewportReadout();
+  const row = (label, value) =>
+    `<div>${escapeHTML(label)} &nbsp;<span class="accent">${escapeHTML(value)}</span></div>`;
+  // The shortfall is the whole point of the panel: how much shorter the console's
+  // viewport is than the screen it is drawn on. Zero means the console owns its
+  // window; a positive number is space the system kept. screen.width/height do
+  // not swap with orientation on every engine, so take the axis by size rather
+  // than by name and compare like with like.
+  const screenH = r.layout.w > r.layout.h
+    ? Math.min(r.screen.w, r.screen.h)
+    : Math.max(r.screen.w, r.screen.h);
+  el.innerHTML =
+    row("mode", r.mode) +
+    row("layout", `${r.layout.w} x ${r.layout.h}`) +
+    row("visual", r.visual ? `${r.visual.w} x ${r.visual.h} @${r.visual.offsetTop}` : "unavailable") +
+    row("screen", `${r.screen.w} x ${r.screen.h} @${r.dpr}x`) +
+    row("safe area", `t${r.safe.top} r${r.safe.right} b${r.safe.bottom} l${r.safe.left}`) +
+    row("held below", `${Math.max(0, screenH - r.layout.h)}px`) +
+    row("bottom pad", getComputedStyle(document.documentElement)
+      .getPropertyValue("--safe-bottom").trim() || "—") +
+    `<div style="margin-top:6px; font-size:0.6rem; line-height:1.6;">` +
+    `“held below” is screen the system kept outside the console's canvas — ` +
+    `nothing can be drawn there. “bottom pad” is what the chrome adds on top ` +
+    `of it, and it drops to 0 when the system already held enough.</div>`;
 }
 
 export function escapeAttrJS(str) {

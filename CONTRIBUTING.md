@@ -1,7 +1,8 @@
 # Contributing
 
-Thanks for your interest in the engine. It powers real photography sites, so
-the bar is "does this help every fork," not any one instance.
+Thanks for your interest in the engine. It powers real sites that real people
+publish their work from, so the bar is "does this help every fork," not any one
+instance.
 
 > **Working with an AI assistant?** Read [`CLAUDE.md`](CLAUDE.md) first — it's the
 > agent working agreement: the engine-vs-instance model, the **Definition of

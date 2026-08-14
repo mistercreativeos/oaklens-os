@@ -688,6 +688,24 @@ html {
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  /* A CARD'S INTERNAL LAYERING MUST NOT ESCAPE THE CARD.
+     Several card types stack things inside themselves: the pulse card lifts its
+     content above its own painted gradients (`.wk-pulse > *`, z-index 1), and
+     the audio card lifts the player and share button above the stretched title
+     link (`.wk-audio .ap`, z-index 2) so the transport stays pressable.
+
+     Those numbers are only ever meant to be read against the CARD. But
+     `overflow: hidden` does not create a stacking context, so without this they
+     resolved against the ROOT one — and on mobile, where the homepage footer is
+     `position: fixed`, the waveform and the pulse text painted straight over
+     it as you scrolled past.
+
+     `isolation: isolate` makes the card its own stacking context, so an inner
+     z-index is scoped to its card by construction. This is the fix for the
+     class, not the two symptoms: a card type added later cannot reintroduce it.
+     Safe because nothing inside a card is `position: fixed` and no card opens a
+     popover that needs to escape its bounds. */
+  isolation: isolate;
 }
 
 /* Hover border only on pointer devices — touch fires :hover on tap and
@@ -1387,6 +1405,13 @@ html {
     bottom: 0;
     left: 0;
     right: 0;
+    /* …and it has to get its stacking back. The desktop `.page--home .footer`
+       rule drops to `z-index: auto` because there the footer is `position:
+       relative` in the flex column and needs no layer of its own. This block
+       makes it fixed again but inherited that `auto`, so the bar floated at
+       level 0 and any positioned card content painted over it. A fixed bar
+       overlaying the page must outrank the page. */
+    z-index: 50;
   }
 
   /* Homepage mobile — scrolls now (the recent-work grid is taller than one
@@ -2890,4 +2915,258 @@ html {
 
 @media (max-width: 640px) {
   .page-empty { padding: 56px 20px; letter-spacing: 1.4px; }
+}
+
+/* ============================================
+   PULSE CARD — the immediate card
+   --------------------------------------------
+   A fourth kind of grid tile, beside the photo / text / audio cards. Fed from
+   D1 through /api/pulse (never data/*.json — posting one must not cost a
+   deploy); rendered by js/recent-index.js; see docs/pulse-card-vision.md.
+
+   THE PALETTE RULE, and it is the whole reason this block looks the way it
+   does. The specimen this grew from hardcoded whole card backgrounds (#0E0B0C,
+   #111116 …), which meant a black tile sitting on a paper-white page the moment
+   anyone switched to Daylight, in any preset. So a pulse NEVER sets its own
+   background: it keeps the theme's own --surface-2 and tints it with one hue at
+   low alpha. --pulse-rgb is the only thing a palette changes, the aura and the
+   lamp are both derived from it, and everything else on the card is a theme
+   token. All five presets and both modes come out right for free.
+   ============================================ */
+
+.wk-pulse {
+  padding: 16px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  overflow: hidden;
+  justify-content: space-between;
+  /* Default palette: the instance's own accent, so an author who never picks
+     a colour still gets a card that looks like their site. */
+  --pulse-rgb: var(--accent-rgb);
+
+  /* THE DEEP GROUND — and the reason this is two declarations rather than
+     fifty. The card wants the specimen's near-black tinted depth, but there are
+     five presets × two modes, and authoring a ground per palette per preset per
+     mode would be 60 hand-tuned colours nobody could keep in step.
+
+     So the depth is DERIVED, never enumerated: one veil darkens (or in Daylight
+     lightens) whatever surface the active theme already has, and the palette
+     lays its hue over the top. Change a preset's surface and every pulse card
+     follows; add a palette and it is one rgb triple. The hue is fixed the way
+     .wk-tag is — a safelight is red on every preset — but the GROUND under it
+     is always the theme's own.
+
+     Layer order, top to bottom: corner aura · directional hue wash · veil ·
+     the theme's surface. */
+  --pulse-veil: rgba(0, 0, 0, 0.55);
+  /* The LED's housing, on the same principle as the veil and flipped in the
+     same place (see the Daylight block below). The snippet these came from
+     hardcoded a near-black bezel and a white specular highlight, which is right
+     on a dark card and a hard black ring with a blown highlight on paper. */
+  --led-bezel: rgba(0, 0, 0, 0.9);
+  --led-spec: rgba(255, 255, 255, 0.4);
+  background:
+    radial-gradient(circle at 84% 8%, rgba(var(--pulse-rgb), 0.20) 0%, transparent 58%),
+    linear-gradient(168deg, rgba(var(--pulse-rgb), 0.11) 0%, rgba(var(--pulse-rgb), 0.03) 58%, rgba(var(--pulse-rgb), 0) 100%),
+    linear-gradient(var(--pulse-veil), var(--pulse-veil)),
+    var(--surface-2);
+  /* The edge takes the hue too, at low alpha — the specimen's tinted borders
+     (#381B1D under the red, #1F3626 under the green) without the hardcoding. */
+  border-color: rgba(var(--pulse-rgb), 0.28);
+}
+
+/* DAYLIGHT: the veil inverts rather than the card staying dark. A near-black
+   tile on a paper page is a hole punched in it, which is exactly what the
+   specimen's hardcoded grounds would have produced the moment anyone flipped
+   the toggle. Same hue, same recipe, lifted instead of deepened — so a pulse
+   still reads as itself in both modes. */
+:root[data-theme="light"] .wk-pulse {
+  --pulse-veil: rgba(255, 255, 255, 0.45);
+  /* Same reasoning one layer down: on paper the component reads as a part
+     seated in a light housing, so the bezel softens and the specular becomes a
+     shadow rather than a blown white dot. */
+  --led-bezel: rgba(0, 0, 0, 0.28);
+  --led-spec: rgba(255, 255, 255, 0.75);
+  border-color: rgba(var(--pulse-rgb), 0.34);
+}
+
+/* Six palettes. Hues are FIXED rather than theme-derived — a red safelight is
+   red on every preset, the same way .wk-tag stays light over a photograph —
+   but they are applied as a tint over the theme's surface, never as a
+   background of their own. Mid-tone values on purpose: each has to read as
+   itself on midnight ink AND on daylight paper. */
+.wk-pulse[data-state="ember"]  { --pulse-rgb: 214, 72, 60; }
+.wk-pulse[data-state="dawn"]   { --pulse-rgb: 198, 138, 46; }
+.wk-pulse[data-state="flow"]   { --pulse-rgb: 62, 158, 104; }
+.wk-pulse[data-state="velvet"] { --pulse-rgb: 138, 104, 214; }
+.wk-pulse[data-state="tide"]   { --pulse-rgb: 58, 134, 176; }
+/* "signal" is the absence of a choice — it inherits --accent-rgb above. */
+
+/* The aura moved INTO the background stack above (it is the top layer there),
+   so the old ::before that drew it separately is gone — two radials at the same
+   corner just muddied each other. The stacking rule stays: content sits above
+   the painted ground. */
+.wk-pulse > * { position: relative; z-index: 1; }
+
+/* ---- kicker row: the lamp, the label, the frozen clock ---- */
+.wk-p-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-meta);
+  font-size: 0.56rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(var(--pulse-rgb));
+}
+.wk-p-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* ---- the LED: an SMD component, not a dot ----
+   Square with a 1px corner, a dark bezel and an inset specular — a surface-mount
+   part seated on a board, which is the register the whole console already works
+   in (the SYS lamp says the same thing in css/field-console.css). It replaced a
+   plain round dot on 2026-08-13.
+
+   Everything derives from --pulse-rgb and the two housing tokens above, so all
+   six palettes and both themes come out right from this one declaration. Nothing
+   here is a hex value; that is the rule the rest of this block lives by. */
+.wk-p-led {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 1px;
+  background: rgb(var(--pulse-rgb));
+  border: 1px solid var(--led-bezel);
+  box-shadow:
+    inset 0 0 2px var(--led-spec),
+    0 0 8px rgba(var(--pulse-rgb), 0.55);
+  animation: wk-p-led 2s steps(1, end) infinite;
+}
+/* The one piece of motion on the card, and it earns its place: it is the only
+   thing that says "this is live right now" rather than "this was posted". A
+   data-read stutter rather than a smooth breathe — two quick beats and a long
+   dark rest, the way an activity light actually behaves.
+
+   Note what the trough does NOT do: kill the whole box-shadow. The snippet this
+   came from set `box-shadow: none` at rest, which drops the inset highlight with
+   the glow and makes the component flatten to a painted square between beats.
+   Only the OUTER glow goes; the part keeps its shape.
+
+   The floating-glyph bob from the specimen is still deliberately NOT here — a
+   permanently running transform on a homepage tile is a battery cost for
+   decoration. Opacity and box-shadow are compositor-cheap; a transform is not. */
+@keyframes wk-p-led {
+  0%, 10%, 20%, 100% {
+    opacity: 0.25;
+    box-shadow: inset 0 0 2px var(--led-spec);
+  }
+  5%, 15% {
+    opacity: 1;
+    box-shadow:
+      inset 0 0 2px var(--led-spec),
+      0 0 12px rgba(var(--pulse-rgb), 0.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wk-p-led { animation: none; opacity: 0.9; }
+}
+/* The author's wall clock at the moment of posting, frozen at write time —
+   never the visitor's. Tabular so it does not jitter between cards. */
+.wk-p-time {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+/* ---- the body: glyph over line, centred in the leftover space ---- */
+.wk-p-center {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1 1 auto;
+  gap: 10px;
+  min-height: 0;
+}
+.wk-p-glyph {
+  line-height: 1;
+  font-size: 2.6rem;
+  filter: drop-shadow(0 5px 14px rgba(0, 0, 0, 0.28));
+}
+.wk-p-text {
+  font-family: var(--font-body);
+  font-size: 1.35rem;
+  line-height: 1.32;
+  letter-spacing: -0.005em;
+  color: var(--fg);
+}
+
+/* Adaptive tiers — the SAME three the field-note text cards use (statement /
+   feature / standard), stamped by js/recent-index.js from the line's length.
+   One ladder, one vocabulary, both card types: a pulse-only ladder would have
+   been a second system to keep in sync on a single grid. The glyph scales with
+   the tier instead of having a ladder of its own. */
+.wk-pulse[data-tier="statement"] .wk-p-text {
+  font-family: var(--font-display);
+  font-weight: 560;
+  font-size: clamp(1.6rem, 1.05rem + 1.9vw, 2.3rem);
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+  color: var(--fg-strong);
+}
+.wk-pulse[data-tier="statement"] .wk-p-glyph { font-size: 3.4rem; }
+.wk-pulse[data-tier="feature"] .wk-p-text { font-size: 1.5rem; line-height: 1.28; }
+.wk-pulse[data-tier="feature"] .wk-p-glyph { font-size: 2.4rem; }
+.wk-pulse[data-tier="standard"] .wk-p-glyph { font-size: 1.7rem; }
+
+/* A glyph-only pulse (no words at all) is a legitimate post — give it the room
+   the missing line would have taken rather than stranding it at the top. */
+.wk-pulse[data-tier="glyph"] .wk-p-glyph {
+  font-size: clamp(3.6rem, 2.2rem + 5vw, 5.4rem);
+  text-align: center;
+}
+
+/* ---- footer: two free-text cells, both empty by default ----
+   Deliberately NOT a gear/camera/take-number field. Named slots for one
+   discipline's metadata would quietly tell writers, musicians, filmmakers and
+   podcasters that this card is not for them. The author types whatever they
+   like, or nothing — and with nothing, the row does not render at all. */
+.wk-p-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-meta);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.wk-p-foot-left { color: rgb(var(--pulse-rgb)); }
+.wk-p-foot span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The pulse tile is not a link — it goes nowhere. So it must not claim to:
+   no pointer cursor, and hovering must not light the edge the way it does on a
+   card you can open. It holds its palette's own border instead of falling back
+   to --line, which would have flashed the hue off on hover now that the edge
+   carries the colour. */
+.wk-card.wk-pulse { cursor: default; }
+@media (hover: hover) {
+  .wk-card.wk-pulse:hover { border-color: rgba(var(--pulse-rgb), 0.28); }
+  :root[data-theme="light"] .wk-card.wk-pulse:hover { border-color: rgba(var(--pulse-rgb), 0.34); }
 }

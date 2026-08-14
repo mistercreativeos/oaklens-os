@@ -96,6 +96,9 @@ const PLAN = [
   ['publish', ['PUBLISH', 'IMPORT EXISTING DATA']],
   ['session', ['SESSION AUTH (UI)']],
   ['bench', ['BENCH']],
+  // The pulse composer. Sits high in the order because nothing else calls it:
+  // it stages nothing, touches no publish counter, and its one job is a POST.
+  ['pulse', ['PULSE']],
   ['init', ['INIT']],
 ];
 

@@ -235,3 +235,52 @@ describe('shell scripts stay portable across BSD and GNU', () => {
     expect(offenders, `BSD-only mktemp -t (GNU refuses it): ${offenders.join(', ')}`).toEqual([]);
   });
 });
+
+describe('a card\'s internal layering cannot escape the card', () => {
+  // The bug this pins, reported 2026-08-13 with screenshots: scrolling the
+  // homepage on a phone, the audio card's waveform and share button and the
+  // pulse card's text painted straight OVER the fixed footer.
+  //
+  // One shared cause, two card types. Several cards stack things inside
+  // themselves — the pulse card lifts its content above its own painted
+  // gradients, the audio card lifts the player above the stretched title link
+  // so the transport stays pressable. Those numbers are only meant to be read
+  // against the card. But `overflow: hidden` does NOT create a stacking
+  // context, so they resolved against the root one and outranked a footer
+  // sitting at level 0.
+  //
+  // Two independent guards, because either alone leaves a way back in.
+  // Comments are stripped FIRST. Both rules below explain themselves in prose
+  // that names the very declaration being asserted, so a raw match passes on the
+  // explanation alone — caught here by deleting the real declaration and
+  // watching the guard stay green. Same rule as tests/pulse-console.test.js: a
+  // guard that cannot tell an explanation from the mistake is not a guard.
+  const css = readFileSync(join(ROOT, 'css', 'main.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('.wk-card isolates, so an inner z-index is scoped to its own card', () => {
+    const rule = css.match(/^\.wk-card \{[\s\S]*?^\}/m);
+    expect(rule, '.wk-card has no base rule').toBeTruthy();
+    expect(
+      rule[0],
+      'Cards stack content internally. Without a stacking context those z-indexes '
+      + 'resolve against the root and paint over the fixed footer — which is exactly '
+      + 'what shipped. Keep `isolation: isolate` on the shared card base so a new '
+      + 'card type cannot reintroduce it.',
+    ).toMatch(/isolation:\s*isolate/);
+  });
+
+  it('the fixed mobile homepage footer keeps a stacking level', () => {
+    // The desktop rule drops to `z-index: auto` because there the footer is in
+    // flow. The mobile block makes it fixed again and inherited that `auto`, so
+    // a bar overlaying the page sat at level 0 beneath it.
+    const rule = css.match(/\.page--home \.footer \{[^}]*position:\s*fixed[^}]*\}/);
+    expect(rule, 'the mobile homepage footer is no longer fixed — recheck this guard').toBeTruthy();
+    expect(
+      rule[0],
+      'A fixed footer overlays the page, so it must outrank it. Left at `z-index: auto` '
+      + 'it paints below any positioned content.',
+    ).toMatch(/z-index:\s*\d+/);
+  });
+});
+
