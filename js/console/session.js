@@ -70,7 +70,12 @@ export function checkAuth() {
   if (!loginModal) return;
   if (!isLoggedIn()) {
     loginModal.classList.remove('hidden');
-    setTimeout(() => document.getElementById('login-password')?.focus(), 100);
+    // Resolve the field NOW, not inside the timer. A deferred document lookup
+    // outlives whatever tore the page down around it — in the suite that means
+    // the timer firing after the DOM global is gone, which surfaced as an
+    // unhandled "document is not defined" that failed CI on a green run.
+    const pwField = document.getElementById('login-password');
+    if (pwField) setTimeout(() => pwField.focus(), 100);
   } else {
     loginModal.classList.add('hidden');
   }

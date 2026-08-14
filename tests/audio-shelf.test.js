@@ -24,6 +24,7 @@ const { STATE } = await import('../js/console-state.js');
 const {
   audioSlugify, audioUniqueSlug, audioNormalizePeaks, audioPeaksToString,
   _audioPromote, _audioToggleEpisode, _audioToggleDownload, renderAudio,
+  audioWeightHint, _audioClearCard,
 } = await import('../js/console/audio.js');
 
 beforeEach(() => {
@@ -116,32 +117,91 @@ describe('audioNormalizePeaks — shape, not loudness', () => {
   });
 });
 
-describe('featuring is exclusive — one homepage card, always', () => {
-  it('promoting a track demotes the incumbent', () => {
-    STATE.audio = [track(), track({ id: 'a2', slug: 'two', title: 'Two', featured: true })];
+describe('featuring tracks on the homepage card', () => {
+  it('promoting a track features it and assigns featured_order', () => {
+    STATE.audio = [track(), track({ id: 'a2', slug: 'two', title: 'Two' })];
     _audioPromote('a1');
     expect(STATE.audio.filter((a) => a.featured).map((a) => a.id)).toEqual(['a1']);
+    expect(STATE.audio[0].featured_order).toBe(1);
   });
 
-  it('promoting again un-features it (the toggle is the only way off the card)', () => {
-    STATE.audio = [track({ featured: true })];
+  it('promoting again un-features it (the toggle is the way off the card)', () => {
+    STATE.audio = [track({ featured: true, featured_order: 1 })];
     _audioPromote('a1');
     expect(STATE.audio[0].featured).toBe(false);
+    expect(STATE.audio[0].featured_order).toBeUndefined();
   });
 
-  it('never leaves two tracks featured, whatever order they are promoted in', () => {
-    STATE.audio = [track(), track({ id: 'a2', slug: 'two' }), track({ id: 'a3', slug: 'three' })];
+  it('allows selecting multiple tracks up to 6 for a playlist card', () => {
+    STATE.audio = [
+      track({ id: 'a1' }), track({ id: 'a2' }), track({ id: 'a3' }),
+      track({ id: 'a4' }), track({ id: 'a5' }), track({ id: 'a6' }), track({ id: 'a7' }),
+    ];
     _audioPromote('a1');
     _audioPromote('a3');
-    _audioPromote('a2');
-    expect(STATE.audio.filter((a) => a.featured)).toHaveLength(1);
-    expect(STATE.audio.find((a) => a.featured).id).toBe('a2');
+    _audioPromote('a5');
+    expect(STATE.audio.filter((a) => a.featured).map((a) => a.id)).toEqual(['a1', 'a3', 'a5']);
+    expect(STATE.audio.find((a) => a.id === 'a1').featured_order).toBe(1);
+    expect(STATE.audio.find((a) => a.id === 'a3').featured_order).toBe(2);
+    expect(STATE.audio.find((a) => a.id === 'a5').featured_order).toBe(3);
+
+    // Un-promoting a middle track re-indexes remaining
+    _audioPromote('a3');
+    expect(STATE.audio.filter((a) => a.featured).map((a) => a.id)).toEqual(['a1', 'a5']);
+    expect(STATE.audio.find((a) => a.id === 'a5').featured_order).toBe(2);
   });
 
-  it('stages the change so it reaches the next publish', () => {
-    STATE.audio = [track()];
+  it('caps the card at 6 tracks max', () => {
+    STATE.audio = [
+      track({ id: 'a1' }), track({ id: 'a2' }), track({ id: 'a3' }),
+      track({ id: 'a4' }), track({ id: 'a5' }), track({ id: 'a6' }), track({ id: 'a7' }),
+    ];
+    for (let i = 1; i <= 6; i++) _audioPromote(`a${i}`);
+    expect(STATE.audio.filter((a) => a.featured)).toHaveLength(6);
+    // 7th should be rejected
+    _audioPromote('a7');
+    expect(STATE.audio.filter((a) => a.featured)).toHaveLength(6);
+    expect(STATE.audio.find((a) => a.id === 'a7').featured).toBeFalsy();
+  });
+
+  // THE BUG THIS FILE HELD IN PLACE. The test that used to live here was named
+  // "stages the change and decrements when un-featured" and asserted exactly
+  // that: feature → 1, un-feature → 0. It passes on the broken model, because
+  // it never crosses a publish. STATE.staged counts UNPUBLISHED CHANGES, not
+  // tracks on the card, so taking a LIVE track off the card has to stage one —
+  // and it did not: bumpStage clamps at 0, so the console reported NO PENDING
+  // CHANGES, publish refused to run, and the card could not be removed from the
+  // site at all.
+  it('stages a change when a LIVE track is taken off the card', () => {
+    STATE.audio = [track({ featured: true, featured_order: 1 })];
+    STATE.staged = { audio: 0 };          // the state right after a publish
+
     _audioPromote('a1');
-    expect(STATE.staged.audio).toBeGreaterThan(0);
+
+    expect(STATE.audio[0].featured).toBe(false);
+    expect(STATE.staged.audio, 'removal staged nothing — publish would refuse').toBe(1);
+  });
+
+  it('stages a change every time, never cancelling one out', () => {
+    STATE.audio = [track()];
+    STATE.staged = { audio: 0 };
+    _audioPromote('a1');                  // on
+    _audioPromote('a1');                  // off — two edits, two things to publish
+    expect(STATE.staged.audio).toBe(2);
+  });
+
+  it('CLEAR CARD stages one change for the gesture', () => {
+    STATE.audio = [
+      track({ id: 'a1', slug: 's1', featured: true, featured_order: 1 }),
+      track({ id: 'a2', slug: 's2', featured: true, featured_order: 2 }),
+      track({ id: 'a3', slug: 's3', featured: true, featured_order: 3 }),
+    ];
+    STATE.staged = { audio: 0 };
+
+    _audioClearCard();
+
+    expect(STATE.audio.every((a) => !a.featured)).toBe(true);
+    expect(STATE.staged.audio, 'clearing a live card staged nothing').toBe(1);
   });
 
   it('ignores an unknown id rather than throwing', () => {
@@ -203,5 +263,56 @@ describe('PEAK_COUNT agrees on both sides of the wire', () => {
 
   it('js/console/audio.js and js/audio-player.js store the same resolution', () => {
     expect(countIn(read('js/console/audio.js'))).toBe(countIn(read('js/audio-player.js')));
+  });
+});
+
+
+// The console is the only place an author can act on file weight — there is no
+// transcoder here on purpose, so the one useful thing to do is say the number
+// at the moment they attach the file.
+describe('audioWeightHint — a heavy file is a warning, never a refusal', () => {
+  it('says nothing about a normally compressed track', () => {
+    // 3 minutes at 192kbps ≈ 4.3MB.
+    expect(audioWeightHint(4.3 * 1024 * 1024, 180, 'take.mp3')).toBe('');
+  });
+
+  it('flags an uncompressed file, with the number that makes the point', () => {
+    // The real case that prompted this: 8 seconds costing 1.4MB.
+    const hint = audioWeightHint(1463588, 8, 'bells.wav');
+    expect(hint).toContain('1.4MB for 8s');
+    expect(hint).toContain('uncompressed');
+    expect(hint).toContain('MP3');
+  });
+
+  it('leaves a fat-but-reasonable export alone', () => {
+    // 320kbps ≈ 40KB/s. Heavy, deliberate, and it still plays promptly — the
+    // hint is for files that make a visitor wait, not for every large one.
+    expect(audioWeightHint(1922718, 48, 'piano.mp3')).toBe('');
+  });
+
+  it('flags a compressed file that is simply enormous', () => {
+    // ~640kbps: compressed, so the wording drops the "uncompressed" line.
+    const hint = audioWeightHint(4.8 * 1024 * 1024, 60, 'piano.mp3');
+    expect(hint).toContain('very high bitrate');
+    expect(hint).not.toContain('uncompressed');
+  });
+
+  it('stays quiet when it cannot measure a rate', () => {
+    // An undecodable file has no duration, and a rate needs both numbers.
+    expect(audioWeightHint(9e6, 0, 'broken.wav')).toBe('');
+    expect(audioWeightHint(0, 30, 'empty.mp3')).toBe('');
+  });
+});
+
+
+// Same defect, the other switch: taking a track OUT of the podcast feed is a
+// change subscribers see, so it has to be publishable.
+describe('leaving the feed is a change too', () => {
+  it('stages a change when an episode is switched off', () => {
+    STATE.audio = [track({ episode: true })];
+    STATE.staged = { audio: 0 };
+    _audioToggleEpisode('a1');
+    expect(STATE.audio[0].episode).toBe(false);
+    expect(STATE.staged.audio).toBe(1);
   });
 });

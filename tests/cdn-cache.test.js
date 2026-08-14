@@ -170,6 +170,65 @@ describe('/api/cdn edge cache — Range requests bypass it', () => {
   });
 });
 
+// `bytes=0-` is how a browser asks to START a media file — the audio card's
+// hot path. It reads as a Range request but asks for the whole object, and
+// treating it as a partial meant playback was the one thing on this route that
+// never hit the cache: every press of play cost an R2 read and a full origin
+// round trip, which is the lag it produced on the homepage card.
+describe('/api/cdn edge cache — starting a media file is a full read', () => {
+  const KEY_A = 'audio/take-one.mp3';
+
+  it('caches the object on the first play and answers 206', async () => {
+    const cache = makeCache();
+    const cdn = makeCdn([KEY_A], { size: 500 });
+    const cx = newCtx();
+    const res = await withCaches(cache, () => proxyGet(KEY_A, cdn, { range: 'bytes=0-', cx }));
+
+    expect(res.status, 'Safari needs a 206 to believe seeking works').toBe(206);
+    expect(res.headers.get('Content-Range')).toBe('bytes 0-499/500');
+    expect(res.headers.get('Accept-Ranges')).toBe('bytes');
+    await Promise.all(cx.pending);
+    expect(cache.calls.put, 'the 200 is what gets stored').toEqual([proxyUrl(KEY_A)]);
+  });
+
+  it('serves the second play from the cache without touching R2', async () => {
+    const cache = makeCache();
+    const cdn = makeCdn([KEY_A], { size: 500 });
+    await withCaches(cache, async () => {
+      const cx = newCtx();
+      await proxyGet(KEY_A, cdn, { range: 'bytes=0-', cx });
+      await Promise.all(cx.pending);
+    });
+    expect(cdn.reads).toHaveLength(1);
+
+    const res = await withCaches(cache, () => proxyGet(KEY_A, cdn, { range: 'bytes=0-' }));
+    expect(cdn.reads, 'a second play must not re-read R2').toHaveLength(1);
+    expect(res.status, 'a cache hit still answers the range it was asked for').toBe(206);
+    expect(res.headers.get('Content-Range')).toBe('bytes 0-499/500');
+  });
+
+  it('answers 200 rather than inventing a Content-Range it cannot honour', async () => {
+    // A cached copy with no length to read: 206 would need a range we would be
+    // guessing at, and a server is allowed to ignore Range and send the whole
+    // thing. Guessing is the only wrong answer here.
+    const cache = makeCache({ [proxyUrl(KEY_A)]: new Response(null, { status: 200 }) });
+    const res = await withCaches(cache, () => proxyGet(KEY_A, makeCdn([KEY_A]), { range: 'bytes=0-' }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Range')).toBeNull();
+  });
+
+  it('leaves a genuine seek on the R2 path', async () => {
+    // bytes=100- is NOT the whole object, so it must still bypass the cache.
+    const cache = makeCache();
+    const cx = newCtx();
+    const res = await withCaches(cache, () => proxyGet(KEY_A, makeCdn([KEY_A], { size: 500 }), { range: 'bytes=100-', cx }));
+    expect(res.status).toBe(206);
+    expect(cache.calls.match, 'a seek never reads the cache').toEqual([]);
+    await Promise.all(cx.pending);
+    expect(cache.calls.put, 'a seek never writes it either').toEqual([]);
+  });
+});
+
 describe('/api/cdn edge cache — the sample fallback is never cached', () => {
   const env = (cdn) => ({
     SESSION_SECRET,

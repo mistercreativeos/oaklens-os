@@ -219,6 +219,34 @@ describe('?v= cache discipline', () => {
   });
 });
 
+describe('deferred DOM lookups do not outlive the DOM', () => {
+  // A timer callback that reaches for `document` runs at some later moment
+  // that the code around it does not control. In a browser that is a torn-down
+  // view; in the suite it is a test file whose environment has already gone,
+  // and the throw lands as an UNHANDLED error — every test still passes, the
+  // run still exits 1. That is exactly how this shipped: checkAuth() deferred
+  // a `document.getElementById(...).focus()` by 100ms, the console-features
+  // file finished in less than that, and CI went red on a green suite.
+  //
+  // The fix is always the same shape: resolve the node NOW, close over it, and
+  // let the callback touch only what it was handed.
+  it('no js/ timer callback dereferences document', () => {
+    const offenders = [];
+    for (const file of walk(join(ROOT, 'js'), '.js')) {
+      const src = read(file)
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^[ \t]*\/\/.*$/gm, '');
+      for (const m of src.matchAll(/set(?:Timeout|Interval)\(\s*(?:\(\)\s*=>|function\s*\(\s*\)\s*\{)\s*document\./g)) {
+        const line = src.slice(0, m.index).split('\n').length;
+        offenders.push(
+          `${file.replace(ROOT + '/', '')}:${line} — resolve the element before the timer, not inside it`,
+        );
+      }
+    }
+    expect(offenders, `\n${offenders.join('\n')}\n`).toEqual([]);
+  });
+});
+
 describe('shell scripts stay portable across BSD and GNU', () => {
   // setup.sh runs on whatever machine a stranger owns. `mktemp -d -t name` is
   // the trap that already fired once: macOS accepts it, GNU mktemp refuses
@@ -284,3 +312,54 @@ describe('a card\'s internal layering cannot escape the card', () => {
   });
 });
 
+
+// The staged counter means "changes waiting to be published". Every surface in
+// the console bumps it by one for ANY edit — including deletions, because
+// undoing something live is itself a change to publish.
+//
+// The audio shelf read it as "how many tracks are on the card" and passed
+// negative deltas, so taking a published track off the card decremented toward
+// zero, `bumpStage`'s Math.max clamped it there, and the console answered a
+// real change with "NO PENDING CHANGES" — publish refused to run and the card
+// could not be removed from the live site. (2026-08-14; the suite had a test
+// asserting the broken model, so the gate was holding it in place.)
+describe('staging counts changes, not things', () => {
+  it('no console SURFACE passes a negative delta to bumpStage', () => {
+    // The one legitimate decrementer is the ledger itself: `trashItem` cancels
+    // a pending ADD when you delete something that was never published, and
+    // `trashRestore` cancels a pending DELETION when you put a published item
+    // back. Those undo a staged change rather than making a new one, which is
+    // the opposite of what a surface's toggle does. Everything else — every
+    // feature, edit, clear and switch — is +1.
+    const LEDGER = 'js/console-state.js';
+    const offenders = [];
+    for (const file of walk(join(ROOT, 'js'), '.js')) {
+      if (file.split(/[\\/]/).join('/') === LEDGER) continue;
+      const src = readFileSync(join(ROOT, file), 'utf8');
+      // bumpStage('x', -1) · bumpStage('x', -count) · bumpStage('x', n ? 1 : -1)
+      for (const m of src.matchAll(/bumpStage\s*\([^)]*?-\s*[A-Za-z0-9_]/g)) {
+        const line = src.slice(0, m.index).split('\n').length;
+        offenders.push(`${file}:${line} — ${m[0].trim()}`);
+      }
+    }
+    expect(
+      offenders,
+      `a change is a change; removing something stages one too:\n${offenders.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('the publish summary can show every surface that stages changes', () => {
+    // A staged surface with no card on the publish screen moves the total badge
+    // and shows its delta nowhere — which is how audio shipped.
+    const pub = readFileSync(join(ROOT, 'js', 'console', 'publish.js'), 'utf8');
+    const shell = readFileSync(join(ROOT, 'dev', 'field-console.html'), 'utf8');
+    const stagedMap = pub.match(/const stagedMap = \{([\s\S]*?)\};/)[1];
+    const surfaces = [...stagedMap.matchAll(/^\s*(\w+):/gm)].map((m) => m[1]);
+
+    expect(surfaces, 'audio is staged but was absent from the summary').toContain('audio');
+    for (const s of surfaces) {
+      expect(shell, `no #sum-count-${s} card in the console shell`).toContain(`id="sum-count-${s}"`);
+      expect(shell, `no #sum-delta-${s} in the console shell`).toContain(`id="sum-delta-${s}"`);
+    }
+  });
+});

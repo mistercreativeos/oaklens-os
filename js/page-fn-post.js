@@ -669,6 +669,19 @@ async function loadPost() {
         const res = await fetch('/data/audio.json');
         if (res.ok) registry = await res.json();
       } catch { /* no registry — every shortcode resolves to nothing below */ }
+
+      if (isPreview) {
+        try {
+          const state = JSON.parse(localStorage.getItem('oaklens_console_v01') || '{}');
+          if (Array.isArray(state.audio)) {
+            const known = new Set((registry || []).map(t => t && t.slug));
+            state.audio.forEach(t => {
+              if (t && t.slug && !known.has(t.slug)) registry.push(t);
+            });
+          }
+        } catch {}
+      }
+
       const bySlug = new Map(
         (Array.isArray(registry) ? registry : [])
           .filter(t => t && t.slug && t.filename)
@@ -714,6 +727,7 @@ async function loadPost() {
           fig.appendChild(head);
           mount(fig, t, 'full');
           run[0].replaceWith(fig);
+          run.slice(1).forEach(el => el.remove());
           continue;
         }
 

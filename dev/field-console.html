@@ -36,7 +36,7 @@ try {
 <script async src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js" integrity="sha384-KRanV2NRwHPanp7iM6nlLQC5jPCTscSYMko30dLJHzNXJaUNtcucWv+SOi3jV3PE" crossorigin="anonymous"></script>
 <script async src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
 
-<link rel="stylesheet" href="/css/field-console.css?v=39">
+<link rel="stylesheet" href="/css/field-console.css?v=40">
 </head>
 <body>
 
@@ -722,6 +722,11 @@ Capture first. Process later."></textarea>
           <div class="count" id="sum-count-network">0</div>
           <div class="delta" id="sum-delta-network"></div>
         </div>
+        <div class="summary-card" id="sum-audio">
+          <div class="label">Audio</div>
+          <div class="count" id="sum-count-audio">0</div>
+          <div class="delta" id="sum-delta-audio"></div>
+        </div>
         <div class="summary-card" id="sum-library">
           <div class="label">Library</div>
           <div class="count" id="sum-count-library">0</div>
@@ -1191,6 +1196,27 @@ Capture first. Process later."></textarea>
   </div>
 </div>
 
+<!-- ============ AUDIO LIBRARY / PICKER MODAL ============ -->
+<div class="modal-overlay hidden" id="audio-library-modal" onclick="if(event.target===this)closeAudioLibrary()">
+  <div class="modal" style="max-width: 680px;">
+    <div class="modal-grabber" aria-hidden="true"></div>
+    <div class="modal-header">
+      <div class="modal-title">AUDIO LIBRARY</div>
+      <button class="modal-close" onclick="closeAudioLibrary()">×</button>
+    </div>
+    <div class="modal-body" style="padding: 0;">
+      <!-- Toolbar: filter pills + search + sort + upload -->
+      <div class="audio-lib-toolbar" id="audio-lib-toolbar"></div>
+      <!-- Audio list -->
+      <div class="audio-lib-list" id="audio-lib-list"></div>
+      <!-- Empty state -->
+      <div id="audio-lib-empty" style="display:none;"></div>
+      <!-- Multi-select insert bar -->
+      <div class="audio-lib-insert-bar" id="audio-lib-insert-bar" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ============ LOGIN MODAL ============ -->
 <div class="modal-overlay" id="login-modal">
   <div class="modal" style="max-width: 360px;">
@@ -1238,7 +1264,7 @@ Capture first. Process later."></textarea>
     "/js/console-api.js":       "/js/console-api.js?v=11",
     "/js/console-state.js":     "/js/console-state.js?v=8",
     "/js/console-ui.js":        "/js/console-ui.js?v=61",
-    "/js/console/chrome.js":    "/js/console/chrome.js?v=9",
+    "/js/console/chrome.js":    "/js/console/chrome.js?v=10",
     "/js/console/assets.js":    "/js/console/assets.js?v=4",
     "/js/console/utils.js":     "/js/console/utils.js?v=2",
     "/js/console/sync.js":      "/js/console/sync.js?v=1",
@@ -1246,12 +1272,12 @@ Capture first. Process later."></textarea>
     "/js/console/more-views.js": "/js/console/more-views.js?v=4",
     "/js/console/archive.js":   "/js/console/archive.js?v=1",
     "/js/console/buffer.js":    "/js/console/buffer.js?v=2",
-    "/js/console/fn-editor.js": "/js/console/fn-editor.js?v=3",
+    "/js/console/fn-editor.js": "/js/console/fn-editor.js?v=4",
     "/js/console/focal.js":     "/js/console/focal.js?v=3",
     "/js/console/asset-library.js": "/js/console/asset-library.js?v=1",
-    "/js/console/audio.js":     "/js/console/audio.js?v=1",
-    "/js/console/publish.js":   "/js/console/publish.js?v=6",
-    "/js/console/session.js":   "/js/console/session.js?v=7",
+    "/js/console/audio.js":     "/js/console/audio.js?v=6",
+    "/js/console/publish.js":   "/js/console/publish.js?v=8",
+    "/js/console/session.js":   "/js/console/session.js?v=8",
     "/js/console/bench.js":     "/js/console/bench.js?v=1",
     "/js/pulse-packs.js":       "/js/pulse-packs.js?v=2",
     "/js/console/pulse.js":     "/js/console/pulse.js?v=2",

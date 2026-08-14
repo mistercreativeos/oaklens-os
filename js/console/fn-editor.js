@@ -361,6 +361,7 @@ export function fnRender() {
   const inlineDateBlocks = [];
   const inlineAssetFrames = [];
   const inlineVideos = [];
+  const inlineAudio = [];
   let processedBody = body.replace(
     /<div class="buffer-inline"[^>]*data-frames="([^"]*)"[^>]*>\s*<\/div>/g,
     (_, frames) => { inlineStrips.push(frames); return `%%BUFSTRIP_${inlineStrips.length - 1}%%`; }
@@ -380,6 +381,10 @@ export function fnRender() {
       inlineVideos.push({ src, caption: capM ? capM[1] : '' });
       return `%%VIDEO_${inlineVideos.length - 1}%%`;
     }
+  );
+  processedBody = processedBody.replace(
+    /<div class="audio-embed"[^>]*data-slug="([^"]*)"[^>]*>\s*<\/div>/g,
+    (_, slug) => { inlineAudio.push(slug); return `%%AUDIO_${inlineAudio.length - 1}%%`; }
   );
 
   let bodyHtml = renderMarkdown(processedBody);
@@ -406,6 +411,35 @@ export function fnRender() {
     const posterUrl = `${CDN_BASE}/videos/posters/${encodeURIComponent(base)}.webp`;
     const cap = v.caption ? `<figcaption>${escapeHTML(v.caption)}</figcaption>` : '';
     return `<figure class="fn-video"><video src="${videoUrl}" poster="${posterUrl}" muted loop autoplay playsinline preload="metadata"></video>${cap}</figure>`;
+  });
+
+  // Restore inline audio embeds
+  bodyHtml = bodyHtml.replace(/(?:<p>)?%%AUDIO_(\d+)%%(?:<\/p>)?/g, (_, idx) => {
+    const slug = inlineAudio[parseInt(idx, 10)];
+    const track = (STATE.audio || []).find((a) => a.slug === slug) || { slug, title: slug, duration: 0, peaks: '' };
+    const dur = track.duration ? `${Math.floor(track.duration / 60)}:${String(track.duration % 60).padStart(2, '0')}` : '--:--';
+    const sub = [track.sub, dur].filter(Boolean).join(' · ');
+
+    const peaks = String(track.peaks || '').split(',').map((p) => parseFloat(p)).filter((p) => Number.isFinite(p));
+    let spark = '<div class="aud-spark empty">// no waveform</div>';
+    if (peaks.length) {
+      const step = Math.max(1, Math.floor(peaks.length / 40));
+      const bars = [];
+      for (let i = 0; i < peaks.length; i += step) {
+        bars.push(`<span style="height:${Math.max(6, Math.round(peaks[i] * 100))}%"></span>`);
+      }
+      spark = `<div class="aud-spark">${bars.join('')}</div>`;
+    }
+
+    return `<div class="fn-preview-audio">
+      <div class="fn-pa-head">
+        <span class="fn-pa-icon">♪</span>
+        <span class="fn-pa-title">${escapeHTML(track.title || track.filename || track.slug)}</span>
+        <span class="fn-pa-dur">${dur}</span>
+      </div>
+      ${sub ? `<div class="fn-pa-sub">${escapeHTML(sub)}</div>` : ''}
+      ${spark}
+    </div>`;
   });
 
   // Frame refs (f#N, manual §5.20) — the engine emits unresolved anchors;

@@ -15,7 +15,8 @@
 // Promote-to-card lives on every row rather than only here (see _audioPromote):
 // the owner should never have to walk back to this shelf to feature something
 // they just uploaded from somewhere else. The CARD still reads only the
-// registry — the action travels, the data does not.
+// registry — the action travels, the data does not. Multiple tracks can be
+// featured to form a playlist on the homepage audio card.
 //
 // The handlers below are called from inline on*= attributes in the rendered
 // rows, which run in global scope, so every one of them must stay an exported
@@ -23,7 +24,7 @@
 
 import { STATE, save, bumpStage, trashItem } from '../console-state.js';
 import { logEvent } from '../console-telemetry.js';
-import { toast, escapeHTML, escapeAttrJS, refreshSurface } from './chrome.js';
+import { toast, escapeHTML, escapeAttrJS, refreshSurface, hideOverlay } from './chrome.js';
 import { todayISO, uid, cleanFilename } from './utils.js';
 import { _enqueueUpload } from './upload.js';
 import { fnInsertAtCursor } from './fn-editor.js';
@@ -37,7 +38,32 @@ const PEAK_COUNT = 96;
 const AUDIO_EXT_RE = /\.(mp3|m4a|aac|ogg|opus|wav|flac)$/i;
 const MAX_AUDIO_BYTES = 128 * 1024 * 1024;
 
+// Above this, a visitor waits on the file rather than on the network. 48KB per
+// second of audio is ~384kbps — comfortably above any sane compressed export,
+// and about a quarter of what an uncompressed WAV costs (≈172KB/s for CD
+// stereo). Everything under it plays as fast as the connection allows.
+const HEAVY_BYTES_PER_SEC = 48 * 1024;
+
 // ---- pure helpers ----
+
+// "This will be slow to play, and here is the number" — said once, at attach
+// time, because that is the only moment the author can do anything about it.
+// Nothing is blocked: a heavy file is a choice, not an error, and the engine
+// has no transcoder (deliberately — see docs/audio-card-vision.md). But a
+// 1.4MB WAV holding eight seconds of audio is the difference between a card
+// that plays instantly and one that makes the visitor wait, and until this
+// nothing in the console said so. Returns '' when the file is fine.
+export function audioWeightHint(bytes, seconds, filename) {
+  const b = Number(bytes) || 0;
+  const s = Number(seconds) || 0;
+  if (b <= 0 || s <= 0) return '';                 // undecodable: no honest rate
+  if (b / s <= HEAVY_BYTES_PER_SEC) return '';
+  const mb = (b / 1024 / 1024).toFixed(1);
+  const lossless = /\.(wav|flac|aiff?)$/i.test(String(filename || ''));
+  return `⚠ ${mb}MB for ${Math.round(s)}s`
+    + (lossless ? ' — an uncompressed file' : ' — a very high bitrate')
+    + '. Visitors wait for every byte; exporting as MP3 plays far sooner.';
+}
 
 // A slug is the track's permanent address (/listen/?a=<slug>) and its handle in
 // a post shortcode, so it must be URL-clean and must not collide. Exported for
@@ -174,6 +200,9 @@ export async function audioAddFiles(files, opts) {
     toast(`◇ Reading ${filename}…`, 'info');
     const { peaks, duration } = await audioMeasure(file);
 
+    const heavy = audioWeightHint(file.size, duration, filename);
+    if (heavy) toast(heavy, 'warning');
+
     const entry = {
       id: uid(),
       slug: audioUniqueSlug(guessTitle, STATE.audio),
@@ -191,7 +220,6 @@ export async function audioAddFiles(files, opts) {
       _uploading: true,
     };
     STATE.audio.unshift(entry);
-    bumpStage('audio');
     save();
 
     // One canonical object — no variants to generate, which is why audio needs
@@ -203,6 +231,9 @@ export async function audioAddFiles(files, opts) {
   }
 
   renderAudio();
+  if (!document.getElementById('audio-library-modal')?.classList.contains('hidden')) {
+    renderAudioLibrary();
+  }
   return added;
 }
 
@@ -217,34 +248,58 @@ export function audioInsertShortcode(slug) {
 
 // ---- row actions (called from inline on*= handlers) ----
 
-// Featuring is exclusive: the homepage shows ONE audio card, so promoting a
-// track demotes whatever held the slot. Doing that silently would be worse than
-// refusing — so it says which track stepped aside.
 export function _audioPromote(id) {
-  const entry = STATE.audio.find((a) => a.id === id);
-  if (!entry) return;
-  if (entry.featured) {
-    entry.featured = false;
+  const t = STATE.audio.find((a) => a.id === id);
+  if (!t) return;
+  if (t.featured) {
+    t.featured = false;
+    delete t.featured_order;
+    const remaining = STATE.audio.filter((a) => a.featured)
+      .sort((a, b) => (Number(a.featured_order) || 0) - (Number(b.featured_order) || 0));
+    remaining.forEach((a, idx) => { a.featured_order = idx + 1; });
+    // +1, NOT -1. STATE.staged counts UNPUBLISHED CHANGES, the way every other
+    // surface in the console uses it — not how many tracks are on the card.
+    // Read as a tally of featured tracks it decremented on the way out, so
+    // taking a live card apart after a publish left the counter clamped at 0 by
+    // bumpStage's Math.max: the console said NO PENDING CHANGES and publish
+    // refused to run, and the card could not be removed from the site at all.
     bumpStage('audio');
-    save();
-    renderAudio();
-    toast('Removed from the homepage card', 'warning');
-    return;
+    toast('Removed from homepage card', 'info');
+  } else {
+    const currentFeatured = STATE.audio.filter((a) => a.featured);
+    if (currentFeatured.length >= 6) {
+      toast('⚠ Maximum 6 tracks on the homepage card', 'warning');
+      return;
+    }
+    t.featured = true;
+    t.featured_order = currentFeatured.length + 1;
+    bumpStage('audio');
+    toast(currentFeatured.length === 0 ? '✓ Added to homepage card' : `✓ Added to homepage playlist (#${t.featured_order})`, 'success');
   }
-  const previous = STATE.audio.find((a) => a.featured && a.id !== id);
-  STATE.audio.forEach((a) => { a.featured = a.id === id; });
-  bumpStage('audio');
   save();
-  renderAudio();
-  toast(previous
-    ? `✓ Featured — "${previous.title}" stepped off the card`
-    : '✓ Featured on the homepage card', 'success');
+  if (typeof renderAudio === 'function') renderAudio();
+}
+
+export function _audioClearCard() {
+  const count = STATE.audio.filter((a) => a.featured).length;
+  STATE.audio.forEach((a) => {
+    a.featured = false;
+    delete a.featured_order;
+  });
+  // One gesture, one staged change — see _audioPromote above for why this is
+  // not `-count`.
+  if (count > 0) bumpStage('audio');
+  save();
+  if (typeof renderAudio === 'function') renderAudio();
+  toast('Homepage audio card cleared', 'info');
 }
 
 export function _audioToggleEpisode(id) {
   const entry = STATE.audio.find((a) => a.id === id);
   if (!entry) return;
   entry.episode = !entry.episode;
+  // Taking a track OUT of the feed is a change to publish, exactly like putting
+  // one in — see _audioPromote above.
   bumpStage('audio');
   save();
   renderAudio();
@@ -352,12 +407,45 @@ export function renderAudio() {
     return;
   }
 
-  host.innerHTML = STATE.audio.map((a) => {
+  const featured = STATE.audio.filter((a) => a.featured)
+    .sort((a, b) => (Number(a.featured_order) || 0) - (Number(b.featured_order) || 0));
+
+  let playlistBanner = '';
+  if (featured.length > 1) {
+    playlistBanner = `<div class="aud-playlist-banner">
+      <div class="aud-pl-info">
+        <span class="aud-pl-tag">★ HOMEPAGE PLAYLIST</span>
+        <span class="aud-pl-names">${featured.length} tracks pinned · ${escapeHTML(featured.map((t) => t.title || t.filename || 'Untitled').join(', '))}</span>
+      </div>
+      <div class="aud-pl-actions">
+        <button class="btn btn-sm btn-ghost" onclick="_audioClearCard()">CLEAR CARD</button>
+      </div>
+    </div>`;
+  } else if (featured.length === 1) {
+    playlistBanner = `<div class="aud-playlist-banner">
+      <div class="aud-pl-info">
+        <span class="aud-pl-tag">★ HOMEPAGE CARD</span>
+        <span class="aud-pl-names">Single track: "${escapeHTML(featured[0].title || featured[0].filename || 'Untitled')}"</span>
+      </div>
+      <div class="aud-pl-actions">
+        <button class="btn btn-sm btn-ghost" onclick="_audioClearCard()">CLEAR CARD</button>
+      </div>
+    </div>`;
+  }
+
+  const rows = STATE.audio.map((a) => {
     const state = a._uploadError ? 'err' : a._uploading ? 'up' : '';
     const badge = a._uploadError ? '<span class="aud-badge err">✕ FAILED</span>'
       : a._uploading ? '<span class="aud-badge up">↑ UPLOADING</span>'
         : '';
     const meta = [_fmtDuration(a.duration), _fmtSize(a.size), a.slug].filter(Boolean).join(' · ');
+    // There is ONE homepage card; these numbers are a track's position in its
+    // playlist, not a card of its own. Labelling them "CARD #2" read as a
+    // second card and confused what the button does.
+    const cardLabel = a.featured
+      ? (featured.length > 1 ? `★ TRACK #${a.featured_order || ''}` : '★ ON CARD')
+      : '☆ CARD';
+
     return `<div class="aud-row ${state}">
       <div class="aud-main">
         <div class="aud-title">${escapeHTML(a.title || a.filename || 'Untitled')}${badge}</div>
@@ -368,7 +456,7 @@ export function renderAudio() {
       <div class="aud-actions">
         <button class="btn btn-sm ${a.featured ? 'btn-stage' : 'btn-ghost'}"
           onclick="_audioPromote('${escapeAttrJS(a.id)}')"
-          title="Show this track as the homepage audio card">${a.featured ? '★ ON CARD' : '☆ CARD'}</button>
+          title="Toggle on/off homepage audio card playlist">${cardLabel}</button>
         <button class="btn btn-sm ${a.episode ? 'btn-stage' : 'btn-ghost'}"
           onclick="_audioToggleEpisode('${escapeAttrJS(a.id)}')"
           title="Include in the podcast feed (feed.xml enclosure)">${a.episode ? '◉ EPISODE' : '○ EPISODE'}</button>
@@ -382,24 +470,328 @@ export function renderAudio() {
       </div>
     </div>`;
   }).join('');
-}
 
-// The FN editor's "attach audio" button. Opens a picker, ingests through the
-// same path as the shelf, and inserts the shortcode — so a track attached from
-// the editor is a first-class registry entry, not a second kind of thing.
-export function fnAttachAudio() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac';
-  input.multiple = true;
-  input.addEventListener('change', () => {
-    if (input.files && input.files.length) audioAddFiles(input.files, { insertInto: true });
-  });
-  input.click();
+  host.innerHTML = playlistBanner + rows;
 }
 
 // Mark an upload as landed. The queue speaks surfaces, and `audio` is one, so
 // this rides the existing refreshSurface seam rather than inventing another.
 export function _audioUploadDone() {
   refreshSurface('audio');
+}
+
+// ============================================================
+// AUDIO LIBRARY / PICKER MODAL
+// ============================================================
+let _audioLibCallback = null;
+let _audioLibMultiSelect = false;
+let _audioLibSelected = new Set(); // set of slugs in selection order
+let _audioLibFilter = 'all';       // 'all' | 'tracks' | 'episodes' | 'card'
+let _audioLibSortBy = 'recent';    // 'recent' | 'alpha'
+let _audioLibSearch = '';
+let _audioLibProbeAudio = null;
+let _audioLibPlayingSlug = null;
+
+export function _audioLibSetFilter(f) {
+  _audioLibFilter = f;
+  renderAudioLibrary();
+}
+
+export function _audioLibToggleSort() {
+  _audioLibSortBy = _audioLibSortBy === 'recent' ? 'alpha' : 'recent';
+  renderAudioLibrary();
+}
+
+let _audioLibSearchTimer = null;
+export function _audioLibSearchDebounced() {
+  clearTimeout(_audioLibSearchTimer);
+  _audioLibSearchTimer = setTimeout(renderAudioLibrary, 150);
+}
+
+export function openAudioLibrary(callback, multiSelect = false) {
+  _audioLibCallback = callback;
+  _audioLibMultiSelect = !!multiSelect;
+  _audioLibSelected = new Set();
+  _audioLibFilter = 'all';
+  _audioLibSortBy = 'recent';
+  _audioLibSearch = '';
+  _audioLibPlayingSlug = null;
+  if (_audioLibProbeAudio) {
+    try { _audioLibProbeAudio.pause(); } catch {}
+    _audioLibProbeAudio = null;
+  }
+  const ov = document.getElementById('audio-library-modal');
+  if (ov) {
+    ov.classList.remove('hidden', 'closing');
+    renderAudioLibrary();
+    if (matchMedia('(pointer: fine)').matches) {
+      setTimeout(() => {
+        const s = document.getElementById('audio-lib-search');
+        if (s) s.focus();
+      }, 100);
+    }
+  }
+}
+
+export function closeAudioLibrary() {
+  hideOverlay('audio-library-modal');
+  if (_audioLibProbeAudio) {
+    try { _audioLibProbeAudio.pause(); } catch {}
+    _audioLibProbeAudio = null;
+  }
+  _audioLibCallback = null;
+  _audioLibMultiSelect = false;
+  _audioLibSelected = new Set();
+}
+
+// ESC closes audio library modal
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !document.getElementById('audio-library-modal')?.classList.contains('hidden')) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeAudioLibrary();
+  }
+}, true);
+
+export function renderAudioLibrary() {
+  const toolbar = document.getElementById('audio-lib-toolbar');
+  const listEl = document.getElementById('audio-lib-list');
+  const emptyEl = document.getElementById('audio-lib-empty');
+  if (!toolbar || !listEl || !emptyEl) return;
+
+  const prevSearch = document.getElementById('audio-lib-search');
+  const searchVal = prevSearch?.value || '';
+  const searchWasFocused = document.activeElement === prevSearch;
+  const caretPos = prevSearch ? prevSearch.selectionStart : null;
+
+  toolbar.innerHTML = `
+    <button class="audio-lib-pill${_audioLibFilter === 'all' ? ' active' : ''}" onclick="_audioLibSetFilter('all')">ALL (${STATE.audio.length})</button>
+    <button class="audio-lib-pill${_audioLibFilter === 'card' ? ' active' : ''}" onclick="_audioLibSetFilter('card')">ON CARD</button>
+    <button class="audio-lib-pill${_audioLibFilter === 'episodes' ? ' active' : ''}" onclick="_audioLibSetFilter('episodes')">EPISODES</button>
+    <input class="audio-lib-search" id="audio-lib-search" placeholder="search audio…"
+      value="${escapeHTML(searchVal)}"
+      oninput="_audioLibSearchDebounced()">
+    <button class="audio-lib-sort" onclick="_audioLibToggleSort()">
+      ${_audioLibSortBy === 'recent' ? '↓ RECENT' : '↓ A-Z'}
+    </button>
+    <button class="btn btn-sm btn-stage audio-lib-upload-btn" onclick="_audioLibUploadTrigger()">+ UPLOAD</button>
+  `;
+
+  if (searchWasFocused) {
+    const newSearch = document.getElementById('audio-lib-search');
+    if (newSearch) {
+      newSearch.focus();
+      const pos = caretPos == null ? newSearch.value.length : caretPos;
+      try { newSearch.setSelectionRange(pos, pos); } catch {}
+    }
+  }
+
+  let items = (STATE.audio || []).filter((a) => !a._uploadError && a.filename && a.slug);
+
+  if (_audioLibFilter === 'card') {
+    items = items.filter((a) => a.featured);
+  } else if (_audioLibFilter === 'episodes') {
+    items = items.filter((a) => a.episode);
+  }
+
+  const query = searchVal.toLowerCase().trim();
+  if (query) {
+    items = items.filter((a) =>
+      (a.title || '').toLowerCase().includes(query) ||
+      (a.sub || '').toLowerCase().includes(query) ||
+      (a.filename || '').toLowerCase().includes(query) ||
+      (a.slug || '').toLowerCase().includes(query)
+    );
+  }
+
+  if (_audioLibSortBy === 'recent') {
+    items.sort((a, b) => String(b.added_at || '').localeCompare(String(a.added_at || '')));
+  } else {
+    items.sort((a, b) => String(a.title || a.filename).localeCompare(String(b.title || b.filename)));
+  }
+
+  _audioLibUpdateInsertBar();
+
+  if (!items.length) {
+    listEl.innerHTML = '';
+    listEl.style.display = 'none';
+    emptyEl.style.display = 'block';
+    emptyEl.innerHTML = `<div class="audio-lib-empty">// NO AUDIO TRACKS FOUND${query ? ' FOR "' + escapeHTML(query.toUpperCase()) + '"' : ''}</div>`;
+    return;
+  }
+
+  listEl.style.display = 'flex';
+  emptyEl.style.display = 'none';
+
+  const selOrder = [..._audioLibSelected];
+
+  listEl.innerHTML = items.map((track) => {
+    const selIdx = selOrder.indexOf(track.slug);
+    const isSel = selIdx >= 0;
+    const isPlaying = _audioLibPlayingSlug === track.slug;
+
+    return `<div class="audio-lib-item${isSel ? ' selected' : ''}" data-slug="${escapeHTML(track.slug)}" onclick="_audioLibItemClick('${escapeAttrJS(track.slug)}')">
+      <div class="aud-lib-col-play">
+        <button type="button" class="aud-lib-play-btn" onclick="event.stopPropagation(); _audioLibProbePlay('${escapeAttrJS(track.slug)}', '${escapeAttrJS(track.filename)}')">
+          ${isPlaying ? '⏸' : '▶'}
+        </button>
+      </div>
+      <div class="aud-lib-col-main">
+        <div class="aud-lib-title">${escapeHTML(track.title || track.filename)}</div>
+        <div class="aud-lib-sub">${escapeHTML(track.sub || '')}</div>
+        ${_sparkline(track.peaks)}
+        <div class="aud-lib-meta">${_fmtDuration(track.duration)} · ${_fmtSize(track.size)} · ${escapeHTML(track.slug)}</div>
+      </div>
+      <div class="aud-lib-col-select">
+        ${_audioLibMultiSelect
+          ? (isSel ? `<div class="audio-lib-select-badge">${selIdx + 1}</div>` : '<div class="audio-lib-select-check">○</div>')
+          : '<button class="btn btn-sm btn-ghost">INSERT →</button>'}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+export function _audioLibItemClick(slug) {
+  if (_audioLibMultiSelect) _audioLibToggleSelect(slug);
+  else _audioLibPickTrack(slug);
+}
+
+export function _audioLibToggleSelect(slug) {
+  if (_audioLibSelected.has(slug)) _audioLibSelected.delete(slug);
+  else _audioLibSelected.add(slug);
+  _audioLibRefreshSelection();
+}
+
+export function _audioLibRefreshSelection() {
+  const order = [..._audioLibSelected];
+  document.querySelectorAll('#audio-lib-list .audio-lib-item').forEach((item) => {
+    const idx = order.indexOf(item.dataset.slug);
+    const selCol = item.querySelector('.aud-lib-col-select');
+    if (idx >= 0) {
+      item.classList.add('selected');
+      if (selCol) selCol.innerHTML = `<div class="audio-lib-select-badge">${idx + 1}</div>`;
+    } else {
+      item.classList.remove('selected');
+      if (selCol) selCol.innerHTML = '<div class="audio-lib-select-check">○</div>';
+    }
+  });
+  _audioLibUpdateInsertBar();
+}
+
+export function _audioLibUpdateInsertBar() {
+  const bar = document.getElementById('audio-lib-insert-bar');
+  if (!bar) return;
+  if (!_audioLibMultiSelect) {
+    bar.style.display = 'none';
+    bar.innerHTML = '';
+    return;
+  }
+  const count = _audioLibSelected.size;
+  const dis = count ? '' : 'disabled';
+  bar.style.display = 'flex';
+  bar.innerHTML = `
+    <span class="audio-lib-insert-count">${count} TRACK${count !== 1 ? 'S' : ''} SELECTED</span>
+    <button class="btn btn-sm btn-ghost" onclick="_audioLibClearSelection()" ${dis}>CLEAR</button>
+    <button class="btn btn-sm btn-stage" onclick="_audioLibInsertSelected()" ${dis}>
+      ${count > 1 ? 'INSERT TRACKLIST' : 'INSERT TRACK'}
+    </button>
+  `;
+}
+
+export function _audioLibClearSelection() {
+  _audioLibSelected.clear();
+  _audioLibRefreshSelection();
+}
+
+export function _audioLibInsertSelected() {
+  const slugs = [..._audioLibSelected];
+  if (!slugs.length) { toast('no tracks selected', 'error'); return; }
+  const tracks = slugs.map((s) => STATE.audio.find((a) => a.slug === s)).filter(Boolean);
+  if (_audioLibCallback) {
+    _audioLibCallback(tracks);
+  } else {
+    const textarea = document.getElementById('fn-body');
+    if (textarea) {
+      const shortcodes = tracks.map((t) => `<div class="audio-embed" data-slug="${t.slug}"></div>`).join('\n');
+      fnInsertAtCursor(textarea, `\n${shortcodes}\n`, '');
+      toast(tracks.length > 1 ? `✓ Inserted tracklist: ${tracks.length} tracks` : '✓ Track inserted', 'success');
+    }
+  }
+  closeAudioLibrary();
+}
+
+export function _audioLibPickTrack(slug) {
+  const track = STATE.audio.find((a) => a.slug === slug);
+  if (!track) return;
+  if (_audioLibCallback) {
+    _audioLibCallback(track);
+  } else {
+    audioInsertShortcode(track.slug);
+  }
+  closeAudioLibrary();
+}
+
+export function _audioLibUploadTrigger() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac';
+  input.multiple = true;
+  input.addEventListener('change', async () => {
+    if (input.files && input.files.length) {
+      const added = await audioAddFiles(input.files, { insertInto: false });
+      if (added && added.length) {
+        added.forEach((t) => _audioLibSelected.add(t.slug));
+        renderAudioLibrary();
+      }
+    }
+  });
+  input.click();
+}
+
+export function _audioLibProbePlay(slug, filename) {
+  if (_audioLibPlayingSlug === slug && _audioLibProbeAudio) {
+    _audioLibProbeAudio.pause();
+    _audioLibPlayingSlug = null;
+    renderAudioLibrary();
+    return;
+  }
+  if (_audioLibProbeAudio) {
+    try { _audioLibProbeAudio.pause(); } catch {}
+  }
+  const root = (document.querySelector('meta[name="cdn-base"]')?.content || (location.origin + '/api/cdn')).replace(/\/+$/, '');
+  const url = `${root}/audio/${encodeURIComponent(filename)}`;
+  _audioLibProbeAudio = new Audio(url);
+  _audioLibPlayingSlug = slug;
+  _audioLibProbeAudio.addEventListener('ended', () => {
+    if (_audioLibPlayingSlug === slug) {
+      _audioLibPlayingSlug = null;
+      renderAudioLibrary();
+    }
+  });
+  _audioLibProbeAudio.play().catch((err) => {
+    if (err && err.name === 'AbortError') return;
+    if (_audioLibPlayingSlug === slug) {
+      toast('Preview audio could not be played', 'error');
+      _audioLibPlayingSlug = null;
+      renderAudioLibrary();
+    }
+  });
+  renderAudioLibrary();
+}
+
+// The FN editor's "attach audio" button. Opens the audio library modal so the
+// author can choose from existing tracks or upload new ones.
+export function fnAttachAudio() {
+  openAudioLibrary((selected) => {
+    const textarea = document.getElementById('fn-body');
+    if (!textarea) return;
+    if (Array.isArray(selected)) {
+      const shortcodes = selected.map((t) => `<div class="audio-embed" data-slug="${t.slug}"></div>`).join('\n');
+      fnInsertAtCursor(textarea, `\n${shortcodes}\n`, '');
+      toast(selected.length > 1 ? `✓ Inserted tracklist: ${selected.length} tracks` : '✓ Track inserted', 'success');
+    } else if (selected && selected.slug) {
+      fnInsertAtCursor(textarea, `\n<div class="audio-embed" data-slug="${selected.slug}"></div>\n`, '');
+      toast('✓ Track inserted', 'success');
+    }
+  }, true);
 }

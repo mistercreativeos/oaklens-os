@@ -969,6 +969,13 @@ html {
   min-width: 0;
   cursor: pointer;
   touch-action: none;   /* drag scrubs, never scrolls the page */
+  /* A bar cannot shrink below 1px and the row carries a 2px gap, so a variant's
+     bar count sets a floor on the waveform's width (56 bars ≈ 166px on a card).
+     Below it the bars used to spill out of their box and print over the time
+     readout — narrow enough only happens in a squeezed column, but clipping is
+     the honest failure: fewer bars visible, nothing drawn on top of anything.
+     Clips descendants only, so the seek focus ring is untouched. */
+  overflow: hidden;
 }
 .ap-wave:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
 
@@ -1031,13 +1038,48 @@ html {
 
 .wk-audio {
   padding: 16px 16px 14px;
-  background: var(--surface-2);
   display: flex;
   flex-direction: column;
   gap: 10px;
   position: relative;
   overflow: hidden;
   justify-content: center;
+
+  /* THE LISTENING ROOM — deeper than the tiles either side of it, because an
+     audio card is a place you stop rather than a thing you scan past.
+
+     DERIVED, never enumerated — the pulse card's recipe (see its block for the
+     full argument): one veil deepens whatever surface the active theme already
+     has, and the accent lays a wash over the top. That is why this is a stack
+     of gradients over --surface-2 rather than the hardcoded near-black it used
+     to be: five presets × two modes come out right for free, and a preset that
+     changes its surface takes every audio card with it.
+
+     Layer order, top to bottom: corner light · directional wash · veil · the
+     theme's own recessed surface. Quieter than a pulse at every layer — a
+     pulse is a signal shouting for a moment, this is a room. */
+  --audio-rgb: var(--accent-rgb);
+  --audio-veil: rgba(0, 0, 0, 0.55);
+  background:
+    radial-gradient(circle at 88% 0%, rgba(var(--audio-rgb), 0.12) 0%, transparent 58%),
+    linear-gradient(168deg, rgba(var(--audio-rgb), 0.055) 0%, rgba(var(--audio-rgb), 0.018) 55%, rgba(var(--audio-rgb), 0) 100%),
+    linear-gradient(var(--audio-veil), var(--audio-veil)),
+    var(--surface-2);
+}
+
+/* DAYLIGHT: the veil inverts rather than the card staying dark — the same flip
+   the pulse card makes, and for the same reason. A near-black tile on a paper
+   page is a hole punched in it; on paper the card reads as a recessed panel
+   with the accent still washing its top corner. */
+:root[data-theme="light"] .wk-audio {
+  --audio-veil: rgba(255, 255, 255, 0.5);
+}
+
+.wk-audio .wk-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  --pulse-rgb: var(--accent-rgb);
 }
 
 /* The title carries the only link on the card, stretched over the whole tile
@@ -1147,6 +1189,156 @@ html {
   .wk-a-share:hover { color: var(--accent); }
 }
 .wk-a-share:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+/* Playlist variation on single card — lean ultra-lux typographic layout.
+   Background is inherited from .wk-audio above; it does NOT get its own.
+
+   THE CARD IS A HEADER OVER AN INDEX (owner call, 2026-08-14). It used to be
+   one centred stack: kicker, title, a small waveform, then the track list
+   floating in the middle of the tile with air above and below it. Nothing tied
+   the waveform to the tracks it played — it read as a stray control.
+
+   So the top of the card is now a HEAD — kicker, title, and a waveform tall
+   enough to be the card's artwork — and the index hangs directly beneath it
+   under a full-bleed rule, the way a record's back cover sets a title block
+   over a tracklist. The foot pins to the bottom edge. */
+.wk-audio-playlist {
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+/* The head's waveform is the artwork, so it gets height the single card's
+   inline transport does not need. Still the same player — one variant, one
+   custom property; nothing about the markup changes. */
+.wk-audio-playlist .ap {
+  --ap-wave-h: 96px;
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+
+/* Pinned to the bottom edge so the index reads as hanging from the head rather
+   than floating between two pools of air. */
+.wk-audio-playlist .wk-a-foot {
+  margin-top: auto;
+}
+
+/* ---- the index hangs from the head, and adapts to HOW MANY tracks -------
+   Two through six rows have to fill the same tile as a text card without
+   overflowing at six or leaving a void at two.
+
+   Two mechanisms, both deterministic (no runtime measurement — the offline
+   export has no layout to measure and must render identically):
+
+   1. THE RULE AND THE BLEED. The top border runs edge to edge, so it reads as
+      the line under a header rather than a box drawn around a list. The
+      negative margin buys those 16px back; the padding puts the row text
+      exactly on the title's left edge once each row's own 6px is counted.
+   2. THE ROWS SHARE WHAT IS LEFT. `flex: 1 1 0` lets them absorb the tile's
+      slack instead of stacking at the top over dead space — capped per rung so
+      two tracks read as generous rather than as two rows marooned half a tile
+      apart. Whatever the cap leaves over is centred, which is why the block
+      still looks placed at every count.
+
+   The ladder (playlistTier() in recent-index.js, mirroring the text card's
+   data-tier) steps type and density DOWN as the count goes up. */
+.wk-pl-index {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  justify-content: center;
+  margin: 2px -16px 0;
+  padding: 12px 10px 0;
+  border-top: 1px solid var(--line-2);
+  position: relative;
+  z-index: 2;
+  gap: 7px;
+}
+
+/* 1–2 tracks — generous: the index reads as a statement, not a list. */
+.wk-audio-playlist[data-tier="roomy"] .wk-pl-index { gap: 10px; }
+.wk-audio-playlist[data-tier="roomy"] .wk-pl-item { padding: 5px 6px; max-height: 60px; }
+.wk-audio-playlist[data-tier="roomy"] .wk-pl-name { font-size: 0.94rem; }
+.wk-audio-playlist[data-tier="roomy"] .wk-pl-num  { font-size: 0.70rem; }
+
+/* 3–4 tracks — the middle rung, near the inherited default. */
+.wk-audio-playlist[data-tier="balanced"] .wk-pl-index { gap: 7px; }
+.wk-audio-playlist[data-tier="balanced"] .wk-pl-item { padding: 4px 6px; max-height: 46px; }
+.wk-audio-playlist[data-tier="balanced"] .wk-pl-name { font-size: 0.86rem; }
+.wk-audio-playlist[data-tier="balanced"] .wk-pl-num  { font-size: 0.65rem; }
+
+/* 5–6 tracks — tighten so six rows still clear the footer. */
+.wk-audio-playlist[data-tier="dense"] .wk-pl-index { gap: 4px; }
+.wk-audio-playlist[data-tier="dense"] .wk-pl-item { padding: 2px 6px; max-height: 34px; }
+.wk-audio-playlist[data-tier="dense"] .wk-pl-name { font-size: 0.78rem; }
+.wk-audio-playlist[data-tier="dense"] .wk-pl-num  { font-size: 0.60rem; }
+.wk-pl-item {
+  display: flex;
+  /* Centred, not baseline-aligned: a row that has grown into the tile's slack
+     is taller than its own type, and baseline alignment would strand the text
+     at the top of it. The leader carries a compensating nudge (below) so the
+     dots still land where the eye expects, on the baseline. */
+  align-items: center;
+  flex: 1 1 0;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.wk-pl-item:hover {
+  background: rgba(var(--accent-rgb, 239, 68, 68), 0.08);
+}
+.wk-pl-item.is-active {
+  background: rgba(var(--accent-rgb, 239, 68, 68), 0.12);
+}
+.wk-pl-num {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 500;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.wk-pl-item.is-active .wk-pl-num,
+.wk-pl-item:hover .wk-pl-num {
+  color: var(--accent);
+  font-weight: 700;
+}
+.wk-pl-name {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--fg-strong);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  max-width: 65%;
+}
+.wk-pl-item:hover .wk-pl-name,
+.wk-pl-item.is-active .wk-pl-name {
+  color: var(--accent);
+}
+.wk-pl-leader {
+  flex: 1 1 0;
+  border-bottom: 1px dotted var(--line-2);
+  /* The row centres its items, so a zero-height leader would draw through the
+     middle of the type. Half an em of margin above it pushes the dots back down
+     to the baseline the names and durations sit on. */
+  margin-top: 0.5em;
+  min-width: 8px;
+  opacity: 0.35;
+}
+.wk-pl-dur {
+  font-family: var(--font-mono);
+  font-size: 0.60rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: none;
+}
 
 /* ============================================
    FOOTER

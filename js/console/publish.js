@@ -75,6 +75,10 @@ export function renderPublish() {
     wall: STATE.wallpapers.length,
     barrel: STATE.barrel.length,
     network: STATE.friends.length,
+    // Audio was missing from both maps, so a staged track change moved the
+    // total badge and showed `+n ▲` on no card at all — the publish screen
+    // listed every surface except the one being edited.
+    audio: (STATE.audio || []).length,
   };
   const stagedMap = {
     buffer: STATE.staged.buffer,
@@ -83,6 +87,7 @@ export function renderPublish() {
     wall: STATE.staged.wallpapers,
     barrel: STATE.staged.barrel,
     network: STATE.staged.friends,
+    audio: STATE.staged.audio,
   };
   Object.entries(map).forEach(([k, v]) => {
     document.getElementById(`sum-count-${k}`).textContent = v;
@@ -192,6 +197,7 @@ export function buildBundle() {
       added_at: a.added_at || null,
       // Omitted when unset so an ordinary track stays byte-identical.
       ...(a.featured ? { featured: true } : {}),
+      ...(a.featured_order ? { featured_order: a.featured_order } : {}),
       ...(a.episode ? { episode: true } : {}),
       ...(a.download ? { download: true } : {}),
     })), null, 2),
@@ -482,7 +488,7 @@ export function _resumeAfterReconnect() {
 // Summarize exactly what's about to hit main (per-surface staged counts + any
 // queued R2 cleanup) before the atomic commit fires. Returns false to abort.
 export function confirmPublish() {
-  const labels = { buffer: 'Buffer', archive: 'Archive', posts: 'Field Notes', wallpapers: 'Wallpapers', barrel: 'Barrel' };
+  const labels = { buffer: 'Buffer', archive: 'Archive', posts: 'Field Notes', wallpapers: 'Wallpapers', barrel: 'Barrel', friends: 'Network', audio: 'Audio' };
   const lines = Object.entries(STATE.staged)
     .filter(([surface, n]) => surface !== 'library' && n > 0)
     .map(([surface, n]) => `  · ${labels[surface] || surface}: ${n} change${n !== 1 ? 's' : ''}`);

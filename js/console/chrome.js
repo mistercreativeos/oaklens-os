@@ -386,6 +386,8 @@ export function refreshStageIndicators() {
   document.getElementById("nav-count-barrel").textContent  = STATE.barrel.length;
   document.getElementById("nav-count-friends").textContent = STATE.friends.length;
   document.getElementById("nav-count-library").textContent = STATE.library.length;
+  const navAudio = document.getElementById("nav-count-audio");
+  if (navAudio) navAudio.textContent = (STATE.audio || []).length;
 
   // Tab bar + More sheet mirrors (guarded — markup may trail the module)
   const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
@@ -398,6 +400,7 @@ export function refreshStageIndicators() {
   setTxt("sheet-count-barrel",  STATE.barrel.length);
   setTxt("sheet-count-friends", STATE.friends.length);
   setTxt("sheet-count-library", STATE.library.length);
+  setTxt("sheet-count-audio",   (STATE.audio || []).length);
 }
 
 // Escape a string for safe injection into innerHTML.

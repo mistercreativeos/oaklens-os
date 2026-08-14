@@ -144,12 +144,18 @@
   //      `featured` surfaces as a play-card, exactly the way a buffer frame's
   //      `featured` surfaces the RAW daily. Capped to one for now — a card is a
   //      single statement; an EP is a field note with a tracklist. ----
-  var AUDIO_MAX = 1;
+  var AUDIO_MAX_PLAYLIST = 6;
   function audioPick(list, max) {
-    if (max == null) max = AUDIO_MAX;
-    return (list || [])
-      .filter(function (a) { return a && a.featured && a.filename && a.slug; })
-      .slice(0, max);
+    var limit = max != null ? max : 1;
+    var featured = (list || [])
+      .filter(function (a) { return a && (a.featured || a.featured_order) && a.filename && a.slug; });
+    featured.sort(function (a, b) {
+      var ordA = typeof a.featured_order === 'number' ? a.featured_order : 999;
+      var ordB = typeof b.featured_order === 'number' ? b.featured_order : 999;
+      if (ordA !== ordB) return ordA - ordB;
+      return 0;
+    });
+    return featured.slice(0, limit);
   }
 
   // Pinned to the SECOND slot, ahead of the RAW daily's third. Applied BEFORE
@@ -244,11 +250,16 @@
     // fills newest-first around them. Audio first (slot 1), then the RAW daily
     // (slot 2); see pinAudio for why that order matters. When nothing is
     // featured, fall through to the normal mixed newest-first grid.
-    var audio = audioPick(audioFeatured);
+    var audio = audioPick(audioFeatured, AUDIO_MAX_PLAYLIST);
     var raw = rawPick(rawFeatured);
     var live = pulsePick(pulse);
 
-    var audioItem = audio.length ? { kind: 'audio', data: audio[0], d: audio[0].added_at || '' } : null;
+    var audioItem = null;
+    if (audio.length > 1) {
+      audioItem = { kind: 'audio', data: { isPlaylist: true, tracks: audio }, d: audio[0].added_at || '' };
+    } else if (audio.length === 1) {
+      audioItem = { kind: 'audio', data: audio[0], d: audio[0].added_at || '' };
+    }
     var rawItem = raw.length ? { kind: 'photo', raw: true, data: raw[0], d: raw[0].captured_at || '' } : null;
 
     // With a live pulse there are three candidate pins for two visible slots —
@@ -346,6 +357,7 @@
     pinPulse: pinPulse,
     yieldOlderPin: yieldOlderPin,
     pulseTier: pulseTier,
+    playlistTier: playlistTier,
     cardFocus: cardFocus,
     rawPick: rawPick,
     pinRaw: pinRaw,
@@ -476,13 +488,217 @@
     + '<path d="M8 0.9 11.25 4.15 9.95 5.45 8.9 4.4 8.9 10.5 7.1 10.5 7.1 4.4 6.05 5.45 4.75 4.15Z"/>'
     + '<path d="M2.6 6.8h2.3v6.5h6.2V6.8h2.3v8.3H2.6z"/></svg>';
 
+  // ---- playlist tier: HOW MANY tracks → roomy | balanced | dense. The same
+  //      idea as recentTier, measured in rows instead of graphemes: the index
+  //      always fills the tile and stays optically centred, so two tracks get
+  //      generous type and air while six tighten up rather than overflowing or
+  //      leaving the card half empty. Deterministic — no runtime auto-fit, for
+  //      the same reason the text ladder has none (layout shift, and the
+  //      offline export has no layout to measure). The card is only built for
+  //      2..AUDIO_MAX_PLAYLIST, but 1 is handled so the ladder is total. ----
+  function playlistTier(count) {
+    var n = Math.floor(Number(count) || 0);
+    if (n <= 2) return 'roomy';
+    if (n <= 4) return 'balanced';
+    return 'dense';
+  }
+
+  function audioPlaylistCard(tracks) {
+    var card = el('div', 'wk-card wk-audio wk-audio-playlist');
+    var list = tracks || [];
+    // Drives the .wk-audio-playlist[data-tier] rules, exactly as the text card
+    // is driven by its own data-tier. data-tracks is the raw count, so a theme
+    // can reach a single row count without re-deriving the ladder.
+    card.setAttribute('data-tier', playlistTier(list.length));
+    card.setAttribute('data-tracks', String(list.length));
+
+    var kicker = el('span', 'wk-kicker');
+    var led = el('span', 'wk-p-led');
+    led.setAttribute('aria-hidden', 'true');
+    kicker.appendChild(led);
+    // SOUNDBOARD, not "Featured Playlist" (owner call, 2026-08-14). A playlist
+    // is a music word, and the card is for whatever a studio makes noise with —
+    // a score, a field recording, an episode, a voice memo, a loop. The kicker
+    // carries the kind and the title carries the name, so neither repeats the
+    // other.
+    kicker.appendChild(document.createTextNode('Audio // Multi-track'));
+
+    var title = el('div', 'wk-a-title');
+    var link = el('a');
+    link.href = '/listen/';
+    link.textContent = 'Soundboard';
+    title.appendChild(link);
+
+    var totalSec = list.reduce(function (sum, t) { return sum + (Number(t.duration) || 0); }, 0);
+    var AP = g.AudioPlayer;
+    var hasPlayer = AP && typeof AP.create === 'function';
+    var totalLabel = hasPlayer ? AP.durationLabel(totalSec) : '';
+
+    var currentTrackIdx = 0;
+
+    // No sub line here. The count and running time are the foot's job — the
+    // card used to print "3 tracks · 59 SEC" under the title AND again in the
+    // foot, the same six words twice on a tile the size of a postcard. The
+    // single audio card's sub is a different thing (the artist line), which is
+    // why that one stays.
+    card.appendChild(kicker);
+    card.appendChild(title);
+
+    var player = null;
+    var rowEls = [];
+
+    function updateActiveUi(idx, isPlaying) {
+      currentTrackIdx = idx;
+      for (var r = 0; r < rowEls.length; r++) {
+        rowEls[r].classList.toggle('is-active', r === idx);
+        rowEls[r].classList.toggle('is-playing', r === idx && isPlaying);
+      }
+      card.classList.toggle('is-playing', isPlaying);
+    }
+
+    // ONE options builder, so every track the player is handed carries the SAME
+    // callbacks. Both call sites used to spell the options out and pass
+    // `onended: player.onended` when advancing — a property the player API
+    // never exposed, so it was always undefined. The first track advanced (its
+    // handler was written inline), the second inherited undefined and fell
+    // through to the DOM-sibling fallback, which looks for a class this card
+    // does not use. Auto-advance therefore stopped dead after track two.
+    function trackOpts(idx) {
+      var t = list[idx] || {};
+      return {
+        src: t.filename,
+        peaks: AP.peaksFromString(t.peaks),
+        duration: t.duration,
+        variant: 'card',
+        title: t.title || '',
+        onstate: function (playing) {
+          updateActiveUi(idx, playing);
+          // Playback started, so the next track is no longer a guess — it is
+          // what happens when this one ends. Buffer it while there is nothing
+          // else to wait for, and the advance becomes a swap rather than a
+          // fresh round trip. Nothing is warmed before the first press.
+          if (playing) warmNext(idx);
+        },
+        onended: advance,
+      };
+    }
+
+    function warmNext(idx) {
+      var next = list[idx + 1];
+      if (next && hasPlayer && typeof AP.warm === 'function') AP.warm(next.filename);
+    }
+
+    function advance() {
+      var next = currentTrackIdx + 1;
+      if (next < list.length) playTrack(next);
+      else updateActiveUi(0, false);   // ran out — settle back on the top
+    }
+
+    function playTrack(idx) {
+      if (!player) return;
+      updateActiveUi(idx, true);
+      player.loadTrack(trackOpts(idx), true);
+    }
+
+    if (hasPlayer && list.length) {
+      player = AP.create(trackOpts(0));
+      card.appendChild(player.root);
+    }
+
+    var listWrap = el('div', 'wk-pl-index');
+    list.forEach(function (track, i) {
+      var row = el('div', 'wk-pl-item' + (i === 0 ? ' is-active' : ''));
+
+      var num = el('span', 'wk-pl-num');
+      num.textContent = String(i + 1).padStart(2, '0');
+      row.appendChild(num);
+
+      var trackLink = el('a', 'wk-pl-name');
+      trackLink.href = listenHref(track);
+      trackLink.textContent = track.title || 'Untitled';
+      row.appendChild(trackLink);
+
+      var leader = el('span', 'wk-pl-leader');
+      leader.setAttribute('aria-hidden', 'true');
+      row.appendChild(leader);
+
+      if (track.duration && hasPlayer) {
+        var durSpan = el('span', 'wk-pl-dur');
+        durSpan.textContent = AP.formatTime(track.duration);
+        row.appendChild(durSpan);
+      }
+
+      // Reaching for a row is intent, the same as reaching for the transport:
+      // start the fetch on the way in rather than on the press. Warming the
+      // row that is ALREADY loaded is the player's own job (it holds the
+      // element), so hand that one to the player and the rest to the shared
+      // warmer.
+      function warmThisRow() {
+        if (!hasPlayer) return;
+        if (currentTrackIdx === i) {
+          if (player && typeof player.warm === 'function') player.warm();
+        } else if (typeof AP.warm === 'function') {
+          AP.warm(track.filename);
+        }
+      }
+      row.addEventListener('pointerenter', warmThisRow);
+      row.addEventListener('pointerdown', warmThisRow);
+
+      row.addEventListener('click', function (ev) {
+        if (ev.target && ev.target.tagName === 'A' && (ev.metaKey || ev.ctrlKey)) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        if (!player) return;
+        if (currentTrackIdx === i) {
+          if (player.audio.paused) player.play();
+          else player.pause();
+        } else {
+          playTrack(i);
+        }
+      });
+
+      rowEls.push(row);
+      listWrap.appendChild(row);
+    });
+
+    card.appendChild(listWrap);
+
+    var foot = el('div', 'wk-a-foot');
+    var meta = el('div', 'wk-a-meta');
+    meta.textContent = list.length + ' tracks' + (totalLabel ? ' · ' + totalLabel : '');
+    foot.appendChild(meta);
+
+    var share = el('button', 'wk-a-share');
+    share.type = 'button';
+    share.setAttribute('aria-label', 'Share this soundboard');
+    share.innerHTML = SHARE_SVG;
+    share.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (hasPlayer) AP.share(location.origin + '/listen/', 'Soundboard', share);
+    });
+    foot.appendChild(share);
+
+    card.appendChild(foot);
+    return card;
+  }
+
+  // Exposed for the test contract (the pure helpers go up on g.RecentIndex
+  // above the DOM bail; this one needs a document, so it is added here).
+  // Harmless in the browser — same posture as worker.js's test re-exports.
+  g.RecentIndex.audioPlaylistCard = audioPlaylistCard;
+
   function audioCard(entry) {
+    if (entry && entry.isPlaylist && Array.isArray(entry.tracks)) {
+      return audioPlaylistCard(entry.tracks);
+    }
     var card = el('div', 'wk-card wk-audio');
 
     var kicker = el('span', 'wk-kicker');
-    var dot = el('span', 'wk-dot');
-    dot.setAttribute('aria-hidden', 'true');
-    kicker.appendChild(dot);
+    var led = el('span', 'wk-p-led');
+    led.setAttribute('aria-hidden', 'true');
+    kicker.appendChild(led);
     kicker.appendChild(document.createTextNode('Audio'));
 
     var title = el('div', 'wk-a-title');
