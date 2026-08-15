@@ -72,7 +72,18 @@ function seedState() {
     { id: 'l-2', filename: 'l2.jpg' },
     { id: 'l-err', _uploadError: true },                              // filtered
   ];
-  STATE.staged = { buffer: 1, archive: 1, posts: 1, wallpapers: 0, barrel: 0, friends: 0, library: 0 };
+  STATE.audio = [
+    {
+      id: 'aud-1', filename: 'a1.mp3', slug: 'a1-slug', title: 'A1 Title', sub: 'A1 Sub',
+      duration: 180, peaks: '0.1,0.5,0.9', size: 1024, mime: 'audio/mpeg', added_at: '2026-08-01',
+      featured: true, featured_order: 1, episode: true, download: true,
+    },
+    // minimal: every optional field absent
+    { id: 'aud-2', slug: 'a2-slug', filename: 'a2.mp3', added_at: '2026-08-02' },
+    { id: 'aud-err', filename: 'bad.mp3', _uploadError: true },       // filtered
+    { id: 'aud-up', filename: 'busy.mp3', _uploading: true },         // filtered
+  ];
+  STATE.staged = { buffer: 1, archive: 1, posts: 1, wallpapers: 0, barrel: 0, friends: 0, library: 0, audio: 1 };
 }
 
 const parse = (name) => JSON.parse(bundle[name]);
@@ -139,18 +150,26 @@ describe('buildBundle()', () => {
     expect(keysOf('data/library.json')).toEqual(['added_at', 'filename', 'hash', 'id', 'kind']);
   });
 
+  it('audio keeps every whitelisted field', () => {
+    expect(keysOf('data/audio.json')).toEqual([
+      'added_at', 'download', 'duration', 'episode', 'featured', 'featured_order',
+      'filename', 'id', 'mime', 'peaks', 'size', 'slug', 'sub', 'title',
+    ]);
+  });
+
   it('barrel passes entries through, minus the _imported marker', () => {
     expect(keysOf('data/barrel.json')).toEqual(['date', 'id', 'title', 'url']);
   });
 
   // ---- filters ----
 
-  it('never publishes a frame whose upload failed or is still running', () => {
+  it('never publishes a frame or audio track whose upload failed or is still running', () => {
     // A committed frame pointing at a CDN object that does not exist renders blank.
     expect(parse('data/buffer.json').map((b) => b.id)).toEqual(['buf-1', 'buf-2']);
     expect(parse('data/archive.json').map((a) => a.id)).toEqual(['arc-1', 'arc-2']);
     expect(parse('data/wallpapers.json').map((w) => w.id)).toEqual(['w-1', 'w-2']);
     expect(parse('data/library.json').map((l) => l.id)).toEqual(['l-1', 'l-2']);
+    expect(parse('data/audio.json').map((a) => a.id)).toEqual(['aud-1', 'aud-2']);
   });
 
   it('publishes only posts that are published or have no status', () => {
@@ -164,6 +183,10 @@ describe('buildBundle()', () => {
     const [, minimal] = parse('data/buffer.json');
     for (const k of ['burst_id', 'focus', 'cardFocus', 'featured']) {
       expect(k in minimal, `${k} should be absent, not null`).toBe(false);
+    }
+    const [, minAudio] = parse('data/audio.json');
+    for (const k of ['featured', 'featured_order', 'episode', 'download']) {
+      expect(k in minAudio, `${k} should be absent from minimal audio, not null/false`).toBe(false);
     }
     expect(minimal.hash).toBeNull(); // hash is explicitly nulled, not omitted
     expect('focus' in parse('data/archive.json')[1]).toBe(false);

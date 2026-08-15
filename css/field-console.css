@@ -1999,6 +1999,314 @@ body.sidebar-collapsed .sidebar { display: none; }
   }
 }
 
+/* ============ AUDIO SHELF & AUDIO LIBRARY ============ */
+.aud-playlist-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  gap: 10px;
+}
+.aud-pl-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-micro);
+  color: var(--text-dim);
+  overflow: hidden;
+}
+.aud-pl-tag {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.aud-pl-names {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aud-pl-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Audio Shelf list cards */
+.aud-card {
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 150ms ease;
+}
+.aud-card:hover { border-color: var(--border-strong); }
+.aud-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.aud-play-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev-2);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.65rem;
+  padding: 0;
+  flex-shrink: 0;
+  transition: all 150ms ease;
+}
+.aud-play-btn:hover {
+  border-color: var(--accent);
+  transform: scale(1.08);
+}
+.aud-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 18px;
+  flex: 1;
+  min-width: 60px;
+  background: var(--bg-elev-2);
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+.aud-spark span {
+  flex: 1;
+  background: var(--text-faint);
+  min-width: 1px;
+  border-radius: 1px;
+}
+.aud-spark.empty {
+  align-items: center;
+  justify-content: center;
+  font-size: var(--t-micro);
+  color: var(--text-faint);
+  letter-spacing: 0.1em;
+}
+
+/* Audio Library modal styles */
+.audio-lib-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex-wrap: wrap;
+}
+.audio-lib-pill {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.13em;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 150ms ease;
+}
+.audio-lib-pill:hover { color: var(--text-bright); border-color: var(--text-dim); }
+.audio-lib-pill.active { color: var(--accent); border-color: var(--accent); }
+.audio-lib-search {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 5px 10px;
+  outline: none;
+}
+.audio-lib-search:focus { border-color: var(--accent); }
+.audio-lib-search::placeholder { color: var(--text-faint); }
+.audio-lib-sort {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.13em;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.audio-lib-sort:hover { color: var(--text); border-color: var(--text-dim); }
+.audio-lib-list {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(85vh - 120px);
+  overflow-y: auto;
+  padding: 8px;
+  gap: 6px;
+}
+.audio-lib-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-1);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.audio-lib-item:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-elev-2);
+}
+.audio-lib-item.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.aud-lib-col-play {
+  flex-shrink: 0;
+}
+.aud-lib-play-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev-2);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.72rem;
+  transition: all 150ms ease;
+}
+.aud-lib-play-btn:hover {
+  border-color: var(--accent);
+  transform: scale(1.08);
+}
+.aud-lib-col-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.aud-lib-title {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aud-lib-sub {
+  font-size: var(--t-micro);
+  color: var(--text-dim);
+}
+.aud-lib-meta {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--text-faint);
+  letter-spacing: 0.05em;
+}
+.aud-lib-col-select {
+  flex-shrink: 0;
+}
+.audio-lib-select-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 700;
+}
+.audio-lib-select-check {
+  color: var(--text-faint);
+  font-size: 1rem;
+}
+.audio-lib-insert-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+}
+.audio-lib-insert-count {
+  font-size: var(--t-micro);
+  color: var(--accent);
+  letter-spacing: 0.13em;
+  flex: 1;
+}
+.audio-lib-empty {
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.13em;
+}
+
+/* Editor Audio Preview */
+.fn-preview-audio {
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  background: var(--bg-elev-2);
+  padding: 10px 14px;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fn-pa-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fn-pa-icon {
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+.fn-pa-title {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-bright);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fn-pa-dur {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--text-faint);
+}
+.fn-pa-sub {
+  font-size: var(--t-micro);
+  color: var(--text-dim);
+}
+
 /* ============ UPLOAD PROGRESS ============ */
 .upload-progress-wrap {
   position: absolute;
@@ -2908,8 +3216,9 @@ body.fn-bar-hidden:has(#view-fn.active) .tabbar {
   margin: 0 auto;
 }
 
-/* Desktop asset-library sizing (moved from the markup's inline style) */
-#asset-library-modal .modal { width: min(900px, calc(100vw - 32px)); max-height: 85vh; }
+/* Desktop asset-library & audio-library sizing (moved from the markup's inline style) */
+#asset-library-modal .modal,
+#audio-library-modal .modal { width: min(900px, calc(100vw - 32px)); max-height: 85vh; }
 
 @keyframes sheet-up   { from { transform: translateY(100%); } }
 @keyframes overlay-in { from { opacity: 0; } }
@@ -2957,15 +3266,18 @@ body.fn-bar-hidden:has(#view-fn.active) .tabbar {
     transition: transform var(--dur-2) var(--ease-out);
   }
 
-  /* Asset library: full-height working sheet — the grid fills and scrolls. */
-  #asset-library-modal .modal {
+  /* Asset library & Audio library: full-height working sheet — the grid/list fills and scrolls. */
+  #asset-library-modal .modal,
+  #audio-library-modal .modal {
     width: min(900px, 100%);
     height: calc(100vh  - var(--topbar-h) - var(--safe-top));
     height: calc(100dvh - var(--topbar-h) - var(--safe-top));
     max-height: none;
   }
-  #asset-library-modal .modal-body { display: flex; flex-direction: column; }
-  #asset-library-modal .asset-lib-grid { flex: 1; max-height: none; }
+  #asset-library-modal .modal-body,
+  #audio-library-modal .modal-body { display: flex; flex-direction: column; }
+  #asset-library-modal .asset-lib-grid,
+  #audio-library-modal .audio-lib-list { flex: 1; max-height: none; }
 
   /* Focal picker breathes wider — the stage is the workspace. */
   #focal-modal .modal { width: min(820px, 100%); }

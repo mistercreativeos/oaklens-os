@@ -216,6 +216,17 @@ describe('pickRecent — featured audio joins the grid', () => {
     expect(picks[1].data.slug).toBe('take-one');
   });
 
+  it('surfaces multiple featured tracks as a single playlist card', () => {
+    const multi = [
+      { id: 'A1', slug: 'one', filename: 'one.mp3', featured: true, featured_order: 1 },
+      { id: 'A2', slug: 'two', filename: 'two.mp3', featured: true, featured_order: 2 },
+    ];
+    const picks = pickRecent(archive, posts, [], multi);
+    expect(picks[1].kind).toBe('audio');
+    expect(picks[1].data.isPlaylist).toBe(true);
+    expect(picks[1].data.tracks).toHaveLength(2);
+  });
+
   it('shows the audio card regardless of date — it is pinned, not date-ranked', () => {
     const old = [{ id: 'A', slug: 'old', filename: 'old.mp3', featured: true, added_at: '2019-01-01' }];
     expect(pickRecent(archive, posts, [], old).some((p) => p.kind === 'audio')).toBe(true);

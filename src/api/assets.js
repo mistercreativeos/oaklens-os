@@ -324,19 +324,29 @@ export async function handleCdnProxy(request, env, url, ctx) {
   let obj = null;
   let range = null;
   const rangeMatch = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('Range') || '');
-  const isRangeRequest = !!(rangeMatch && (rangeMatch[1] || rangeMatch[2]));
-  // Canonical, encoding-stable cache key — see _proxyCacheUrl. Only full GETs
-  // touch the cache; a Range request never reads or writes it.
-  const cache = isRangeRequest ? null : _edgeCache();
+  const hasRange = !!(rangeMatch && (rangeMatch[1] || rangeMatch[2]));
+  // `bytes=0-` is not really a partial request — it is "the whole object,
+  // streamed", and it is exactly what a browser sends to START playing media.
+  // Treating it as a partial (which this did until 2026-08-14) meant every
+  // play, on every visit, skipped the colo cache and went to R2: the audio
+  // path was the ONE path that never benefited from the cache added for
+  // images. It is answered 206 — Safari needs that to believe seeking works —
+  // but read from and written to the cache like the full GET it is.
+  const wholeFromStart = !!(rangeMatch && rangeMatch[1] === '0' && rangeMatch[2] === '');
+  const isPartial = hasRange && !wholeFromStart;
+  // Canonical, encoding-stable cache key — see _proxyCacheUrl. A genuine
+  // partial (a seek) still never reads or writes it: a 206 is not storable and
+  // a slice filed under the whole object's key would be a corrupt hit.
+  const cache = isPartial ? null : _edgeCache();
   const cacheKey = cache ? new Request(_proxyCacheUrl(url.origin, key)) : null;
   if (cache) {
     try {
       const hit = await cache.match(cacheKey);
-      if (hit) return hit;
+      if (hit) return wholeFromStart ? _wholeAs206(hit) : hit;
     } catch { /* cache unavailable — fall through to R2 */ }
   }
 
-  if (isRangeRequest) {
+  if (isPartial) {
     const [, start, end] = rangeMatch;
     if (start === '') range = { suffix: parseInt(end, 10) };
     else if (end === '') range = { offset: parseInt(start, 10) };
@@ -402,8 +412,23 @@ export async function handleCdnProxy(request, env, url, ctx) {
   headers['Content-Length'] = String(obj.size);
   const res = new Response(obj.body, { headers });
   // Populate the colo cache with a copy; the caller gets the original body
-  // immediately. `cache` is null for Range requests, so only whole objects are
-  // ever stored — and only ones that came from R2, never the sample fallback.
+  // immediately. `cache` is null for partial requests, so only whole objects
+  // are ever stored — and only ones that came from R2, never the sample
+  // fallback. The 200 is what gets stored even when the caller asked with
+  // `bytes=0-`, because a 206 is not a storable response.
   if (cache) _background(ctx, cache.put(cacheKey, res.clone()));
-  return res;
+  return wholeFromStart ? _wholeAs206(res) : res;
+}
+
+// A whole-object 200 answered as the 206 a media element asked for. Same body,
+// same stream — only the status and one header differ, so nothing is buffered.
+export function _wholeAs206(res) {
+  const len = Number(res.headers.get('Content-Length'));
+  // No length to speak of (or an empty object): answering 206 would need a
+  // Content-Range we cannot honestly write. A server is allowed to ignore
+  // Range and answer 200, so do that rather than lie.
+  if (!Number.isFinite(len) || len <= 0) return res;
+  const headers = new Headers(res.headers);
+  headers.set('Content-Range', `bytes 0-${len - 1}/${len}`);
+  return new Response(res.body, { status: 206, headers });
 }

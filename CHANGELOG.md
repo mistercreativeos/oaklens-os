@@ -25,6 +25,69 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-08-14 (third change today)
+
+**Fixed: taking tracks off the homepage audio card left you with no way to
+publish it.** If you removed a featured track — or hit CLEAR CARD — the console
+counted that as *undoing* a pending change instead of *making* one. With nothing
+else waiting, the publish screen said "NO PENDING CHANGES" and refused to run,
+so the card stayed live on your site with no way to take it down.
+
+Removing something is a change like any other now, and it stages like one. The
+publish screen also gained an **Audio** card in its summary grid — audio was
+staged but shown nowhere on that screen.
+
+If you are sitting in front of this right now: un-feature your tracks (or CLEAR
+CARD) once more, and PUBLISH will light up.
+
+## 2026-08-14 (later the same day)
+
+**Audio starts faster, and the multi-track card has a better name.**
+
+It's called the **Soundboard** now, not "Featured Playlist" — a playlist is a
+music word, and that card is for whatever you make: a score, a field recording,
+an episode, a voice memo, a loop.
+
+**Playback stopped making people wait.** Three things were adding up:
+
+- Nothing was fetched until you *clicked* play, so the click is where the whole
+  download started. It now starts a beat earlier — when a visitor's pointer
+  reaches the play button or a track row, or when they tab to it. A visitor who
+  never reaches for the player still downloads nothing, which was always the
+  point.
+- The next track in a soundboard now buffers while the current one plays, so
+  moving down the list is a swap rather than a fresh wait.
+- **If your site serves files through the built-in `/api/cdn` proxy** (that's
+  every fork without a custom CDN domain), audio was the one thing that never
+  got cached at Cloudflare's edge: browsers ask for media with a byte range, and
+  the proxy was treating "give me the whole file" as a partial request and going
+  back to storage every time. Fixed — second and later plays now come from the
+  edge.
+
+**One thing only you can fix:** the file itself. An uncompressed WAV is about
+four times the size of a good MP3 for the same seconds of sound, and your
+visitors download every byte before they hear anything. The Audio shelf now
+tells you at upload time when a file is heavy, with the numbers. It's a warning,
+not a refusal — nothing is stopped or converted behind your back.
+
+## 2026-08-14
+
+**The homepage audio card looks like a record now.** If you have pinned two or
+more tracks, the card that shows them was rebuilt: the waveform sits at the top
+as the card's header, at proper size, and the track list hangs underneath it
+under a hairline — instead of the list floating in the middle of the tile with
+the waveform stranded above it. The list also fills the card properly whether
+you have pinned two tracks or six.
+
+The card sits on a deeper ground than the tiles beside it — near black in a dark
+theme, a lifted panel on a light one, with a wash of **your** accent colour
+across the top corner. Nothing is hardcoded: it is derived from whatever preset
+and mode you are running, so it looks right in all of them.
+
+Nothing to do — merge and it is there. If you had pinned tracks and a browser
+that still shows you the old card, it is a cached stylesheet; a hard refresh
+settles it.
+
 ## 2026-08-13 (later the same day)
 
 **This is a creative platform, not a photography platform.** Nothing in your

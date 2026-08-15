@@ -304,18 +304,83 @@
     root.appendChild(wave);
     root.appendChild(time);
 
-    // -- the audio element: created now, fetched never (preload="none") --
+    // -- the audio element: created now, fetched on INTENT --
+    //
+    // `preload="none"` is load-bearing and stays: a homepage carrying this card,
+    // or a post carrying a six-track list, must not pull audio nobody asked for.
+    // Drawing the waveform from stored peaks is what buys that.
+    //
+    // But "nothing until the click" also means the click is where the entire
+    // round trip *begins* — connection, headers, first bytes — and that is the
+    // pause between pressing play and hearing anything. So the fetch starts one
+    // beat earlier, on intent: reaching for the transport with a pointer,
+    // putting a finger down on it, or tabbing to it. A visitor who never
+    // reaches for the player still downloads nothing.
     var audio = el('audio');
     audio.preload = 'none';
     audio.src = audioSrc(o.src || o.filename);
     if (o.title) audio.setAttribute('title', o.title);
     root.appendChild(audio);
 
+    // Has this visitor pressed play on this player yet? Once they have, the
+    // opt-in is no longer in question, so later tracks buffer as soon as they
+    // are loaded rather than waiting for another press.
+    var engaged = false;
+
+    function warm() {
+      // Only from a standing start: readyState 0 with no request in flight.
+      // Calling load() on a player that is already buffering (or playing)
+      // would abort and restart it — the opposite of the point.
+      if (!audio.paused || audio.readyState !== 0) return;
+      if (audio.networkState === 2 /* NETWORK_LOADING */) return;
+      audio.preload = 'auto';
+      try { audio.load(); } catch (e) {}
+    }
+
+    function loadTrack(newOpts, autoPlay) {
+      o = newOpts || {};
+      duration = Number(o.duration) || 0;
+      audio.pause();
+      // A queue advance on an engaged player: start fetching with the src, not
+      // with the play() that follows it.
+      audio.preload = engaged ? 'auto' : 'none';
+      audio.src = audioSrc(o.src || o.filename);
+      if (o.title) audio.setAttribute('title', o.title);
+      else audio.removeAttribute('title');
+      audio.currentTime = 0;
+
+      heights = resamplePeaks(o.peaks, barCount);
+      if (!heights.length) {
+        heights = [];
+        for (var k = 0; k < barCount; k++) heights.push(0.34);
+        root.classList.add('ap-flat');
+      } else {
+        root.classList.remove('ap-flat');
+      }
+      wave.innerHTML = '';
+      wave.appendChild(barRow('ap-bars-base'));
+      wave.appendChild(barRow('ap-bars-fill'));
+      wave.setAttribute('aria-valuemax', String(Math.round(duration)));
+
+      // A new track starts clean. fail() latches is-error on the ROOT, which
+      // outlives the track that caused it — so without this a single 404 in a
+      // playlist left every later track painted as unavailable, with the dead
+      // "could not be loaded" tooltip still on the card.
+      root.classList.remove('is-error');
+      root.removeAttribute('title');
+      play.setAttribute('aria-label', 'Play');
+
+      paint();
+      if (autoPlay) start();
+    }
+
     var api = {
       root: root,
       audio: audio,
       pause: function () { try { audio.pause(); } catch (e) {} },
       play: function () { try { start(); } catch (e) {} },
+      loadTrack: loadTrack,
+      warm: warm,
     };
 
     function knownDuration() {
@@ -390,7 +455,17 @@
       else audio.pause();
     });
 
+    // Intent, in the three ways it arrives. `pointerenter` is the big one on a
+    // desktop — the hover before a click is worth hundreds of milliseconds —
+    // and `pointerdown` is what a phone gives you, which is still the whole
+    // press-and-release gap. `focus` covers the keyboard.
+    ['pointerenter', 'pointerdown', 'focus'].forEach(function (evt) {
+      play.addEventListener(evt, warm);
+      wave.addEventListener(evt, warm);
+    });
+
     audio.addEventListener('play', function () {
+      engaged = true;
       pauseOthers(api);
       setPlayingUi(true);
       paint();
@@ -400,6 +475,20 @@
       setPlayingUi(false);
       audio.currentTime = 0;
       paint();
+      if (typeof o.onended === 'function') {
+        o.onended();
+        return;
+      }
+      // Surfaces that lay tracks out as sibling rows get auto-advance for free.
+      // A surface that drives its own queue (the homepage playlist card) passes
+      // onended above and returns before reaching this. `.wk-playlist-track`
+      // used to be listed here and matches nothing in the markup — the playlist
+      // row is `.wk-pl-item`.
+      var trackContainer = root.closest('.fn-track, .wk-pl-item, .lt-row');
+      if (trackContainer && trackContainer.nextElementSibling) {
+        var nextPlayBtn = trackContainer.nextElementSibling.querySelector('.ap-play');
+        if (nextPlayBtn) nextPlayBtn.click();
+      }
     });
     audio.addEventListener('timeupdate', paint);
     audio.addEventListener('loadedmetadata', function () {
@@ -463,6 +552,35 @@
     return api;
   }
   API.create = create;
+
+  // ---- warming a track that is not mounted yet ----
+  //
+  // A surface driving a queue (the soundboard card) knows which file is coming
+  // next while the current one is still playing, and that is dead time the
+  // network could be using. `warm(src)` buffers it on a detached element, so
+  // the switch swaps between buffers instead of starting a round trip. The same
+  // call serves a hover over a row further down the list, which is a stronger
+  // signal of intent than "it is next".
+  //
+  // ONE element, reused — a six-track card must warm the next track, not pull
+  // six files at once — and only ever after the visitor has started playback,
+  // which is the caller's job to respect.
+  var warmEl = null;
+  var warmedUrl = '';
+  function warm(src) {
+    if (typeof document === 'undefined') return;
+    var url = audioSrc(src);
+    if (!url || url === warmedUrl) return;
+    if (!warmEl) {
+      warmEl = document.createElement('audio');
+      warmEl.preload = 'auto';
+      warmEl.muted = true;   // never mounted and never started, but belt and braces
+    }
+    warmedUrl = url;
+    warmEl.src = url;
+    try { warmEl.load(); } catch (e) {}
+  }
+  API.warm = warm;
 
   // Mount every [data-ap-src] placeholder under `root`. This is how the
   // markdown renderer and the permalink page get players without either of
