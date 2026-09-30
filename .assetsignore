@@ -1,7 +1,7 @@
 .git
 .wrangler
 node_modules
-.dev.vars
+.dev.vars*
 wrangler.jsonc
 worker.js
 # Imported into worker.js at build (identity is injected into pages at the edge),

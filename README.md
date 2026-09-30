@@ -2,6 +2,12 @@
 
 **Your work. Published free.**
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/oaklensart/oaklens-os)
+
+**Install it in one click, in your browser.** Before you press the button,
+[read the three things to have ready](setup.md#before-you-click). One of them has
+to be switched on in Cloudflare first, or the install can't finish.
+
 [![CI](https://github.com/oaklensart/oaklens-os/actions/workflows/ci.yml/badge.svg)](https://github.com/oaklensart/oaklens-os/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 
@@ -81,6 +87,11 @@ your own domain later changes nothing in the code.
   off by default and each one widens exactly the one thing it needs.
 
 ## Quick start
+
+**The one-click button at the top of this page does steps 1 and 3 for you**,
+with no terminal. Step 2, switching on R2, is still yours to do first
+([what to have ready](setup.md#before-you-click)). The steps below are the
+terminal route, for when you'd rather see every command.
 
 ### 1. Get your own copy
 
@@ -177,6 +188,9 @@ this README.
 - A **GitHub account**, free
 - A **Cloudflare account**, free. The account itself asks for no card; the R2
   storage in step 2 does. See [What it costs](#what-it-costs)
+
+That's all the one-click button needs. The terminal route also needs:
+
 - **Node 22 or newer**. The Cloudflare tooling refuses to run on older versions,
   with an error that doesn't explain itself
 - **Git**, and a terminal you can paste into. On Windows use **Git Bash** (it

@@ -21,6 +21,13 @@
     "static-site",
     "portfolio"
   ],
+  "cloudflare": {
+    "bindings": {
+      "AUTH_PASSWORD": {
+        "description": "The password for your site's console, where you publish from. Pick a long one you use nowhere else. You can change it later under **Settings → Runtime variables and secrets**."
+      }
+    }
+  },
   "author": "OakLens.art",
   "license": "MIT",
   "dependencies": {

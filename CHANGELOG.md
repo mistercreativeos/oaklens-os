@@ -25,6 +25,24 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-09-29 (the one-click install, tested end to end)
+
+**Nothing to do on merge.**
+
+- **The Deploy to Cloudflare button now asks for your console password.** On a
+  real run the button installed everything cleanly but never asked for a
+  password, so the console turned every login away without saying why. A new
+  file, `.dev.vars.example`, lists `AUTH_PASSWORD` with the value left empty,
+  and that's what the button reads to know what to ask. **Already installed
+  with the button and can't log in?** Your site is fine; it just has no
+  password yet. Set one under **Settings → Runtime variables and secrets**
+  ([setup.md](setup.md#right-after-set-your-password-if-you-werent-asked)).
+
+- **The README leads with the button**, and setup.md's one-click section now
+  starts with **Before you click**: the three things to have ready, R2 first,
+  because the button can't switch it on for you. It then goes through the setup
+  screen field by field and lists what's left after the first deploy.
+
 ## 2026-09-24 (the console stops redrawing itself while work is waiting)
 
 **Nothing to do on merge.**
