@@ -59,6 +59,10 @@ CONTRIBUTING.md
 SECURITY.md
 CODE_OF_CONDUCT.md
 CHANGELOG.md
+CUSTOMIZE.md
+# The owner's own log of changes that differ from the engine (CUSTOMIZE.md).
+# The engine never ships it; ignored here so a fork's copy is never served.
+MY-CHANGES.md
 # AI-agent working agreement — repo-only (visible on GitHub, never a web asset).
 CLAUDE.md
 AGENTS.md

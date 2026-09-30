@@ -148,6 +148,10 @@ answers, and walks you through the settings and console moves you'd otherwise
 have to find by clicking around: picking a look, turning pages on, cropping
 thumbnails properly, putting your own work on the homepage, and hitting publish.
 
+Changing words, the menu or the look, yourself or with an AI helping? Start
+with **[CUSTOMIZE.md](CUSTOMIZE.md)**. It says which file each change lives in,
+and which changes carry through future updates and which you'd have to redo.
+
 ## What it costs
 
 Nothing, for a normal site. But you do have to put a payment method on
@@ -224,6 +228,7 @@ For the curious, or anyone deciding whether to trust it:
 |------|--------------|
 | [Install guide](https://os.oaklens.art/install) | The interactive walkthrough, one step at a time |
 | [setup.md](setup.md) | Deploying and operating an instance: accounts, secrets, storage, the console |
+| [CUSTOMIZE.md](CUSTOMIZE.md) | What to change and where, which changes survive an update, and rules for an AI helping you |
 | [quickstart.md](quickstart.md) | Your first half hour after the install: the config switches and console moves, one at a time |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in the engine, and whether you need to do anything about it |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | The engine-vs-instance model and the ground rules |

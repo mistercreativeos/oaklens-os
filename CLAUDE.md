@@ -1,5 +1,10 @@
 # CLAUDE.md — working agreement for AI agents on this repo
 
+> **Only changing words or settings?** Read [`CUSTOMIZE.md`](CUSTOMIZE.md)
+> instead: it covers where each change goes, which changes survive an engine
+> update, and the rules for asking the owner first. This file is for changing
+> how the site works.
+
 You are working on **OAKLENS OS**: a digital studio you own — portfolio, blog,
 audio and storefront — that runs as a **single Cloudflare Worker**: no
 framework, no build step, native ES modules on the front end. It also ships as

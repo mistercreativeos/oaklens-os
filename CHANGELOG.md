@@ -43,6 +43,15 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
   because the button can't switch it on for you. It then goes through the setup
   screen field by field and lists what's left after the first deploy.
 
+- **New: [CUSTOMIZE.md](CUSTOMIZE.md), for changing your site yourself or with
+  an AI.** It names the file for each common change (tagline, menu, theme,
+  About text and so on) and sorts changes into three kinds: **Safe** (carries
+  through updates), **Watch** (may need redoing after an update) and **Yours
+  to maintain** (not promised to survive the next version). AI helpers are
+  told to say which kind a change is and ask before anything that isn't Safe,
+  and to note those changes in a `MY-CHANGES.md` of your own, so update day
+  is a checklist. `AGENTS.md` and `CLAUDE.md` now point there first.
+
 ## 2026-09-24 (the console stops redrawing itself while work is waiting)
 
 **Nothing to do on merge.**

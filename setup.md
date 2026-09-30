@@ -96,7 +96,8 @@ under **Builds**, looks the same but only reaches the build, never your site.
    github.com, open `site.config.js`, press the pencil to edit, change
    `repoConnected: false` to `true`, and fill in your name, tagline and contact.
    Commit it. That commit redeploys the site on its own, which is the proof the
-   loop works.
+   loop works. For everything else you might change, and which changes survive
+   future updates, see [CUSTOMIZE.md](CUSTOMIZE.md).
 3. **Open the console** at `/dev/field-console` on your new address and log in.
    [quickstart.md](quickstart.md) takes it from there.
 
