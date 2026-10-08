@@ -1,6 +1,12 @@
 # OAKLENS OS
 
-**Claim your space. Hold the keys.**
+**Your work. Published free.**
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/oaklensart/oaklens-os)
+
+**Install it in one click, in your browser.** Before you press the button,
+[read the three things to have ready](setup.md#before-you-click). One of them has
+to be switched on in Cloudflare first, or the install can't finish.
 
 [![CI](https://github.com/oaklensart/oaklens-os/actions/workflows/ci.yml/badge.svg)](https://github.com/oaklensart/oaklens-os/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
@@ -20,15 +26,15 @@ Whatever you make is what it's for. It began as one photographer's site and the
 image tools show it — but the writing surface, the audio layer and the feeds are
 first-class, not accessories, and nothing here assumes a camera.
 
-**New to this?** Follow the
-[interactive install guide](https://os.oaklens.art/install). It walks you
-through the whole setup one step at a time, says what each step is for before it
-tells you what to type, and remembers where you got to if you close the tab. It
-was written for people who don't do this for a living. Start there and you can
-ignore everything below.
+**New to this?** The [one-click install](https://os.oaklens.art/install) is
+three steps on one page: a free GitHub account, a free Cloudflare account with
+R2 switched on, and one link. There is nothing to type. It was written for
+people who don't do this for a living. Start there and you can ignore everything
+below.
 
-Prefer to read it all at once? [setup.md](setup.md) is the same ground in
-reference form, plus everything about operating the site once it's up.
+Prefer to read it all at once, or to install from a terminal?
+[setup.md](setup.md) is the same ground in reference form, plus everything about
+operating the site once it's up.
 
 ---
 
@@ -55,7 +61,13 @@ your own domain later changes nothing in the code.
   numbers, and nothing downloads until someone presses play. You get a player on
   the homepage, a permanent address per track, numbered tracklists inside posts,
   and a real RSS 2.0 podcast feed at `/podcast.xml`. No library, no iframe, no
-  CSP change.
+  CSP change. **The podcast half of this is in beta** — the feed is valid RSS and
+  the console tells you which fields a directory still wants, but exactly one
+  short show has been through a real submission so far. If you point an app at
+  your feed or send it to a directory, please
+  [say what happened](https://github.com/oaklensart/oaklens-os/issues) — a
+  rejection message is worth more to us than a bug report. The rest of the audio
+  layer is not beta.
 - **Writing that stands on its own.** Field Notes is Markdown with a live
   editor, and a post with no picture in it still gets a homepage card — sized to
   the writing, so a single good line lands like a pull quote instead of rattling
@@ -75,6 +87,11 @@ your own domain later changes nothing in the code.
   off by default and each one widens exactly the one thing it needs.
 
 ## Quick start
+
+**The one-click button at the top of this page does steps 1 and 3 for you**,
+with no terminal. Step 2, switching on R2, is still yours to do first
+([what to have ready](setup.md#before-you-click)). The steps below are the
+terminal route, for when you'd rather see every command.
 
 ### 1. Get your own copy
 
@@ -131,6 +148,10 @@ answers, and walks you through the settings and console moves you'd otherwise
 have to find by clicking around: picking a look, turning pages on, cropping
 thumbnails properly, putting your own work on the homepage, and hitting publish.
 
+Changing words, the menu or the look, yourself or with an AI helping? Start
+with **[CUSTOMIZE.md](CUSTOMIZE.md)**. It says which file each change lives in,
+and which changes carry through future updates and which you'd have to redo.
+
 ## What it costs
 
 Nothing, for a normal site. But you do have to put a payment method on
@@ -171,6 +192,9 @@ this README.
 - A **GitHub account**, free
 - A **Cloudflare account**, free. The account itself asks for no card; the R2
   storage in step 2 does. See [What it costs](#what-it-costs)
+
+That's all the one-click button needs. The terminal route also needs:
+
 - **Node 22 or newer**. The Cloudflare tooling refuses to run on older versions,
   with an error that doesn't explain itself
 - **Git**, and a terminal you can paste into. On Windows use **Git Bash** (it
@@ -202,8 +226,9 @@ For the curious, or anyone deciding whether to trust it:
 
 | File | What's in it |
 |------|--------------|
-| [Install guide](https://os.oaklens.art/install) | The interactive walkthrough, one step at a time |
+| [One-click install](https://os.oaklens.art/install) | Three steps on one page: the two accounts, then the link |
 | [setup.md](setup.md) | Deploying and operating an instance: accounts, secrets, storage, the console |
+| [CUSTOMIZE.md](CUSTOMIZE.md) | What to change and where, which changes survive an update, and rules for an AI helping you |
 | [quickstart.md](quickstart.md) | Your first half hour after the install: the config switches and console moves, one at a time |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in the engine, and whether you need to do anything about it |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | The engine-vs-instance model and the ground rules |

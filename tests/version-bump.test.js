@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { scanVersionMap } from './helpers/versions.js';
 
@@ -43,7 +43,34 @@ function tryGit(cmd) {
  * ref was stale the entire check silently passed, which is worse than not having
  * it at all. The test below turns null into a loud failure.
  */
+/**
+ * Is the tree we are testing THIS repo, rather than some repo we happen to be
+ * standing inside?
+ *
+ * ⚠️ This is not paranoia; it is a reproduced failure. `scripts/os-extract.mjs`
+ * defaults its target to a sibling of the tree it runs from, so `--verify` on an
+ * agent worktree builds the extracted engine at
+ * `.claude/worktrees/oaklens-os-tree` — gitignored, but still INSIDE this repo's
+ * working tree. Every git command there answers about the OUTER repo:
+ * `--is-inside-work-tree` says `true` and `merge-base HEAD origin/main` resolves
+ * happily, so the skip below never fired. `ls-tree` then scoped itself to the
+ * cwd's path prefix, found **zero** tracked files, and this guard failed the
+ * extracted tree's suite over a check that had nothing to check.
+ *
+ * Real paths on both sides: a repo reached through a symlink (`/tmp` is one on
+ * macOS) would otherwise compare unequal and silently skip the project's #1
+ * protection, which this file exists to say is worse than having no check.
+ */
+function isOwnRepo() {
+  const top = tryGit('rev-parse --show-toplevel');
+  if (!top) return false;
+  try { return realpathSync(top) === realpathSync(ROOT); } catch { return top === ROOT; }
+}
+
 function resolveBaseRef() {
+  // Not our tree, so there is no history of OURS to diff — answer null and let
+  // the guard below skip visibly, the same as a tarball with no git at all.
+  if (!isOwnRepo()) return null;
   const base = tryGit('merge-base HEAD origin/main');
   if (!base || !tryGit(`rev-parse --verify ${base}^{commit}`)) return null;
 
@@ -53,7 +80,18 @@ function resolveBaseRef() {
   // was just made still gets checked. On a root commit there is nothing behind
   // HEAD; returning base makes this a no-op rather than a false alarm.
   const head = tryGit('rev-parse HEAD');
-  if (base === head) return tryGit('rev-parse HEAD~1') ?? base;
+  if (base === head) {
+    // …UNLESS the change under test is still in the working tree. Stepping back
+    // then compares against HEAD~1, and HEAD's own (correct) bump satisfies the
+    // check on the LATER edit's behalf — so a second round of changes to the
+    // same file, on top of a commit that is already on origin/main, sails
+    // through at the version that commit published. Found the hard way, in
+    // exactly that shape: field-console.css bumped 51→52 and pushed, then
+    // edited again, and this guard saw 52 ≠ 51 and passed.
+    const dirty = tryGit('status --porcelain -- js css');
+    if (dirty) return base;
+    return tryGit('rev-parse HEAD~1') ?? base;
+  }
   return base;
 }
 
@@ -87,7 +125,12 @@ const baseRef = resolveBaseRef();
 const isShallow = tryGit('rev-parse --is-shallow-repository') === 'true';
 // No git at all — e.g. the freshly extracted engine tree before its first
 // commit, or a tarball download. There is nothing to diff and nothing wrong.
-const isGitRepo = tryGit('rev-parse --is-inside-work-tree') === 'true';
+//
+// `isOwnRepo()`, not `--is-inside-work-tree`: an extracted tree built inside
+// this repo answers `true` to that and is still not a tree with our history in
+// it. See the note on isOwnRepo above — it is the difference between skipping
+// visibly and failing over nothing.
+const isGitRepo = isOwnRepo();
 
 describe('?v= bumped-on-change', () => {
   it('requires ?v= to be bumped when a js/ or css/ file changes', (ctx) => {
@@ -143,5 +186,12 @@ describe('?v= bumped-on-change', () => {
     }
 
     expect(failures, `\n${failures.join('\n')}\n`).toEqual([]);
-  });
+  // This check reads every versioned asset at the base ref through its own
+  // `git show`, so it spends its time in dozens of subprocesses rather than in
+  // JS. Vitest's 5s default was never a budget chosen for that: it holds when
+  // the file runs alone (~2.5s) and blows when the full suite runs it alongside
+  // a hundred others competing for the same CPU, which reads as a flaky guard
+  // and trains people to re-run instead of look. The number is deliberate — if
+  // this ever genuinely takes 30s, the batching is the thing to fix.
+  }, 30000);
 });

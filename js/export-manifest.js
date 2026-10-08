@@ -68,6 +68,13 @@ export const EXPORT_MANIFEST = {
     // per-track view is a query (?a=slug), which the page resolves client-side
     // from the data island, so no per-track export entry is needed.
     { route: '/listen', file: 'listen/index.html', aliases: ['/listen/'] },
+    // One composed card at its own address. The saved file is the page with no
+    // id in it; offline the id rides as `?id=<id>` (js/page-card.js resolves
+    // the path first and the query second), because file:// has no server to
+    // map /card/<id> onto a file. So the export carries the page once and
+    // every card is reachable from it, exactly the way /listen carries one file
+    // for every track.
+    { route: '/card/', file: 'card/index.html', aliases: ['/card'] },
     { route: '/about', file: 'about/index.html' },
     { route: '/support', file: 'support/index.html' },
     { route: '/archive/manifest.html', file: 'archive/manifest.html' },
@@ -86,6 +93,9 @@ export const EXPORT_MANIFEST = {
     // Per-page render scripts — externalized from inline <script> blocks for a
     // strict script-src (no 'unsafe-inline'). Copied verbatim.
     'js/page-index.js',
+    // The chrome those three share (theme lamp + links-out) — without it a
+    // saved copy of the guide has a dead lamp. Stripped for forks alongside
+    // them, by the transform in scripts/os-extract.mjs.
     'js/page-about.js',
     'js/page-archive.js',
     'js/page-buffer.js',
@@ -100,6 +110,7 @@ export const EXPORT_MANIFEST = {
     // pressing play then reads the track file the imageRules below carry.
     'js/audio-player.js',
     'js/page-listen.js',
+    'js/page-card.js',
     'fonts/syne-latin-var.woff2',
     'fonts/syne-mono-latin.woff2',
     // Preset faces (starter template) — main.css declares all of them, so an
@@ -122,10 +133,11 @@ export const EXPORT_MANIFEST = {
     'data/archive.json',
     'data/posts.json',
     'data/wallpapers.json',
-    'data/barrel.json',
     'data/friends.json',
     'data/library.json',
     'data/audio.json',
+    'data/audio-sets.json',
+    'data/cards.json',
   ],
 
   // Field-note markdown: one file per published entry in `data`, at
@@ -148,13 +160,13 @@ export const EXPORT_MANIFEST = {
   // (export keywords stripped → globals) loaded before the page scripts;
   // the page falls back to the global when the import fails offline.
   offlineModules: [
-    { src: '/js/markdown-engine.js?v=4', file: 'offline/markdown-engine.js' },
+    { src: '/js/markdown-engine.js?v=5', file: 'offline/markdown-engine.js' },
   ],
 
   // Worker-rendered documents worth carrying for completeness even though
   // they only mean anything online (their links are absolute by design).
   // Fetched best-effort — a 501/absent route never sinks the export.
-  extras: ['/sitemap.xml', '/feed.xml'],
+  extras: ['/sitemap.xml', '/feed.xml', '/podcast.xml'],
 
   // Which CDN objects the data implies. `source` names a dataFile; `expand`
   // maps one entry to CDN keys + tiers. Keys referenced directly in HTML,
@@ -174,5 +186,13 @@ export const EXPORT_MANIFEST = {
     // is what makes an exported tree PLAY offline rather than just draw the
     // waveform (the peaks are already in data/audio.json).
     { source: 'data/audio.json', expand: (e) => (e.filename ? [`audio/${e.filename}`] : []) },
+    // Composed cards name their picture as a bare filename, which the CDN-URL
+    // harvester cannot see — without this rule an exported tree ships a card
+    // with a broken picture. The folder is on the record because a wallpaper's
+    // derivatives live outside archive/.
+    {
+      source: 'data/cards.json',
+      expand: (e) => sizeVariants(e.folder === 'wallpaper' ? 'wallpaper' : 'archive', e.media),
+    },
   ],
 };

@@ -193,7 +193,9 @@ describe('a generated key is a real key — the gates still hold', () => {
   it('an unsigned or tampered token is rejected', async () => {
     const env = { SUBSCRIBERS: fakeKV() };
     const token = await createToken(env);
-    const tampered = `${token.slice(0, -2)}xy`;
+    // Not just `+ 'xy'`: a token that already ends in "xy" would be rebuilt
+    // identical and the assertion would be testing a VALID token.
+    const tampered = `${token.slice(0, -2)}${token.endsWith('xy') ? 'zz' : 'xy'}`;
     const req = new Request('https://example.com/api/x', { headers: { Authorization: `Bearer ${tampered}` } });
     expect(await verifyToken(req, env)).toBe(false);
   });
@@ -210,14 +212,15 @@ describe('wrangler.example.jsonc supports a one-click deploy', () => {
     return raw;
   };
 
-  it('documents both password forms and the deploy-button switch', () => {
-    // Cloudflare reads this file to decide what to ask the deployer for.
+  it('documents both password forms, and points the button at .dev.vars.example', () => {
     // The `secrets` line ships COMMENTED on purpose: a name listed there is
     // required to deploy, which would block the CLI install that sets
-    // AUTH_PASSWORD_HASH instead. Whoever publishes behind a button flips it.
+    // AUTH_PASSWORD_HASH instead. The button is asked for the password by
+    // `.dev.vars.example` (below), so nobody has to flip anything.
     const raw = cfg();
     expect(raw).toContain('AUTH_PASSWORD_HASH');
     expect(raw).toContain('AUTH_PASSWORD');
+    expect(raw).toContain('.dev.vars.example');
     expect(raw).toMatch(/\/\/\s*"secrets":\s*\["AUTH_PASSWORD"\]/);
   });
 
@@ -233,5 +236,48 @@ describe('wrangler.example.jsonc supports a one-click deploy', () => {
     for (const binding of ['SUBSCRIBERS', 'DB', 'CDN', 'ASSETS']) {
       expect(raw, `${binding} binding missing`).toContain(`"${binding}"`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The deploy button's password prompt
+// ---------------------------------------------------------------------------
+
+describe('.dev.vars.example makes the button ask for a password', () => {
+  // Found on a real button run, 2026-09-29: with no secret declared anywhere
+  // the button deployed cleanly and the console then refused every password,
+  // with nothing to say why. The button reads `.dev.vars.example` for the
+  // secrets to ask about; this file is that list.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.join(import.meta.dirname, '..');
+  const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+  const entries = () => read('.dev.vars.example').split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith('#'))
+    .map((l) => l.split('='));
+
+  it('lists AUTH_PASSWORD', () => {
+    expect(entries().map(([k]) => k)).toContain('AUTH_PASSWORD');
+  });
+
+  it('ships every value empty', () => {
+    // A value here is a default the dialog pre-fills: every install that
+    // clicked through would share one known password.
+    for (const [k, ...v] of entries()) expect(v.join('='), `${k} has a value`).toBe('');
+  });
+
+  it('never lists AUTH_PASSWORD_HASH or SESSION_SECRET', () => {
+    // Nobody can type a bcrypt hash into a dialog, and SESSION_SECRET
+    // generates itself. Listing either would ask a question with no good answer.
+    const keys = entries().map(([k]) => k);
+    expect(keys).not.toContain('AUTH_PASSWORD_HASH');
+    expect(keys).not.toContain('SESSION_SECRET');
+  });
+
+  it('is never served as a page', () => {
+    // assets.directory is the repo root, so anything not in .assetsignore is
+    // public. The example holds no values, but .dev.vars itself does.
+    expect(read('.assetsignore').split('\n')).toContain('.dev.vars*');
   });
 });

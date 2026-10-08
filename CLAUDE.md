@@ -1,5 +1,10 @@
 # CLAUDE.md — working agreement for AI agents on this repo
 
+> **Only changing words or settings?** Read [`CUSTOMIZE.md`](CUSTOMIZE.md)
+> instead: it covers where each change goes, which changes survive an engine
+> update, and the rules for asking the owner first. This file is for changing
+> how the site works.
+
 You are working on **OAKLENS OS**: a digital studio you own — portfolio, blog,
 audio and storefront — that runs as a **single Cloudflare Worker**: no
 framework, no build step, native ES modules on the front end. It also ships as
@@ -82,12 +87,16 @@ five, every time:
      bumping one module doesn't edit its importers and cascade up the stack.
    - **Either way:** bump the `dev/sw.js` `CACHE` name **once** for the whole
      change, not once per file.
-   > ⚠️ **The #1 silent miss.** `tests/guards.test.js` only checks that a file's
-   > `?v=` is *consistent* across references — **not** that you bumped it when the
-   > content changed. So a forgotten bump **passes CI** and then ships stale
-   > CSS/JS to every installed PWA (the service worker serves the old cached
-   > copy). Browser tabs revalidate and look fine, which is exactly how this hides.
-   > If you edited a module or the stylesheet, bumping `?v=` is not optional.
+   > ⚠️ **The #1 silent miss, now caught.** `tests/guards.test.js` only checks
+   > that a file's `?v=` is *consistent* across references — **not** that you
+   > bumped it when the content changed. A forgotten bump used to pass CI and
+   > then ship stale CSS/JS to every installed PWA (the service worker serves the
+   > old cached copy) while browser tabs revalidated and looked fine, which is
+   > exactly how it hid. **`tests/version-bump.test.js` closes that gap**: it
+   > diffs `js/*` and `css/*` against the merge-base with `origin/main` and fails
+   > when content moved and the version didn't. So a missed bump is now a RED
+   > suite naming the file — not a silent ship. Bumping is still yours to do; the
+   > test only refuses to let you forget.
 
 3. **Update the docs your change touches.** `setup.md` (deploying and
    operating an instance), `quickstart.md` (the post-install guide), and any
@@ -127,7 +136,7 @@ Keep commits focused on one change; write a message that explains *why*, not jus
 
 ## How it's built (orient fast)
 
-- **One Worker, thin router.** `worker.js` (~360 lines) is just the entry: host +
+- **One Worker, thin router.** `worker.js` is just the entry: host +
   legacy redirects, a declarative **`EXACT_ROUTES`** map keyed by
   `"METHOD pathname"`, the prefix routes (`/api/bench/raw`, `/api/cdn`, `/p/`),
   the console-shell gate, and the HTMLRewriter asset path. **Order is behavior** —
@@ -142,15 +151,16 @@ Keep commits focused on one change; write a message that explains *why*, not jus
   (D1), `CDN` (R2) — the resource *names* behind them are instance config and
   live in `wrangler.jsonc`, never here. Daily cron `0 11 * * *`.
 - **Identity is edge-injected**, never hardcoded (see engine vs. instance).
-- **The console is sixteen layered modules.** `js/console-ui.js` is a 68-line
+- **The console is twenty-eight layered modules.** `js/console-ui.js` is a thin
   barrel — `export *` from `js/console/*` in layer order — and holds no logic.
   A module may import only ones *below* it in that order; when lower code needs
-  something above, the thing above **registers** with it (four seams, all wired
+  something above, the thing above **registers** with it (six seams, all wired
   in `js/console/init.js`). `tests/console-modules.test.js` enforces the
   layering against the real imports — read it for the layer order.
-- **~850 tests** (`vitest`, Node env). CI runs `npm test` + a `wrangler deploy
-  --dry-run` bundle check. (Approximate on purpose — an exact count in a doc is
-  drift waiting to happen; `npm test` prints the real one.) The leak scan is a
+- **The suite is `vitest`, Node env.** CI runs `npm test` + a `wrangler deploy
+  --dry-run` bundle check. (No count here on purpose — a number in a doc is
+  drift waiting to happen, and this one drifted twice: "~850" when it was 1837,
+  then "~2,000" when it was 2660. `npm test` prints the real one.) The leak scan is a
   **manual** gate here and a **CI** gate in the extracted public repo — this
   repo is supposed to carry the identity it hunts for.
 
@@ -186,6 +196,22 @@ Keep commits focused on one change; write a message that explains *why*, not jus
   exclusive scope) only unlocks *serving the console document* — it can never
   authorize an API mutation (no CSRF surface). Secrets live in Worker bindings,
   never the browser. Any new gate ships with a test.
+- **Reversibility is a rule, and it has exactly three layers — there is no undo
+  stack.** Every destructive or overwriting gesture must be undoable *from the
+  view that made it*: **(1) structural** — the reverse is the same affordance,
+  still on screen (un-star by tapping the star again), and it runs the *same
+  mutator*, so the staging arithmetic stays honest by construction; **(2) one
+  chip, not a history** — a single `↩ RE-PIN`-shaped control naming what a
+  displacing action pushed out, resolved against state *as it is now* so it can
+  never be a dead button; **(3) the publish horizon** — nothing is live until
+  publish, and the session trash holds deletions until then. A `window.prompt`
+  that overwrites a field with no way back, a bulk clear with no confirm, and a
+  delete that frees a published address for reuse are each a violation of it.
+  ⚠️ **A generic undo stack is explicitly rejected** — don't re-derive it. The
+  four bullets that follow (frame permanence, the publish guards, trash
+  lifetime) are *instances* of this rule, not separate rules; a new surface
+  inherits it whether or not anyone remembers to say so. Session trash covers
+  deletions; a toggle is its own undo.
 - **Frame permanence — do not renumber the buffer.** Frame numbers are
   *positional* and citable as `f#234` (in field notes and share links).
   Deleting a *published* frame would renumber every frame after it and
@@ -193,6 +219,33 @@ Keep commits focused on one change; write a message that explains *why*, not jus
   `dark: true` tombstone that keeps its number and renders as an inert `//` cell)
   — true delete is only for never-published frames. See manual §5.20 and
   `tests/lighttable.test.js`.
+  **Audio has the same rule for the same reason** (2026-09-02): a track's slug is
+  its permanent address, pointed at by a share link, every post shortcode
+  carrying it, and the episode's `<guid>` in `/podcast.xml` — so a published
+  track retires to a `retired: true` tombstone that reserves the slug forever.
+  Freeing it means the old link plays *different audio* and the new episode is
+  invisible to everyone already subscribed. **A saved audio set is the third**
+  (2026-09-10, manual §3.9.1): its slug is its address at `/listen/?set=<slug>`,
+  so a published set retires the same way — it owns no media, and the
+  reservation *is* the record. ⚠️ All three tombstones need their **own branch
+  in `buildBundle()`**: the live whitelist drops the tombstone flag and
+  republishes the entry as live, pointing at media that was just deleted — or,
+  for a set, at an address quietly freed for the next one to take.
+  (manual §4.7 / §4.7.1, `tests/audio-retire.test.js`)
+- **Cards — one renderer per kind, and the constants are fenced.** A homepage
+  card is a *kind* (`photo`, `text`, `audio`, `pulse`) wearing a *layout*; each
+  kind has exactly one renderer in `js/recent-index.js`. A composed card (the
+  owner's own, `data/cards.json`) is `kind + overrides` drawn by the kind's
+  renderer — never a second implementation of a kind's markup, and nothing may
+  branch on "is this composed" except to apply the overrides. `pickAutomatic`
+  is the automatic row and **does not change**: a site with no composed cards
+  publishes the same bytes it always did, pinned by fixtures
+  (`tests/card-engine.test.js`, `tests/cards-legacy-fixtures.test.js`) that are
+  **never regenerated to make a test pass**. `RAW_MAX`, `GRID_SIZE`,
+  `VISIBLE_PINS`, `AUDIO_MAX_PLAYLIST`, `COMPOSED_MAX` and slot order are
+  owner-decided and test-pinned. In the studio, reversibility is the three
+  layers above and nothing more: a picker whose `default` is always on screen
+  needs no undo chip.
 - **Publish is an all-or-nothing snapshot.** `buildBundle()` serializes *every*
   `data/*.json` from full in-memory state and commits atomically to GitHub. Two
   guards protect it: the **empty-overwrite guard** (refuses to blank a non-empty
@@ -242,9 +295,9 @@ Keep commits focused on one change; write a message that explains *why*, not jus
 
 | Area | Modules |
 |------|---------|
-| `src/shared/` | `http` (CORS/JSON + `notConfigured` 501), `csp` (per-surface CSP + pre-paint hash), `pages` (public-page list + config gating), `text` (escapeHtml/baseName/localDay), `auth` (JWT HS256 + scopes + cookies), `site` (config-derived meta/cdnBase/entity JSON-LD), `webring` (ANALOGS seat guard + token/href builders), `shortlinks` (branded `/<code>` → 302 table + collision guards) |
+| `src/shared/` | `config` (site.config.js over engine defaults — every server module reads config through it), `http` (CORS/JSON + `notConfigured` 501), `csp` (per-surface CSP + pre-paint hash), `pages` (public-page list + config gating), `text` (escapeHtml/baseName/localDay), `auth` (JWT HS256 + scopes + cookies), `site` (config-derived meta/cdnBase/entity JSON-LD), `pulse` (pure pulse rules: states, limits, TTL), `podcast` (frozen iTunes taxonomy + feed-readiness validators), `webring` (ANALOGS seat guard + token/href builders), `shortlinks` (branded `/<code>` → 302 table + collision guards) |
 | `src/edge/` | `chrome` (HTMLRewriter: OG + nav + heroes + `injectSiteChrome`), `data` (edge-cached data-JSON loader), `weather` (Open-Meteo SWR) |
-| `src/api/` | `publish` (GitHub publish/sync + guards), `bench` (D1 queue + Backblaze RAW proxy), `drafts` (FN cloud drafts), `console-auth` (`/api/auth`·`/api/logout` + rate limit), `subscribers` (subscribe/export), `assets` (R2 upload/delete + `/api/cdn` proxy + `/api/og-cards`), `site-meta` (manifest/sitemap/feed/buffer-summary/site-settings) |
+| `src/api/` | `publish` (GitHub publish/sync + guards), `bench` (D1 queue + Backblaze RAW proxy), `drafts` (FN cloud drafts), `console-auth` (`/api/auth`·`/api/logout` + rate limit), `pulse` (D1 current-pulse + log, one-live invariant), `subscribers` (subscribe/export), `assets` (R2 upload/delete + `/api/cdn` proxy + `/api/og-cards`), `site-meta` (manifest/sitemap/feed/buffer-summary/site-settings) |
 | `src/cron/` | `archive` (daily Wayback Save-Page-Now) |
 
 `worker.js` re-exports a few symbols (`pageDisabled`, `publicPages`,

@@ -2,7 +2,7 @@ import {
   createRawToken, sha256Hex, verifyShellRequest,
 } from './src/shared/auth.js';
 import siteConfig from './src/shared/config.js';
-import { withCors, handleCORS, demoModeRes } from './src/shared/http.js';
+import { withCors, handleCORS, demoModeRes, jsonRes } from './src/shared/http.js';
 import { securityHeaders, withCsp } from './src/shared/csp.js';
 import { readCachedTemp, refreshLocalTemp } from './src/edge/weather.js';
 import { pageDisabled, publicPages } from './src/shared/pages.js';
@@ -21,13 +21,16 @@ import { handleAuth, handleLogout } from './src/api/console-auth.js';
 import { handleSubscribe, handleExport } from './src/api/subscribers.js';
 import { handleUpload, handleDeleteAssets, handleCdnProxy, handleOgCards } from './src/api/assets.js';
 import {
-  getPostMeta, getFrameOgData, getAudioOgData, injectOg, injectSiteChrome,
+  getPostMeta, getFrameOgData, getAudioOgData, getCardRecord, getCardOgData, _fnOgImage,
+  _validCardId, injectOg, injectSiteChrome,
   _frameImg, _ogImage, _navLinksHtml, HERO_PRELOAD_WIDTH,
 } from './src/edge/chrome.js';
 import {
-  handleManifest, handleSitemap, handleFeed, handlePodcastFeed, handleBufferSummary, handleSiteSettings,
+  handleManifest, handleSitemap, handleFeed, handlePodcastFeed, handleBufferSummary, handleSiteSettings, handleVersion,
   handleAnalogsToken,
 } from './src/api/site-meta.js';
+import { handleDevFeed, warmDevFeed } from './src/api/devfeed.js';
+import { handleGetStorage, handleMeasureStorage, measureStorage } from './src/api/storage.js';
 
 // Re-exported for the public contract: tests/page-gate.test.js imports the page
 // helpers + _navLinksHtml, and tests/publish-guard.test.js imports the two pure
@@ -104,7 +107,11 @@ const EXACT_ROUTES = new Map([
   // RSS, and only tracks the author marked `episode` belong in one.
   ['GET /podcast.xml', (request, env) => handlePodcastFeed(request, env)],
   ['GET /api/buffer-summary', (request, env) => handleBufferSummary(request, env)],
+  // The /dev page's commit grid + activity log. Public and cache-first;
+  // 404s unless site.config.js names repos under `devFeed`.
+  ['GET /api/devfeed', (request, env, url, ctx) => handleDevFeed(request, env, url, ctx)],
   ['GET /api/site/settings', (request, env) => handleSiteSettings(request, env)],
+  ['GET /api/version', (request, env) => handleVersion(env)],
   ['GET /.well-known/analogs.txt', () => handleAnalogsToken()],
   ['POST /api/auth', (request, env) => handleAuth(request, env)],
   ['POST /api/logout', () => handleLogout()],
@@ -129,7 +136,24 @@ const EXACT_ROUTES = new Map([
   ['POST /api/pulse', (request, env) => handlePostPulse(request, env)],
   ['DELETE /api/pulse', (request, env) => handleDeletePulse(request, env)],
   ['GET /api/pulse/log', (request, env) => handlePulseLog(request, env)],
+  // How full storage is, for the console's Bridge. Measured daily by the cron
+  // below and kept in KV; POST re-measures, rate-limited (src/api/storage.js).
+  ['GET /api/storage', (request, env) => handleGetStorage(request, env)],
+  ['POST /api/storage', (request, env) => handleMeasureStorage(request, env)],
 ]);
+
+// Allowed methods per exact pathname, DERIVED from the table above rather than
+// hand-kept — a second list would be one more thing to forget when a route is
+// added. Used only to answer 405 (see the dispatcher); it can never add a route.
+const EXACT_METHODS = (() => {
+  const byPath = new Map();
+  for (const key of EXACT_ROUTES.keys()) {
+    const [method, pathname] = key.split(' ');
+    if (!byPath.has(pathname)) byPath.set(pathname, new Set());
+    byPath.get(pathname).add(method);
+  }
+  return byPath;
+})();
 
 // Demo mode (site.config.js → demoMode: true): every route that writes —
 // or reads subscriber PII — answers a deliberate 403 { demoMode: true }
@@ -162,6 +186,17 @@ export const DEMO_LOCKED_ROUTES = new Set([
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runArchiveCapture(env));
+    // Warm the /dev commit feed once a day, so the page is fresh for the
+    // first visitor rather than because of them. Without this the feed is
+    // purely traffic-driven: a stale entry is only noticed when somebody
+    // arrives, and that visitor sees the OLD payload while the refresh runs
+    // behind them. A quiet week would mean a week-old log.
+    // Independent of the archive run — neither should be able to skip the
+    // other — and silent when `devFeed` is unconfigured (it returns null).
+    ctx.waitUntil(warmDevFeed(env));
+    // Measure storage once a day so the console's gauge never lists the
+    // bucket on open (src/api/storage.js). Independent of the two above.
+    ctx.waitUntil(measureStorage(env).catch(() => {}));
   },
 
   async fetch(request, env, ctx) {
@@ -201,8 +236,37 @@ export default {
     }
     const exactRoute = EXACT_ROUTES.get(routeKey);
     if (exactRoute) {
-      const res = await exactRoute(request, env, url);
+      // ctx rides along so a handler can defer background work with
+      // waitUntil (devfeed's stale-while-revalidate refresh). Handlers
+      // that don't need it simply declare fewer parameters.
+      const res = await exactRoute(request, env, url, ctx);
       return url.pathname.startsWith('/api/') ? withCors(res, url.origin) : res;
+    }
+
+    // A KNOWN path with the WRONG method: answer 405 here rather than letting it
+    // fall through. Two reasons, and the second is the expensive one:
+    //   - `DELETE /api/pulse` answering with the site's HTML 404 page is a lie a
+    //     client cannot act on; 405 + Allow is the honest answer and tells the
+    //     caller what the path does support.
+    //   - everything below this point is the PAGE path — the weather read, the
+    //     OG lookups, the HTMLRewriter — and a malformed API call was paying for
+    //     all of it to render a 404 nobody reads.
+    // Exact pathnames only, so the prefix routes below (bench/raw, cdn, /p/,
+    // short links) are untouched: their pathnames are never in this map.
+    const allowed = EXACT_METHODS.get(url.pathname);
+    if (allowed && !allowed.has(request.method)) {
+      // HEAD is GET without a body and the runtime strips the body itself, so a
+      // path that answers GET must not 405 a HEAD probe (uptime monitors send
+      // them, and the /api/cdn proxy already learned this the hard way).
+      if (!(request.method === 'HEAD' && allowed.has('GET'))) {
+        // HEAD is supported wherever GET is (the branch above lets it through),
+        // so Allow says so — it is meant to list what the resource answers.
+        const allow = [...new Set([...allowed, ...(allowed.has('GET') ? ['HEAD'] : [])])]
+          .sort().join(', ');
+        const res = jsonRes({ ok: false, error: `${request.method} not allowed on ${url.pathname}` }, 405);
+        res.headers.set('Allow', allow);
+        return url.pathname.startsWith('/api/') ? withCors(res, url.origin) : res;
+      }
     }
 
     // BENCH RAW download (prefix — filename varies)
@@ -248,6 +312,55 @@ export default {
       }
     }
 
+    // CARD PERMALINK — /card/<id> (docs/cards-core-complete.md chunk 6).
+    //
+    // A composed card is a content type and a content type has an address. The
+    // id lives in the PATH (a share link is read by people, and `?id=` reads
+    // like machinery), so nothing is on disk at that URL — this resolves the id
+    // and serves the one `card/index.html` document for it, the console-gate
+    // precedent for an alternate-asset fetch. The page then renders the card
+    // client-side from data/cards.json, the way /listen renders a track.
+    //
+    // A RETIRED id answers 410 here, before the page is served: the record is a
+    // tombstone reserving the address so a future card can never quietly answer
+    // someone's old link, and 410 is the honest thing to tell a crawler holding
+    // it (owner decision, 2026-09-11 — plan §7 Q2). An UNKNOWN id falls through
+    // to the page's own plain state, because "typed wrong" is the common case
+    // and it is not the visitor's fault.
+    //
+    // ⚠️ THIS ROUTE CLAIMS ONLY WHAT IS ACTUALLY AN ADDRESS. `/card/<id>` where
+    // <id> is one valid segment — nothing else. A path with a further slash in
+    // it is not a card address and falls through to the asset layer, which is
+    // what makes `/card/anything/else.css` a plain 404 instead of this page
+    // served as text/html. It matters because THIS PAGE IS SERVED AT TWO
+    // DEPTHS: `/card/<id>` and `/card/<id>/` are the same address, so any
+    // document-relative reference on the page resolves under /card/ for one of
+    // them (the page's own refs are root-relative for exactly that reason, and
+    // a stylesheet answered with text/html is refused by every browser).
+    let cardPageId = null;
+    let cardPageRecord = null;
+    if ((request.method === 'GET' || request.method === 'HEAD')
+      && url.pathname.startsWith('/card/') && !pageDisabled('/card')) {
+      let raw = url.pathname.slice('/card/'.length).replace(/\/+$/, '');
+      try { raw = decodeURIComponent(raw); } catch { /* keep the raw form */ }
+      if (_validCardId(raw)) {
+        const found = await getCardRecord(url.origin, env, raw);
+        if (found.state === 'retired') {
+          return new Response('This card has been retired. Its address stays reserved.', {
+            status: 410,
+            headers: {
+              'Content-Type': 'text/plain; charset=utf-8',
+              'Cache-Control': 'no-store',
+              ...securityHeaders(url.origin, true),
+            },
+          });
+        }
+        cardPageId = raw;
+        // Held for the OG branch below, so a live card is looked up ONCE.
+        cardPageRecord = found.state === 'live' ? found.card : null;
+      }
+    }
+
     // FIELD CONSOLE SHELL GATE — secure-by-default (opt out: site.config.js →
     // consoleShellPublic: true). The admin console *document* is served only
     // to a valid console-shell cookie — the same posture the portal already
@@ -264,7 +377,18 @@ export default {
     if (isConsoleShell && siteConfig.consoleShellPublic !== true) {
       if (!(await verifyShellRequest(request, env))) {
         const gate = await env.ASSETS.fetch(new Request(`${url.origin}/dev/console-gate.html`));
-        return new Response(gate.body, {
+        // The gate carries the console's lighting, and light needs a colour.
+        // Stamp the PALETTE and nothing else, so a fork's login page is in its
+        // own brand. Deliberately NOT the site-chrome rewriter: the name,
+        // tagline, coordinates and OG card must never reach an
+        // unauthenticated visitor. One attribute, one element handler — and
+        // a palette name is already on every public page of the same site.
+        const lit = new HTMLRewriter().on('html', {
+          element(el) {
+            el.setAttribute('data-preset', (siteConfig.theme || {}).preset || 'aperture');
+          },
+        }).transform(gate);
+        return new Response(lit.body, {
           status: 401,
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
@@ -288,7 +412,9 @@ export default {
     // --- Asset serving + HTML rewriting ---
     const response = isGatedPage
       ? await env.ASSETS.fetch(new Request(`${url.origin}/404.html`))
-      : await env.ASSETS.fetch(request);
+      : cardPageId !== null
+        ? await env.ASSETS.fetch(new Request(`${url.origin}/card/`))
+        : await env.ASSETS.fetch(request);
 
     const contentType = response.headers.get('Content-Type') || '';
     if (!contentType.includes('text/html')) {
@@ -330,17 +456,25 @@ export default {
       ogData = await getFrameOgData(url, env, 'buffer');
     } else if (isListenPage) {
       ogData = await getAudioOgData(url, env);
+    } else if (cardPageRecord) {
+      ogData = await getCardOgData(url, env, cardPageRecord);
     } else if (isPostPage) {
       const postMeta = await getPostMeta(url, env);
       if (postMeta) {
-        heroUrl = _frameImg(url.origin, postMeta.hero, HERO_PRELOAD_WIDTH);
+        // Only a note that HAS a hero preloads one.
+        if (postMeta.hero) heroUrl = _frameImg(url.origin, postMeta.hero, HERO_PRELOAD_WIDTH);
         const slug = url.searchParams.get('slug');
         ogData = {
           title: `${postMeta.title || 'Field Note'} — ${siteConfig.name.toUpperCase()}`,
           description: [postMeta.location, postMeta.date].filter(Boolean).join(' · ') || `Field notes from ${siteConfig.name}.`,
-          // Prefer the stamped 1200×630 card (meta/<base>-og.webp) when the console
-          // has published one; _ogImage falls back to the raw hero otherwise.
-          image: await _ogImage(env, url.origin, postMeta.hero),
+          // Prefer the stamped card when the console has published one; _ogImage
+          // falls back to the raw hero otherwise. A note with NO hero has no
+          // photograph to fall back to, so it asks for its own stem instead
+          // (meta/fn-<slug>-og.webp, the painter's words tile — chunk 7) and
+          // takes null until one is stamped, which injectOg skips.
+          image: postMeta.hero
+            ? await _ogImage(env, url.origin, postMeta.hero)
+            : await _fnOgImage(env, url.origin, slug),
           // Canonical post URL is the extensionless route (the .html form
           // 307s to it), so shares and feed entries converge on one URL.
           ogUrl: `${url.origin}/field-notes/post?slug=${encodeURIComponent(slug)}`,

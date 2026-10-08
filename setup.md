@@ -33,27 +33,84 @@ one you can push to.
 
 ## The quick way — one click
 
-If this repo is published behind a **Deploy to Cloudflare** button, clicking it
-does the whole thing in a browser: it copies the repo into your own GitHub
-account, creates your photo storage, database and subscriber list on your
-Cloudflare account, wires them up, and deploys. It also sets up automatic
-redeploys, so from then on saving a change publishes it.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/oaklensart/oaklens-os)
 
-The button URL is your repo's URL wrapped like this:
+The button does the whole install in your browser. It copies this repo into your
+own GitHub account, creates your media storage, database and subscriber list on
+your Cloudflare account, wires them up and deploys. It also sets up automatic
+redeploys, so from then on every change saved to your repo goes live by itself.
+There's no terminal and nothing to install.
 
-```
-https://deploy.workers.cloudflare.com/?url=https://github.com/<owner>/<repo>
-```
+### Before you click
 
-Two things the engine does so that flow can work at all:
+Have these three ready. The third is the one people miss.
 
-- **Your password.** The dialog can ask you for secrets, but it cannot ask you
-  to produce a bcrypt hash. So the login accepts either `AUTH_PASSWORD_HASH`
-  (scrambled — what `setup.sh` writes) **or** `AUTH_PASSWORD` (the password
-  itself). If both are set, the scrambled one wins. To have the dialog ask for
-  it, uncomment the `"secrets"` line in `wrangler.jsonc` — but read the note
-  there first: a secret listed that way becomes *required* to deploy, which
-  blocks the CLI route below.
+1. **A GitHub account.** Free. The button puts your copy of the code there. The
+   first time, Cloudflare asks permission to connect to your GitHub; that
+   connection is what lets it make the repo and rebuild your site when you
+   publish.
+2. **A Cloudflare account.** Free. The account itself doesn't ask for a card.
+3. **R2 switched on.** R2 is where your pictures and audio live, and it is the
+   one piece a new Cloudflare account doesn't have yet. It's a single step in
+   the dashboard, it asks for a payment method, and it bills nothing for a
+   normal site. **Do it before you click**: the button can't do it for you, and
+   without it the install can't create your media storage.
+   [How, and what it costs](#before-either-way-switch-on-r2).
+
+### On the setup screen
+
+| Field | What to put |
+|---|---|
+| **Git account** | Yours. **Create private Git repository** is up to you: your site is public either way, and private only keeps the code and its history to yourself. |
+| **Project name** | Your site's name, lowercase with dashes, like `my-studio`. It becomes your address: `my-studio.<your-account>.workers.dev`. |
+| **KV namespace, D1 database, R2 bucket** | Each comes prefilled with a placeholder (`your-worker-name`, `YOUR_DB_NAME`, `your-bucket-name`). Rename them after your site so you can tell them apart later: `my-studio-kv`, `my-studio-db`, `my-studio-media`. |
+| **Build command** | Leave it empty. There's no build step. |
+| **Deploy command** | Leave it as `npm run deploy`. That's the step that creates your database tables. |
+| **Enable Preview builds** | Turn it off. Your site deploys from `main` only. |
+| **AUTH_PASSWORD** | Your console password, if the screen asks for one. Pick a long one you use nowhere else. |
+
+Leave everything else as it is and press **Deploy**. The build takes about a
+minute; when its page turns green, the **Visit** button opens your site.
+
+### Right after: set your password if you weren't asked
+
+The setup screen asks for `AUTH_PASSWORD` on copies of this repo that include a
+`.dev.vars.example` file. If yours didn't ask, the site is up but its console
+turns every password away, because it doesn't have one yet. Set it here:
+
+> Workers & Pages → your site → **Settings** → **Runtime variables and
+> secrets** → **Add variable** → Type **Secret**, name `AUTH_PASSWORD`, value
+> your password → save and deploy.
+
+Use that section, near the top. The **Variables and secrets** panel further down,
+under **Builds**, looks the same but only reaches the build, never your site.
+
+### Then make it yours
+
+1. **Make Publish work.** Publishing needs two more secrets, `GITHUB_TOKEN` and
+   `GITHUB_REPO`, added in the same place as the password.
+   `GITHUB_REPO` is `your-github-name/your-project-name`. The token takes a few
+   minutes to make: [how](#github_token--github_repo--what-makes-publish-work)
+   (skip the `wrangler` commands there; the dashboard does the same job).
+2. **Tell the site it's connected, and give it your name.** In your new repo on
+   github.com, open `site.config.js`, press the pencil to edit, change
+   `repoConnected: false` to `true`, and fill in your name, tagline and contact.
+   Commit it. That commit redeploys the site on its own, which is the proof the
+   loop works. For everything else you might change, and which changes survive
+   future updates, see [CUSTOMIZE.md](CUSTOMIZE.md).
+3. **Open the console** at `/dev/field-console` on your new address and log in.
+   [quickstart.md](quickstart.md) takes it from there.
+
+### What the engine does so the button works
+
+- **Your password.** The setup screen can ask you for secrets, but it cannot ask
+  you to produce a bcrypt hash. So the login accepts either `AUTH_PASSWORD_HASH`
+  (scrambled, what `setup.sh` writes) **or** `AUTH_PASSWORD` (the password
+  itself). If both are set, the scrambled one wins. The button asks for it
+  because `.dev.vars.example` lists it, with the value left empty so no install
+  starts with a known password. It is deliberately *not* in `wrangler.jsonc`'s
+  `"secrets"` list: a name there becomes *required* to deploy, which would block
+  the CLI route below.
 - **The signing key.** `SESSION_SECRET` needs no dialog. Leave it unset and the
   Worker generates a real 32-byte key on first use and keeps it in your KV
   namespace. Nobody has to invent random text.
@@ -260,7 +317,7 @@ npx wrangler secret put ADMIN_KEY
 
 **Then prove the pair works, end to end — thirty seconds.** In the Field
 Console, open **Publish** and press **↓ Sync from GitHub**. Green with a list
-like `buffer:0 · barrel:0 · …` means token and repo name both work. A red
+like `buffer:0 · archive:0 · …` means token and repo name both work. A red
 message naming a repo means `GITHUB_REPO` has a typo — the message shows
 exactly what the worker asked for, so compare it against your repo's address
 and re-run the command. "Bad credentials" means the token itself — re-run

@@ -1,26 +1,27 @@
 // OAKLENS Field Console — more-views.
 //
-// The four surfaces reachable only through the More sheet — Library
-// (pre-stage), Wall, Barrel, Network — plus LIST DRAG-REORDER. Precisely the
+// The three surfaces reachable only through the More sheet — Library
+// (pre-stage), Wall, Network — plus LIST DRAG-REORDER. Precisely the
 // MORE_VIEWS constant in the router, minus bench (self-contained enough to
 // stand alone). Read-mostly surfaces that change rarely, so they ride
-// together rather than paying four modules' overhead.
+// together rather than paying three modules' overhead.
 //
 // LIST DRAG-REORDER lives here, not in chrome, despite reading like a generic
 // UI primitive: listNudge()/wireListDrag() mutate STATE[listKey] and then
-// re-render the surface that owns the list — `listKey === "wallpapers" ?
-// renderWall : renderBarrel`. That is a bare function reference rather than a
-// call, which the first callgraph scanner could not see; here it is an
-// ordinary cycle inside one module instead of chrome reaching two layers up.
+// call renderWall() to re-render the surface that owns the list — an ordinary
+// cycle inside one module instead of chrome reaching two layers up. The wall
+// is the only reorderable list left (the barrel was retired 2026-09-20); the
+// listKey parameter stays because the mutation is generic and the next
+// reorderable surface should not have to reintroduce it.
 //
 // Extracted from console-ui.js 2026-07-29. See dev/console-module-plan.md.
 
-import { STATE, save, bumpStage, trashItem } from '../console-state.js';
+import { STATE, save, stageChange, trashItem } from '../console-state.js';
 import { getToken } from '../console-api.js';
 import { showToast, startProgress, updateProgress, endProgress, logEvent } from '../console-telemetry.js';
 import { toast, escapeHTML } from './chrome.js';
 import { generateVariants, cdnThumb, cdnVariant, isVideoAsset, SITE_FILE_PREFIX } from './assets.js';
-import { todayISO, uid, cleanFilename, readFileAsDataURL, computeHash, findDuplicateByHash } from './utils.js';
+import { todayISO, uid, cleanFilename, readFileAsDataURL, computeHash, findDuplicateByHash, paintHTML, setText } from './utils.js';
 import { scheduleLibrarySync } from './sync.js';
 import { _enqueueUpload } from './upload.js';
 
@@ -129,7 +130,7 @@ export async function libraryIngest(files) {
         hash: hash,
         added_at: todayISO(),
       });
-      bumpStage('library');
+      stageChange('library', { id: entryId, label: `${rawName} — new (local only)`, kind: 'add' });
       save();
       renderLibrary();
     }
@@ -198,10 +199,14 @@ export function renderLibrary() {
     // key once uploaded, `Date.now()` is unique if we somehow render too early.
     // Never append to a local data: URL (the not-logged-in fallback) — that
     // would corrupt the base64 payload.
+    // A synced item (_imported) is on the CDN as surely as one uploaded here:
+    // it takes the stable key too. It used to take Date.now(), so every
+    // render was a new address and every Library image (~1.4 MB at 1024w)
+    // downloaded again, twice at boot alone (K69, the Bridge field probe).
     const raw = cdnThumb(item);
     const thumbSrc = raw.startsWith('data:')
       ? raw
-      : raw + '?v=' + (item._uploaded ? '1' : Date.now());
+      : raw + '?v=' + (item._uploaded || item._imported ? '1' : Date.now());
 
     // Mirror renderBuffer(): while uploading/errored, show a placeholder rather
     // than pointing <img> at a CDN object that doesn't exist yet. Otherwise the
@@ -213,11 +218,13 @@ export function renderLibrary() {
     } else if (item._uploadError) {
       thumbHtml = '<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:0.5rem;letter-spacing:1px;color:var(--accent);">✕ FAILED</div>';
     } else {
-      thumbHtml = `<div class="thumb"><img src="${thumbSrc}" alt="" onerror="this.style.display='none'"></div>`;
+      // Lazy: the Library is a hidden view at boot, and a hidden view's
+      // pictures are not worth a cold open's bandwidth (K69).
+      thumbHtml = `<div class="thumb"><img src="${thumbSrc}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'"></div>`;
     }
 
     return `
-    <div class="archive-card">
+    <div class="archive-card" data-seam="box" data-backlit data-tier="card">
       ${thumbHtml}
       <div class="info">
         <div class="title">${escapeHTML(item.filename)}</div>
@@ -349,7 +356,7 @@ export async function wallIngest(files) {
         added_at: todayISO(),
         hash,
       });
-      bumpStage('wallpapers');
+      stageChange('wallpapers', { id: entryId, label: `${sanitizeWallTitle(file.name)} — new (local only)`, kind: 'add' });
       save();
       renderWall();
     }
@@ -401,7 +408,7 @@ export function wallAdd() {
     w.title = title;
     w.desc = desc;
     wallEditId = null;
-    bumpStage("wallpapers");
+    stageChange("wallpapers", { id: w.id, label: `${title} — updated` });
     save();
     ["wall-url","wall-title","wall-desc"].forEach(id => document.getElementById(id).value = "");
     const btn = document.querySelector('#view-wall .btn-stage');
@@ -417,7 +424,7 @@ export function wallAdd() {
   // NEW MODE
   if (!filename) return toast("filename + title required", "error");
   STATE.wallpapers.unshift({ id: uid(), filename, title, desc, isNew: true, added_at: todayISO() });
-  bumpStage("wallpapers");
+  stageChange("wallpapers", { id: STATE.wallpapers[0].id, label: `${title} — new`, kind: 'add' });
   save();
   ["wall-url","wall-title","wall-desc"].forEach(id => document.getElementById(id).value = "");
   renderWall();
@@ -426,7 +433,11 @@ export function wallAdd() {
 
 export function wallToggleNew(id) {
   const w = STATE.wallpapers.find(w => w.id === id);
-  if (w) { w.isNew = !w.isNew; bumpStage("wallpapers"); save(); renderWall(); }
+  if (w) {
+    w.isNew = !w.isNew;
+    stageChange("wallpapers", { id: w.id, label: `${w.title || w.filename} — NEW badge ${w.isNew ? 'on' : 'off'}` });
+    save(); renderWall();
+  }
 }
 export function wallRemove(id) {
   trashItem("wallpapers", id);
@@ -434,21 +445,26 @@ export function wallRemove(id) {
 
 export function renderWall() {
   const missing = STATE.wallpapers.filter(w => !w.filename).length;
-  document.getElementById("wall-stats").textContent =
-    `${STATE.wallpapers.length} wallpapers` + (missing ? ` · ${missing} missing filename` : "");
+  setText(document.getElementById("wall-stats"),
+    `${STATE.wallpapers.length} wallpapers` + (missing ? ` · ${missing} missing filename` : ""));
   const list = document.getElementById("wall-list");
   if (!STATE.wallpapers.length) {
-    list.innerHTML = `<div class="empty">// WALL EMPTY</div>`;
+    paintHTML(list, `<div class="empty">// WALL EMPTY</div>`);
     return;
   }
-  list.innerHTML = STATE.wallpapers.map((w, i) => {
+  // Written only when it differs (utils.js paintHTML); the rows it keeps keep
+  // their drag wiring, so the wiring runs only on rows it just wrote. This
+  // render is the list's one writer: a drag reorders STATE and calls it.
+  const wrote = paintHTML(list, STATE.wallpapers.map((w, i) => {
     let thumbHtml;
     if (w._uploading) {
       thumbHtml = `<div class="list-thumb" style="display:flex;align-items:center;justify-content:center;font-size:0.5rem;letter-spacing:1px;color:var(--accent);">▲ UPLOADING</div>`;
     } else if (w._uploadError) {
       thumbHtml = `<div class="list-thumb" style="display:flex;align-items:center;justify-content:center;font-size:0.5rem;letter-spacing:1px;color:var(--accent);">✕ FAILED</div>`;
     } else {
-      thumbHtml = `<img class="list-thumb" src="${w.src || cdnThumb(w, 'wallpaper')}" alt=""${w.focus ? ` style="object-position:${w.focus}"` : ''} onerror="this.style.background='var(--bg-elev-2)'">`;
+      // Lazy (K69): the Wall is rendered at boot behind the start view, and
+      // its ~90 rows were 8 MB of a cold open nobody was looking at.
+      thumbHtml = `<img class="list-thumb" src="${w.src || cdnThumb(w, 'wallpaper')}" alt="" loading="lazy" decoding="async"${w.focus ? ` style="object-position:${w.focus}"` : ''} onerror="this.style.background='var(--bg-elev-2)'">`;
     }
     return `
     <div class="list-row${w._imported ? ' imported' : ''}" draggable="true" data-id="${w.id}" data-list="wallpapers" onclick="wallEdit('${w.id}')" style="cursor:pointer;">
@@ -468,144 +484,17 @@ export function renderWall() {
         <button class="icon-btn danger" onclick="event.stopPropagation(); wallRemove('${w.id}')">×</button>
       </div>
     </div>`;
-  }).join("");
-  wireListDrag("wall-list", "wallpapers");
+  }).join(""));
+  if (wrote) wireListDrag("wall-list", "wallpapers");
 }
 
-// ============== BARREL ==============
-export function barrelDateFromYMD(ymdStr) {
-  if (!ymdStr) return (new Date()).toLocaleDateString("en-US", {month:"2-digit",day:"2-digit"});
-  const parts = ymdStr.split("-");
-  return parts.length === 3 ? `${parts[1]}.${parts[2]}` : ymdStr;
-}
-
+// ============== NETWORK · FRIENDS OF (About §004) ==============
+// Lived in the barrel section until that surface was retired (2026-09-20);
+// the network list draws the same ↗ glyph on an off-site link.
 export function isExternalUrl(url) {
   return /^https?:\/\//i.test(url || "");
 }
 
-export function upsertAutoBarrel({ source, ref, date, title, url }) {
-  const existing = STATE.barrel.find(b => b.type === "auto" && b.source === source && b.ref === ref);
-  if (existing) {
-    existing.date = date;
-    existing.title = title;
-    existing.url = url;
-  } else {
-    STATE.barrel.unshift({
-      id: uid(), type: "auto", source, ref, date, title, url,
-      added_at: todayISO(),
-    });
-    bumpStage("barrel");
-  }
-}
-
-let barrelEditId = null;
-
-export function barrelEdit(id) {
-  const b = STATE.barrel.find(x => x.id === id);
-  if (!b) return;
-  barrelEditId = id;
-  document.getElementById("barrel-date").value = b.date || "";
-  document.getElementById("barrel-title").value = b.title || "";
-  document.getElementById("barrel-url").value = b.url || "";
-  const btn = document.querySelector('#view-barrel .btn-stage');
-  btn.textContent = "✓ Update";
-  btn.style.borderColor = "var(--green)";
-  btn.style.color = "var(--green)";
-  document.getElementById("barrel-cancel-btn").style.display = "";
-  toast(`Editing: ${b.title}`, "success");
-}
-
-export function barrelClearEdit() {
-  barrelEditId = null;
-  ["barrel-date","barrel-title","barrel-url"].forEach(id => document.getElementById(id).value = "");
-  const btn = document.querySelector('#view-barrel .btn-stage');
-  btn.textContent = "+ Add";
-  btn.style.borderColor = "";
-  btn.style.color = "";
-  document.getElementById("barrel-cancel-btn").style.display = "none";
-}
-
-export function barrelAdd() {
-  const date = document.getElementById("barrel-date").value.trim();
-  const title = document.getElementById("barrel-title").value.trim();
-  const url = document.getElementById("barrel-url").value.trim();
-  if (!title) return toast("title required", "error");
-
-  // UPDATE MODE
-  if (barrelEditId) {
-    const b = STATE.barrel.find(x => x.id === barrelEditId);
-    if (!b) return toast("entry not found", "error");
-    if (date) b.date = date;
-    b.title = title;
-    b.url = url || b.url;
-    barrelEditId = null;
-    bumpStage("barrel");
-    save();
-    ["barrel-date","barrel-title","barrel-url"].forEach(id => document.getElementById(id).value = "");
-    const btn = document.querySelector('#view-barrel .btn-stage');
-    btn.textContent = "+ Add";
-    btn.style.borderColor = "";
-    btn.style.color = "";
-    document.getElementById("barrel-cancel-btn").style.display = "none";
-    renderBarrel();
-    toast(`✓ ${title} updated`, "success");
-    return;
-  }
-
-  // NEW MODE
-  STATE.barrel.unshift({
-    id: uid(),
-    type: "manual",
-    date: date || (new Date()).toLocaleDateString("en-US", {month:"2-digit",day:"2-digit"}),
-    title,
-    url: url || "#",
-    added_at: todayISO(),
-  });
-  bumpStage("barrel"); save();
-  ["barrel-date","barrel-title","barrel-url"].forEach(id => document.getElementById(id).value = "");
-  renderBarrel();
-  toast(`✓ ${title} added (manual)`, "success");
-}
-
-export function barrelRemove(id) {
-  trashItem("barrel", id);
-}
-
-export function renderBarrel() {
-  document.getElementById("barrel-stats").textContent = `${STATE.barrel.length} entries`;
-  const list = document.getElementById("barrel-list");
-  if (!STATE.barrel.length) {
-    list.innerHTML = `<div class="empty">// BARREL EMPTY · STAGE A POST OR ARCHIVE FRAME TO AUTO-POPULATE</div>`;
-    return;
-  }
-  // The live homepage timeline re-sorts the changelog by date (newest first), so we
-  // render the same order here — what you see in the console now matches what ships.
-  // Array.prototype.sort is stable, so entries sharing a date keep their underlying
-  // STATE.barrel order, exactly as the live site's stable sort over barrel.json does.
-  // (Drag-to-reorder was retired with this change: date drives the order everywhere.)
-  const ordered = [...STATE.barrel].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  list.innerHTML = ordered.map(b => {
-    const isManual = b.type === "manual";
-    const rowClass = isManual ? "manual" : "auto";
-    const sourceBadge = !isManual && b.source
-      ? `<span class="barrel-source-badge ${b.source}">↪ ${b.source === "post" ? "FN//" : "ARCHIVE"}</span>`
-      : "";
-    const externalGlyph = isExternalUrl(b.url)
-      ? `<span class="external-glyph">↗</span>` : "";
-    return `
-    <div class="list-row ${rowClass}${b._imported ? ' imported' : ''}" data-id="${b.id}" data-list="barrel" onclick="barrelEdit('${b.id}')" style="cursor:pointer;">
-      <div class="list-info">
-        <div class="l-title">${sourceBadge}${b.title}${externalGlyph}</div>
-        <div class="l-sub">${b.date} · ${b.url}</div>
-      </div>
-      <div class="list-actions">
-        <button class="icon-btn danger" onclick="event.stopPropagation(); barrelRemove('${b.id}')" title="Remove">×</button>
-      </div>
-    </div>`;
-  }).join("");
-}
-
-// ============== NETWORK · FRIENDS OF (About §004) ==============
 let networkEditId = null;
 
 export function networkAdd() {
@@ -627,7 +516,7 @@ export function networkAdd() {
     f.location = location;
     f.url = url;
     networkEditId = null;
-    bumpStage("friends");
+    stageChange("friends", { id: f.id, label: `${name} — updated` });
     save();
     ["friends-name","friends-tag","friends-location","friends-url"].forEach(id => document.getElementById(id).value = "");
     const btn = document.querySelector('#view-friends .btn-stage');
@@ -649,7 +538,8 @@ export function networkAdd() {
     url,
     added_at: todayISO(),
   });
-  bumpStage("friends"); save();
+  stageChange("friends", { id: STATE.friends[0].id, label: `${name} — new node`, kind: 'add' });
+  save();
   ["friends-name","friends-tag","friends-location","friends-url"].forEach(id => document.getElementById(id).value = "");
   renderNetwork();
   toast(`✓ ${name} added`, "success");
@@ -719,9 +609,9 @@ export function listNudge(listKey, id, dir) {
   if (i < 0 || j < 0 || j >= arr.length) return;
   const [item] = arr.splice(i, 1);
   arr.splice(j, 0, item);
-  bumpStage(listKey);
+  stageChange(listKey, { id: item.id, label: `${item.title || item.filename || 'entry'} — reordered` });
   save();
-  (listKey === "wallpapers" ? renderWall : renderBarrel)();
+  renderWall();
 }
 
 let dragSrc = null;
@@ -748,10 +638,9 @@ export function wireListDrag(containerId, listKey) {
       const toIdx = arr.findIndex(x => x.id === targetId);
       const [item] = arr.splice(fromIdx, 1);
       arr.splice(toIdx, 0, item);
-      bumpStage(listKey);
+      stageChange(listKey, { id: item.id, label: `${item.title || item.filename || 'entry'} — reordered` });
       save();
-      const renderer = listKey === "wallpapers" ? renderWall : renderBarrel;
-      renderer();
+      renderWall();
     });
   });
 }

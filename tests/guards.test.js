@@ -28,7 +28,12 @@ const ROOT = join(import.meta.dirname, '..');
 // carry their own frozen `css/main.css?v=N` links, so the next legitimate CSS
 // bump would have failed the `?v=` consistency check on a file nobody serves.
 // Same exclusion list `tests/no-payment-links.test.js` already uses.
-const SKIP_DIRS = new Set(['node_modules', '.git', '.wrangler', 'docs', 'tests', 'dist']);
+// `.claude` is agent scratch space, and `.claude/worktrees/` holds whole
+// CHECKOUTS of this repo — so an agent working in a second worktree put a full
+// copy of every page inside the tree this walker sweeps, and its (correctly
+// different) `?v=` numbers failed the consistency check below. A false red that
+// depends on who else is working, which is the worst kind.
+const SKIP_DIRS = new Set(['node_modules', '.git', '.claude', '.wrangler', 'docs', 'tests', 'dist']);
 
 function walk(dir, ext, out = []) {
   for (const name of readdirSync(dir)) {
@@ -298,17 +303,32 @@ describe('a card\'s internal layering cannot escape the card', () => {
     ).toMatch(/isolation:\s*isolate/);
   });
 
-  it('the fixed mobile homepage footer keeps a stacking level', () => {
-    // The desktop rule drops to `z-index: auto` because there the footer is in
-    // flow. The mobile block makes it fixed again and inherited that `auto`, so
-    // a bar overlaying the page sat at level 0 beneath it.
-    const rule = css.match(/\.page--home \.footer \{[^}]*position:\s*fixed[^}]*\}/);
-    expect(rule, 'the mobile homepage footer is no longer fixed — recheck this guard').toBeTruthy();
+  it('the homepage footer is the same fixed bar as every other page', () => {
+    // This guard used to ask a narrower question — whether the MOBILE homepage
+    // override kept its stacking level — because the homepage opted out of the
+    // fixed footer at desktop (`position: relative`, `z-index: auto`) from when
+    // it was one screen tall, and the mobile block had to put both back.
+    //
+    // The recent-work grid made the homepage scroll, so that opt-out dropped
+    // the site's one persistent piece of chrome below the fold on the front
+    // door alone (owner report, 2026-09-19). There is no override left to ask
+    // about; the two things that hold now are asserted instead.
+    const rule = css.match(/^\.footer \{[\s\S]*?^\}/m);
+    expect(rule, '.footer has no base rule').toBeTruthy();
+    expect(
+      rule[0],
+      'Every page keeps its footer on screen. This is the rule that does it.',
+    ).toMatch(/position:\s*fixed/);
     expect(
       rule[0],
       'A fixed footer overlays the page, so it must outrank it. Left at `z-index: auto` '
       + 'it paints below any positioned content.',
     ).toMatch(/z-index:\s*\d+/);
+    expect(
+      css,
+      'the homepage is opting out of the shared footer again — whatever the '
+      + 'declaration, that is the bug this guard was rewritten for.',
+    ).not.toMatch(/\.page--home \.footer \{/);
   });
 });
 
@@ -330,7 +350,9 @@ describe('staging counts changes, not things', () => {
     // `trashRestore` cancels a pending DELETION when you put a published item
     // back. Those undo a staged change rather than making a new one, which is
     // the opposite of what a surface's toggle does. Everything else — every
-    // feature, edit, clear and switch — is +1.
+    // feature, edit, clear and switch — is +1. `stageChange` (the ledger-row
+    // wrapper around bumpStage) is scanned the same way: a surface must not
+    // sneak a negative in via its `delta` meta either.
     const LEDGER = 'js/console-state.js';
     const offenders = [];
     for (const file of walk(join(ROOT, 'js'), '.js')) {
@@ -341,11 +363,46 @@ describe('staging counts changes, not things', () => {
         const line = src.slice(0, m.index).split('\n').length;
         offenders.push(`${file}:${line} — ${m[0].trim()}`);
       }
+      // stageChange('x', { ..., delta: -1 }) — same law through the wrapper.
+      for (const m of src.matchAll(/stageChange\s*\([^)]*?delta:\s*-/g)) {
+        const line = src.slice(0, m.index).split('\n').length;
+        offenders.push(`${file}:${line} — ${m[0].trim()}`);
+      }
     }
     expect(
       offenders,
       `a change is a change; removing something stages one too:\n${offenders.join('\n')}`,
     ).toEqual([]);
+  });
+
+  it('every surface in SURFACE_MANIFEST is promoted to _imported after publish', () => {
+    // A surface missing from the post-publish promotion is invisible in exactly
+    // the way the 2026-08-14 log warned about: items published this session stay
+    // flagged "new/local", so trashing one DECREMENTS instead of staging a
+    // removal, _vouchedEmptyManifests() cannot vouch for a deliberate 1 → 0, and
+    // an edit re-slugs a permalink that is supposed to be permanent. `audio` and
+    // `friends` were both missing from a hand-written list for two weeks.
+    //
+    // The fix was to DERIVE both lists from SURFACE_MANIFEST, so this guard
+    // pins the derivation rather than re-typing the surfaces — a hand-written
+    // list here would drift the same way the code did.
+    const pub = readFileSync(join(ROOT, 'js', 'console', 'publish.js'), 'utf8');
+
+    const manifest = pub.match(/const SURFACE_MANIFEST = \{([\s\S]*?)\};/);
+    expect(manifest, 'SURFACE_MANIFEST is the single source of truth here').toBeTruthy();
+    const surfaces = [...manifest[1].matchAll(/(\w+):\s*'data\//g)].map((m) => m[1]);
+    expect(surfaces, 'audio must be a published surface').toContain('audio');
+    expect(surfaces, 'friends must be a published surface').toContain('friends');
+
+    expect(
+      pub,
+      'the post-publish _imported promotion must derive from SURFACE_MANIFEST, not a literal list',
+    ).toMatch(/Object\.keys\(SURFACE_MANIFEST\)\s*\n?\s*\.filter\(surface => surface !== 'posts'\)/);
+
+    expect(
+      pub,
+      'hasImported() must derive from SURFACE_MANIFEST too — it drifted three surfaces',
+    ).toMatch(/hasImported\(\)\s*\{[\s\S]{0,200}Object\.keys\(SURFACE_MANIFEST\)/);
   });
 
   it('the publish summary can show every surface that stages changes', () => {

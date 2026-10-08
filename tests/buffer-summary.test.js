@@ -6,13 +6,22 @@
 //      public buffer page or a citation breaks.
 //   2. Only featured, non-dark frames with media are returned, newest first,
 //      carrying the point data the card needs, honoring the limit.
+// The fixture below carries TWO featured entries ON PURPOSE. The console write
+// path is exclusive (starring un-stars the previous frame — toggleBufferFeatured,
+// pinned by tests/buffer-featured.test.js), but buffer.json published by an
+// older console can legitimately carry several flags, and this endpoint must
+// keep degrading to "newest wins" rather than erroring or picking arbitrarily.
+// Console writes one; server survives many. Do not make the server exclusive.
 // localDay pins the day bucket to the project timezone (Intl, machine-TZ
 // independent), so these assertions are stable on any CI box.
 import { describe, it, expect } from 'vitest';
 import { _featuredRawFrames } from '../src/api/site-meta.js';
 
-// Midday-UTC stamps stay on their calendar date in America/Los_Angeles, so the
-// day buckets below are unambiguous regardless of where the test runs.
+// Midday-UTC stamps stay on their calendar date in every zone within 12 hours
+// of UTC, so the day buckets below are unambiguous regardless of where the test
+// runs AND of what `timezone` the config names — which matters now that it is
+// configurable (engine default UTC, this instance Pacific). Move these to
+// midnight and the test starts asserting one instance's calendar.
 const D1 = '2025-01-01T12:00:00.000Z';
 const D2 = '2025-01-02T12:00:00.000Z';
 const D3 = '2025-01-03T12:00:00.000Z';

@@ -18,6 +18,15 @@
   "name": "oaklens-os", // e.g. "my-photo-site"
   "main": "worker.js",
   "compatibility_date": "2026-05-05",
+  // Cloudflare stamps each deployed version with an id; this binding exposes it
+  // as env.CF_VERSION_METADATA. src/edge/data.js folds that id into its edge
+  // cache key, so a deploy invalidates the cached data/*.json instead of
+  // serving the previous copy for up to 5 more minutes — and /api/version
+  // reports it, so you can ask a live site which deploy it is running.
+  // Costs nothing, needs no account setting, works on the free tier.
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  },
   "observability": {
     "enabled": true
   },
@@ -43,8 +52,9 @@
   ],
   // ---- One-click "Deploy to Cloudflare" -----------------------------------
   // Cloudflare reads this file to work out what your Worker needs, provisions
-  // the KV / D1 / R2 below automatically, and can prompt whoever clicks the
-  // button for secrets listed here.
+  // the KV / D1 / R2 below automatically, and writes the new IDs into the copy
+  // of the repo it makes for you (the placeholder IDs below are fine as they
+  // are; verified on a real button run, 2026-09-29).
   //
   // The engine supports two ways to set your console password:
   //
@@ -58,10 +68,10 @@
   // generates a proper 32-byte key on first boot and keeps it in the KV
   // namespace below.
   //
-  // UNCOMMENT THE LINE BELOW if you publish this repo behind a deploy button.
-  // It makes the dialog ask for a password — but note that a name listed in
-  // "secrets" is also *required* to deploy, so leaving it on would block a
-  // CLI install that set AUTH_PASSWORD_HASH instead. One or the other.
+  // `.dev.vars.example` is what tells the button to ask for AUTH_PASSWORD.
+  // Leave the line below commented. A name in "secrets" is *required* to
+  // deploy, so it would block every CLI install that set AUTH_PASSWORD_HASH
+  // instead, and the example file already gets the button to ask.
   // "secrets": ["AUTH_PASSWORD"],
   // KV: email subscribers + auth/subscribe rate-limit counters.
   // Create: `npx wrangler kv namespace create SUBSCRIBERS`

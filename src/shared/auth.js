@@ -29,6 +29,13 @@ export async function _hmacKey(secret) {
 }
 
 export async function createRawToken(secret, payloadObj = {}, ttl = TOKEN_TTL) {
+  // Refuse to sign with an empty key. An unset secret would otherwise be
+  // encoded as a constant, publicly-derivable HMAC key — and a token signed
+  // with a key anyone can reproduce is a token anyone can forge. The console
+  // path never reaches here without a real key (createToken/createShellToken
+  // resolve one via resolveSessionSecret and bail on null); this closes the
+  // gap on any caller that passes env.SESSION_SECRET straight in.
+  if (!secret) throw new Error('createRawToken: refusing to sign with an empty secret');
   const header = _b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const now = Math.floor(Date.now() / 1000);
   const payload = _b64url(JSON.stringify({ iat: now, exp: now + ttl, ...payloadObj }));
@@ -40,6 +47,9 @@ export async function createRawToken(secret, payloadObj = {}, ttl = TOKEN_TTL) {
 
 export async function verifyRawToken(token, secret) {
   if (!token) return null;
+  // No key ⇒ nothing can be trusted. Fail closed rather than verifying against
+  // a degenerate/empty HMAC key (the mirror of the createRawToken guard).
+  if (!secret) return null;
   const parts = token.split('.');
   if (parts.length !== 3) return null;
 

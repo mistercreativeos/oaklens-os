@@ -25,6 +25,22 @@
 // photographers write, musicians ship code, and a lane is a starting point
 // rather than a category the software puts someone in.
 //
+// THE GLYPHS FOLLOW THE SAME RULE since 2026-08-24. They used to be a per-lane
+// tray, so choosing a lane silently narrowed the vocabulary; now every
+// discipline's twelve are in one scrolling menu under its own heading, plus a
+// field that hands over the platform's ENTIRE emoji keyboard for zero bytes
+// (see `_pulseSetGlyphAny`). Curated for speed, everything for the specific
+// thing you meant.
+//
+// WRITE MODE. On a phone the keyboard used to take ~350px out of a bounded
+// column whose only elastic row was the card, so the card collapsed and clipped
+// away the textarea being typed into. `body.kb-open` now folds the rows that
+// are not typing — lanes, starter strip, palette, RECENT, the closed footer —
+// and the card takes the height back. That choreography is entirely CSS
+// (css/field-console.css, "WRITE MODE"); this module renders the same markup
+// either way, which is what keeps the surgical-update discipline intact.
+// Report: docs/maintenance/2026-08-24-pulse-mobile-keyboard-and-glyph-menu.md.
+//
 // Every remaining field is FREE TEXT. There is deliberately no named slot for
 // gear, a batch or a take number — that is a camera field wearing a different
 // hat, and it would quietly tell five of the six disciplines that this is not
@@ -37,7 +53,7 @@
 import { logEvent } from '../console-telemetry.js';
 import { postPulse, retirePulse, fetchPulseLog, isNotConfigured } from '../console-api.js';
 import { toast, escapeHTML, escapeAttrJS, registerView, openSheet, closeSheet } from './chrome.js';
-import { PACKS, pulseFrom, trayGlyphs } from '../pulse-packs.js';
+import { PACKS, pulseFrom, glyphGroups } from '../pulse-packs.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -151,7 +167,45 @@ function paintCard() {
   }
 
   syncSwatches();
+  syncGlyphs();
   syncDockState();
+}
+
+// The menu shows the card's glyphs in two places — a removable chip per glyph,
+// and a lit tile for each one that came from the curated set — and both have to
+// follow every path that can change them: a tile, a chip, the keyboard doorway,
+// a starter, a reuse, a reset.
+//
+// MEMOISED ON THE STRING, because this is called from paintCard(), which runs on
+// every keystroke of the LINE. Rebuilding the chips there would be free of
+// visible consequence and still wrong: it would throw away the chip a thumb is
+// mid-tap on. The glyphs did not change, so nothing is touched.
+let _paintedGlyphs = null;
+function syncGlyphs() {
+  if (draft.glyphs === _paintedGlyphs) return;
+  _paintedGlyphs = draft.glyphs;
+  const list = glyphList();
+
+  const picked = $('pulse-tray-picked');
+  if (picked) {
+    picked.hidden = !list.length;
+    picked.innerHTML = list.map((g, i) => `
+      <button type="button" class="pulse-picked" onclick="_pulseRemoveGlyph(${i})"
+              aria-label="${escapeHTML(`Take ${g} off the card`)}"
+              title="${escapeHTML(`Take ${g} off the card`)}">
+        <span class="pulse-picked-g">${escapeHTML(g)}</span>
+        <span class="pulse-picked-x" aria-hidden="true">\u00d7</span>
+      </button>`).join('');
+  }
+
+  const body = $('pulse-tray-body');
+  if (body) {
+    body.querySelectorAll('[data-glyph]').forEach((b) => {
+      const on = list.includes(b.dataset.glyph);
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
 }
 
 // RESET CARD is disabled when there is nothing to reset.
@@ -212,8 +266,7 @@ export function _pulseSetPack(key) {
   if (rail) rail.innerHTML = starterTilesHtml();
   const strip = $('pulse-strip');
   if (strip) strip.innerHTML = starterChipsHtml();
-  const tray = $('pulse-tray');
-  if (tray) tray.innerHTML = trayHtml();
+  syncTrayLane();
   const head = $('pulse-starters-head');
   const pack = activePackDef();
   if (head && pack) head.textContent = `${pack.label} starters`;
@@ -233,26 +286,163 @@ export function _pulseApplyStarter(packKey, index) {
 
 export function _pulseToggleTray() {
   const tray = $('pulse-tray');
-  if (tray) tray.classList.toggle('open');
+  if (!tray) return;
+  const open = tray.classList.toggle('open');
+  const slot = $('pulse-glyph-slot');
+  if (slot) slot.setAttribute('aria-expanded', open ? 'true' : 'false');
+  // Open ON the lane you have been reading. The menu's ORDER never changes
+  // (js/pulse-packs.js `glyphGroups`) — what changes is where it starts, which
+  // keeps the lane meaningful to the picker without reshuffling it under the
+  // thumb. `block: 'start'` and not scrollIntoView's default: the default
+  // centres, which on a six-section menu can open mid-Filmmaking with a
+  // heading half off the top.
+  if (open) syncTrayLane({ scroll: true });
 }
 
-function closeTray() {
+export function _pulseCloseTray() {
   const tray = $('pulse-tray');
   if (tray) tray.classList.remove('open');
+  const slot = $('pulse-glyph-slot');
+  if (slot) slot.setAttribute('aria-expanded', 'false');
 }
 
-export function _pulseSetGlyph(glyph) {
-  const g = String(glyph || '');
-  // Glyphs are a small set on one line, so appending is the whole interaction.
-  draft.glyphs = draft.glyphs ? `${draft.glyphs} ${g}` : g;
+// Kept as the module's own private name for the same call — every handler below
+// closes the menu after acting, and they did so before this was exported.
+const closeTray = _pulseCloseTray;
+
+// Mark (and optionally scroll to) the section belonging to the open lane. The
+// menu itself is rendered ONCE — it no longer depends on the lane — so a lane
+// change moves a class, not markup.
+function syncTrayLane({ scroll = false } = {}) {
+  const body = $('pulse-tray-body');
+  if (!body) return;
+  let target = null;
+  body.querySelectorAll('[data-lane]').forEach((sec) => {
+    const on = sec.dataset.lane === activePack;
+    sec.classList.toggle('is-lane', on);
+    if (on) target = sec;
+  });
+  if (scroll && target) body.scrollTop = Math.max(0, target.offsetTop - body.offsetTop);
+  _pulseTrayCue();
+}
+
+// WHICH EDGE HAS MORE BEHIND IT. Six sections do not fit, so the menu has to
+// say so — and say nothing at the ends, because a cue that is always on is
+// decoration and at the bottom of the list it dims a real row for no reason.
+//
+// It is JS rather than the CSS-only `background-attachment: local` trick, and
+// that is not a preference: background layers paint BEHIND an element's
+// content, and every tile here carries an opaque `--surface-2`, so the fixed
+// shadow strip was covered by whatever row sat at the edge. See the stylesheet.
+//
+// Exported because it is called from an inline onscroll= (global scope).
+export function _pulseTrayCue() {
+  const body = $('pulse-tray-body');
+  const host = $('pulse-tray-scroll');
+  if (!body || !host) return;
+  // A closed panel is display:none, so clientHeight is 0 and `max` goes
+  // negative — which correctly yields no cue at all. It is recomputed on open.
+  const max = body.scrollHeight - body.clientHeight;
+  host.toggleAttribute('data-up', body.scrollTop > 2);
+  host.toggleAttribute('data-down', body.scrollTop < max - 2);
+}
+
+// ---- the glyphs on the card, as a list ----
+//
+// `draft.glyphs` is stored as one space-joined string because that is what the
+// D1 column and the public card take (docs/pulse-card-vision.md §4). Everything
+// in this module works on the LIST, because the interaction the owner asked for
+// on 2026-08-24 is set-shaped, not string-shaped: "try out different glyphs with
+// their messages and just remove and add them quickly without losing context."
+// Appending to a string can only ever grow.
+function glyphList() {
+  const s = draft.glyphs.trim();
+  return s ? s.split(/\s+/) : [];
+}
+
+function setGlyphList(list) {
+  draft.glyphs = list.join(' ');
   paintCard();
-  closeTray();
 }
 
+// A curated tile TOGGLES. Tap to put it on the card, tap again to take it off —
+// which is the whole ask, and the reason this no longer closes the menu: closing
+// on every tap made trying three glyphs cost three reopens. The feedback that
+// used to come from seeing the card is now in the panel itself: the tile lights
+// up and a removable chip appears above the grid.
+//
+// There is no way to put the same glyph on twice, deliberately. Two identical
+// glyphs on one card is not a thing anyone wants, and allowing it would make
+// "tap again to remove" ambiguous about which one it removed.
+export function _pulseSetGlyph(glyph) {
+  const g = String(glyph || '').trim();
+  if (!g) return;
+  const list = glyphList();
+  const at = list.indexOf(g);
+  if (at >= 0) list.splice(at, 1);
+  else list.push(g);
+  setGlyphList(list);
+}
+
+// Drop ONE glyph, by position. The chips above the grid are the only way to
+// remove a glyph that came from the platform's emoji keyboard rather than the
+// curated set — there is no tile to un-toggle for those, and before this the
+// only way back was RESET CARD, which also throws away the line you wrote.
+export function _pulseRemoveGlyph(index) {
+  const list = glyphList();
+  const i = Number(index);
+  if (!Number.isInteger(i) || i < 0 || i >= list.length) return;
+  list.splice(i, 1);
+  setGlyphList(list);
+}
+
+// THE WHOLE EMOJI SET, FOR ZERO BYTES.
+//
+// The curated twelve-per-discipline are the quick path and stay exactly that.
+// This is the other half the owner asked for (2026-08-24): "the whole emoji set
+// is nice when you have a specific message you're trying to get across."
+//
+// It is one <input>, not a bundled emoji table, and that is the entire design.
+// Shipping a full set in the engine would cost every fork ~1,900 emoji of
+// payload, ~1,900 colour-font nodes to paint on open, tofu wherever the
+// platform's font is older than the revision we ship, and a list that goes
+// stale every Unicode release. The DEVICE already has all of that solved, with
+// search, in the picker its owner already knows — the only thing missing was
+// somewhere to type into, because the card's glyph slot is a <button>.
+//
+// It APPENDS AND CLEARS ITSELF rather than holding what you typed: the field is
+// a doorway to the OS keyboard, not a second place the glyph lives. Holding it
+// would mean two elements both claiming to be the glyph and a stale one left
+// behind after RESET CARD.
+export function _pulseSetGlyphAny(value) {
+  const box = $('pulse-glyph-any');
+  const raw = String(value || '').trim();
+  if (box) box.value = '';
+  if (!raw) return;
+  // Split, because a paste can carry several at once. Each one is added only if
+  // it is not already on the card — same single-membership rule the tiles keep.
+  const list = glyphList();
+  let added = 0;
+  for (const g of raw.split(/\s+/)) {
+    if (!g || list.includes(g)) continue;
+    list.push(g);
+    added += 1;
+  }
+  if (!added) {
+    // Saying nothing here is the RESET CARD mistake again: a control that
+    // silently does nothing is indistinguishable from a broken one.
+    toast(`${raw} is already on the card`, 'info');
+    return;
+  }
+  setGlyphList(list);
+}
+
+// Clear ALL of them. It no longer closes the menu either: every control in this
+// panel now leaves it open, and one that closed would read as "that was the last
+// thing you get to do here."
 export function _pulseClearGlyphs() {
   draft.glyphs = '';
   paintCard();
-  closeTray();
 }
 
 export function _pulseReset() {
@@ -315,6 +505,25 @@ export async function _pulsePost() {
   }
 }
 
+// The Bridge's one-line pulse (js/console/bridge.js): the same POST and the
+// same author's clock as the composer, with only a line — no glyphs, the
+// default state, no feet. Resolves true when it went live; the composer's own
+// card is untouched, so a half-made card waits where it was left.
+export async function pulsePostLine(text) {
+  const line = String(text || '').trim();
+  if (!line) { toast('A pulse needs a line', 'warn'); return false; }
+  try {
+    await postPulse({ text: line, glyphs: '', state: 'signal', footLeft: '', footRight: '', localTime: nowLocalTime() });
+    toast('Pulse is live — no publish needed', 'success');
+    logEvent('pulse', 'posted');
+    return true;
+  } catch (err) {
+    if (isNotConfigured(err)) toast('Pulse needs its database table — run the migrations (see setup.md)', 'warn');
+    else toast(`Could not post: ${err.message}`, 'error');
+    return false;
+  }
+}
+
 export async function _pulseRetire() {
   try {
     const res = await retirePulse();
@@ -365,7 +574,7 @@ function starterTilesHtml() {
   const pack = activePackDef();
   if (!pack) return '';
   return pack.pulses.map((m, i) => `
-    <button type="button" class="pulse-tile" onclick="_pulseApplyStarter('${escapeAttrJS(pack.key)}', ${i})">
+    <button type="button" class="pulse-tile" data-seam="box" data-backlit data-tier="card" onclick="_pulseApplyStarter('${escapeAttrJS(pack.key)}', ${i})">
       <span class="pulse-tile-glyph" aria-hidden="true">${escapeHTML(m.glyphs)}</span>
       <span class="pulse-tile-text">${escapeHTML(m.text)}</span>
     </button>`).join('');
@@ -383,25 +592,58 @@ function starterChipsHtml() {
     </button>`).join('');
 }
 
-// The tray follows the ACTIVE LANE rather than a config list: pick the Music
-// lane and you get music glyphs. One less config key that nothing reads, and it
-// makes the lane do more than seed six lines. The author can still paste any
-// emoji into the line itself — the tray is a shortcut, not the vocabulary.
+// ---- the glyph menu ----
 //
-// TWELVE, from the lane's own `tray` list. The first cut derived six by mapping
-// the lane's starter lines, which is tidy and was not enough to write with
-// (owner, 2026-08-13). The list leads with those same six, so the tray still
-// reads as belonging to the lane you tapped.
+// EVERY DISCIPLINE AT ONCE, under its own heading. Until 2026-08-24 this tray
+// showed only the open lane's twelve, which meant a photographer writing about a
+// late edit had to leave the lane seeding their line to reach ☕. Owner: "there
+// are infinite creative combinations." So the lane seeds LINES, and the glyphs
+// are universal; the disciplines survive as headings, because the curation was
+// the part that worked and 72 unlabelled emoji in one grid is not a curated set.
 //
-// Its clear button says NO GLYPH, not CLEAR: the dock below has a RESET CARD
+// It is RENDERED ONCE, with the rest of the view. Nothing in it depends on the
+// open lane any more — `syncTrayLane()` moves a class when the lane changes —
+// so a lane tap can never rebuild the panel under a scrolled thumb.
+//
+// The clear button says NO GLYPH, not CLEAR: the dock below has a RESET CARD
 // button, and two controls a thumb apart both saying "clear" while meaning very
 // different things is how a mis-tap becomes a lost draft.
 function trayHtml() {
-  const glyphs = trayGlyphs(activePack);
-  if (!glyphs.length) return '';
-  return glyphs.map((g) => `
-    <button type="button" class="pulse-glyph" onclick="_pulseSetGlyph('${escapeAttrJS(g)}')">${escapeHTML(g)}</button>`).join('')
-    + '<button type="button" class="pulse-glyph pulse-glyph--clear" onclick="_pulseClearGlyphs()">NO GLYPH</button>';
+  const groups = glyphGroups().map((g) => `
+    <section class="pulse-glyph-group" data-lane="${escapeHTML(g.key)}">
+      <h3 class="pulse-glyph-head">${escapeHTML(g.label)}</h3>
+      <div class="pulse-glyph-grid">
+        ${g.glyphs.map((ch) => `
+        <button type="button" class="pulse-glyph" data-glyph="${escapeHTML(ch)}" aria-pressed="false"
+                aria-label="${escapeHTML(`${g.label} glyph ${ch}`)}"
+                onclick="_pulseSetGlyph('${escapeAttrJS(ch)}')">${escapeHTML(ch)}</button>`).join('')}
+      </div>
+    </section>`).join('');
+
+  return `
+    <div class="pulse-tray-head">
+      <span class="pulse-tray-title">Glyphs</span>
+      <span class="pulse-tray-hint">Tap to add or remove</span>
+      <button type="button" class="pulse-tray-x" aria-label="Close the glyph menu"
+              onclick="_pulseCloseTray()">✕</button>
+    </div>
+    <!-- What is on the card right now, each one removable. This row and the
+         input above the grid are the two parts that survive when the platform's
+         emoji keyboard is up and the grid has nowhere to be — so an emoji picked
+         from that keyboard can still be taken straight back off. -->
+    <div class="pulse-tray-picked" id="pulse-tray-picked" hidden></div>
+    <label class="pulse-sr" for="pulse-glyph-any">Any emoji from your keyboard</label>
+    <input class="pulse-input pulse-tray-any" data-tier="field" id="pulse-glyph-any" type="text"
+           inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+           placeholder="…or any emoji from your keyboard"
+           oninput="_pulseSetGlyphAny(this.value)">
+    <div class="pulse-tray-scroll" id="pulse-tray-scroll">
+      <div class="pulse-tray-body" id="pulse-tray-body"
+           onscroll="_pulseTrayCue()">${groups}</div>
+    </div>
+    <div class="pulse-tray-foot">
+      <button type="button" class="pulse-glyph--clear" onclick="_pulseClearGlyphs()">NO GLYPH</button>
+    </div>`;
 }
 
 function paletteHtml() {
@@ -418,7 +660,7 @@ function logHtml() {
     return '<div class="pulse-rail-empty">No pulses yet. The first one you post lands here.</div>';
   }
   return logRows.map((r) => `
-    <button type="button" class="pulse-tile${r.live ? ' is-live' : ''}"
+    <button type="button" class="pulse-tile${r.live ? ' is-live' : ''}" data-seam="box" data-backlit data-tier="card"
             onclick="_pulseReuse('${escapeAttrJS(r.id)}')">
       <span class="pulse-tile-glyph" aria-hidden="true">${escapeHTML(r.glyphs || '·')}</span>
       <span class="pulse-tile-text">${escapeHTML(r.text || '')}</span>
@@ -451,7 +693,7 @@ export function renderPulse() {
       </nav>
 
       <div class="pulse-canvas">
-        <aside class="pulse-rail">
+        <aside class="pulse-rail" data-seam="box" data-backlit data-tier="panel">
           <div class="pulse-rail-head">
             <span>Recent</span><span class="pulse-rail-hint">Tap to reuse</span>
           </div>
@@ -469,6 +711,7 @@ export function renderPulse() {
               <div class="wk-p-center">
                 <button type="button" class="wk-p-glyph" id="pulse-glyph-slot"
                         title="Choose a glyph" aria-label="Choose a glyph"
+                        aria-expanded="false" aria-controls="pulse-tray"
                         onclick="_pulseToggleTray()">${escapeHTML(draft.glyphs.trim())}</button>
                 <label class="pulse-sr" for="pulse-line">What is happening right now?</label>
                 <textarea class="wk-p-text" id="pulse-line" rows="3"
@@ -482,7 +725,16 @@ export function renderPulse() {
             </div>
           </div>
 
-          <div class="pulse-tray" id="pulse-tray">${trayHtml()}</div>
+          <!-- The menu, then its scrim. Tapping outside is the dismiss
+               gesture a panel this size needs, and the ORDER is what turns it
+               on: the stylesheet shows the scrim with an adjacent-sibling rule
+               off the panel's own .open class, so it costs no class-toggling in
+               the handler and cannot get out of step with the panel. It sits a
+               z-index BELOW the menu, so it darkens the stage without covering
+               what it is there to dismiss. -->
+          <div class="pulse-tray" data-tier="panel" id="pulse-tray" role="dialog"
+               aria-label="Choose a glyph">${trayHtml()}</div>
+          <div class="pulse-tray-scrim" id="pulse-tray-scrim" onclick="_pulseCloseTray()"></div>
           <div class="pulse-strip" id="pulse-strip">${starterChipsHtml()}</div>
 
           <div class="pulse-stage-status">
@@ -506,15 +758,15 @@ export function renderPulse() {
           <details class="pulse-more">
             <summary>Footer — free text, both optional</summary>
             <div class="pulse-foot-row">
-              <input class="pulse-input" id="pulse-foot-left" value="${escapeHTML(draft.footLeft)}"
+              <input class="pulse-input" data-tier="field" id="pulse-foot-left" value="${escapeHTML(draft.footLeft)}"
                      oninput="_pulseSetField('footLeft', this.value)" placeholder="Footer left">
-              <input class="pulse-input" id="pulse-foot-right" value="${escapeHTML(draft.footRight)}"
+              <input class="pulse-input" data-tier="field" id="pulse-foot-right" value="${escapeHTML(draft.footRight)}"
                      oninput="_pulseSetField('footRight', this.value)" placeholder="Footer right">
             </div>
           </details>
         </section>
 
-        <aside class="pulse-rail">
+        <aside class="pulse-rail" data-seam="box" data-backlit data-tier="panel">
           <div class="pulse-rail-head">
             <span id="pulse-starters-head">${escapeHTML(pack ? `${pack.label} starters` : 'Starters')}</span>
             <span class="pulse-rail-hint">Tap to fill</span>
@@ -523,6 +775,7 @@ export function renderPulse() {
         </aside>
       </div>
     </div>`;
+  syncTrayLane();
   paintCard();
 }
 

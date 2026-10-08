@@ -13,7 +13,7 @@ import { hasData } from './helpers/instance-content.js';
 
 const {
   recentStrip, recentTruncate, recentExcerpt, recentTier, recentInitial,
-  cardFocus, rawPick, pinRaw, audioPick, pinAudio, pickRecent,
+  cardFocus, rawPick, audioPick, pinTop, pickRecent, pickAutomatic,
   sampleFrames, sampleNote, withSampleFallback,
 } = globalThis.RecentIndex;
 
@@ -139,19 +139,47 @@ describe('rawPick — featured RAW frames, capped for the grid', () => {
   });
 });
 
-describe('pinRaw — featured RAW frame pinned to the third slot', () => {
+// Pins own an ORDER, not a card number: pinTop takes them in rank order (pulse
+// → audio → RAW), puts them at the head of the row, and lets the newest-first
+// pool fill the rest. The rule this replaced gave each pin a fixed index and
+// spliced them in sequence, which let one pin shove another off the visible row
+// (2026-08-27 — see tests/pulse-card.test.js for the regression that names it).
+describe('pinTop — pins take the head of the row, in rank order', () => {
   const raw = { id: 'R', raw: true };
+  const aud = { id: 'A', kind: 'audio' };
   const many = [{ id: 'n0' }, { id: 'n1' }, { id: 'n2' }, { id: 'n3' }, { id: 'n4' }];
-  it('pins RAW to index 2 (3rd card) and fills the rest newest-first', () => {
-    const out = pinRaw(many, raw, 4);
-    expect(out.map((x) => x.id)).toEqual(['n0', 'n1', 'R', 'n2']); // n3/n4 drop off
+
+  it('puts a single pin first and fills the rest newest-first', () => {
+    expect(pinTop([raw], many, 4).map((x) => x.id)).toEqual(['R', 'n0', 'n1', 'n2']);
   });
-  it('always includes the RAW frame even from an old period (it is pinned, not date-ranked)', () => {
-    expect(pinRaw(many, raw, 4).some((x) => x.id === 'R')).toBe(true);
+
+  it('keeps two pins in rank order, ahead of the recent pool', () => {
+    expect(pinTop([aud, raw], many, 4).map((x) => x.id)).toEqual(['A', 'R', 'n0', 'n1']);
   });
-  it('places RAW at the end when there are fewer items than the slot', () => {
-    expect(pinRaw([{ id: 'n0' }], raw, 4).map((x) => x.id)).toEqual(['n0', 'R']);
-    expect(pinRaw([], raw, 4).map((x) => x.id)).toEqual(['R']);
+
+  it('skips absent pins instead of leaving a hole — the row COMPACTS', () => {
+    expect(pinTop([null, aud, null], many, 4).map((x) => x.id)).toEqual(['A', 'n0', 'n1', 'n2']);
+    expect(pinTop([null, null, null], many, 4).map((x) => x.id)).toEqual(['n0', 'n1', 'n2', 'n3']);
+  });
+
+  it('always includes a pin even from an old period (it is pinned, not date-ranked)', () => {
+    expect(pinTop([raw], many, 4).some((x) => x.id === 'R')).toBe(true);
+  });
+
+  it('stands up on a thin or empty pool', () => {
+    expect(pinTop([raw], [{ id: 'n0' }], 4).map((x) => x.id)).toEqual(['R', 'n0']);
+    expect(pinTop([raw], [], 4).map((x) => x.id)).toEqual(['R']);
+    expect(pinTop([], [], 4)).toEqual([]);
+    expect(pinTop(null, null, 4)).toEqual([]);
+  });
+
+  // THE BUDGET, structurally. Desktop shows 3 of the 4 cards; a third pin would
+  // leave a homepage where nothing is actually recent. pickRecent already yields
+  // the older content pin (yieldOlderPin), so this is the floor under that — and
+  // the reason a fourth pin added above cannot quietly fill the row.
+  it('never seats more than two pins, however many it is handed', () => {
+    const third = { id: 'P', kind: 'pulse' };
+    expect(pinTop([third, aud, raw], many, 4).map((x) => x.id)).toEqual(['P', 'A', 'n0', 'n1']);
   });
 });
 
@@ -179,27 +207,6 @@ describe('audioPick — only an explicitly featured registry entry gets a card',
   });
 });
 
-describe('pinAudio — featured audio pinned to the second slot', () => {
-  const aud = { id: 'A', kind: 'audio' };
-  const many = [{ id: 'n0' }, { id: 'n1' }, { id: 'n2' }, { id: 'n3' }, { id: 'n4' }];
-  it('pins audio to index 1 (2nd card) and fills the rest newest-first', () => {
-    expect(pinAudio(many, aud, 4).map((x) => x.id)).toEqual(['n0', 'A', 'n1', 'n2']);
-  });
-  it('places audio at the end when there are fewer items than the slot', () => {
-    expect(pinAudio([], aud, 4).map((x) => x.id)).toEqual(['A']);
-  });
-
-  // The ORDER of the two pins is load-bearing, not incidental: audio is pinned
-  // before the RAW daily so the running order lands photo · audio · RAW, all
-  // three inside the 3-up desktop row. Pinning audio afterwards would displace
-  // RAW to the fourth slot, which desktop CSS hides — the featured frame would
-  // silently vanish from the homepage.
-  it('composes with pinRaw so BOTH pins survive the 3-up desktop row', () => {
-    const out = pinRaw(pinAudio(many, aud, 4), { id: 'R', raw: true }, 4);
-    expect(out.map((x) => x.id)).toEqual(['n0', 'A', 'R', 'n1']);
-    expect(out.slice(0, 3).map((x) => x.id)).toEqual(['n0', 'A', 'R']);
-  });
-});
 
 describe('pickRecent — featured audio joins the grid', () => {
   const archive = [
@@ -210,10 +217,11 @@ describe('pickRecent — featured audio joins the grid', () => {
   const posts = [{ fn_id: 'fn-1', title: 'A note', added_at: '2026-08-07' }];
   const audio = [{ id: 'A', slug: 'take-one', filename: 'take-one.mp3', featured: true }];
 
-  it('surfaces a featured track as an audio card in the second slot', () => {
+  it('surfaces a featured track as an audio card, leading the row', () => {
+    // No pulse here, so the track is the only pin and takes card 1.
     const picks = pickRecent(archive, posts, [], audio);
-    expect(picks[1].kind).toBe('audio');
-    expect(picks[1].data.slug).toBe('take-one');
+    expect(picks[0].kind).toBe('audio');
+    expect(picks[0].data.slug).toBe('take-one');
   });
 
   it('surfaces multiple featured tracks as a single playlist card', () => {
@@ -222,9 +230,9 @@ describe('pickRecent — featured audio joins the grid', () => {
       { id: 'A2', slug: 'two', filename: 'two.mp3', featured: true, featured_order: 2 },
     ];
     const picks = pickRecent(archive, posts, [], multi);
-    expect(picks[1].kind).toBe('audio');
-    expect(picks[1].data.isPlaylist).toBe(true);
-    expect(picks[1].data.tracks).toHaveLength(2);
+    expect(picks[0].kind).toBe('audio');
+    expect(picks[0].data.isPlaylist).toBe(true);
+    expect(picks[0].data.tracks).toHaveLength(2);
   });
 
   it('shows the audio card regardless of date — it is pinned, not date-ranked', () => {
@@ -242,6 +250,43 @@ describe('pickRecent — featured audio joins the grid', () => {
   it('carries an absent registry without throwing (a fork with no audio.json)', () => {
     expect(() => pickRecent(archive, posts, [], null)).not.toThrow();
     expect(() => pickRecent(archive, posts, [], undefined)).not.toThrow();
+  });
+});
+
+// The automatic row is PUBLISH ORDER and nothing reorders it afterwards. A
+// swap used to sit at the end of pickAutomatic promoting a slot-4 text card to
+// slot 3 "so it displays in 3-card views"; it overrode recency and pushed a
+// freshly published photograph into the tablet-only slot (owner report
+// 2026-09-13, docs/maintenance/2026-09-13-cards-automatic-publish-order.md).
+// These cases are the fence: the grid still MIXES (ensure trades the oldest
+// pick for the newest note), but it never REORDERS.
+describe('pickAutomatic — the row is publish order, and stays publish order', () => {
+  const four = [
+    { filename: 'f1.webp', slug: 's1', added_at: '2026-09-13T23:10:59.396Z' },
+    { filename: 'f2.webp', slug: 's2', added_at: '2026-08-25T17:55:26.716Z' },
+    { filename: 'f3.webp', slug: 's3', added_at: '2026-08-19T03:03:29.178Z' },
+    { filename: 'f4.webp', slug: 's4', added_at: '2026-08-02T23:46:04.888Z' },
+  ];
+  const olderNote = [{ fn_id: 'fn-1', title: 'A note', added_at: '2026-07-10T04:54:45.577Z' }];
+
+  it('a note older than every photograph takes the tablet slot, not the visible third', () => {
+    const picks = pickAutomatic(four, olderNote, [], []);
+    expect(picks.map((p) => p.kind)).toEqual(['photo', 'photo', 'photo', 'text']);
+    // ensure('text') still ran — the OLDEST photograph is the one it traded away.
+    expect(picks.map((p) => p.data.slug || p.data.fn_id)).toEqual(['s1', 's2', 's3', 'fn-1']);
+  });
+
+  it('a note newer than a photograph keeps its earned place — mixing, not reordering', () => {
+    const newerNote = [{ fn_id: 'fn-2', title: 'A note', added_at: '2026-08-20T00:00:00.000Z' }];
+    const picks = pickAutomatic(four, newerNote, [], []);
+    expect(picks.map((p) => p.kind)).toEqual(['photo', 'photo', 'text', 'photo']);
+  });
+
+  it('every card is in non-increasing date order — the invariant the swap broke', () => {
+    for (const notes of [olderNote, [{ fn_id: 'fn-3', added_at: '2026-08-20T00:00:00.000Z' }]]) {
+      const dates = pickAutomatic(four, notes, [], []).map((p) => String(p.d));
+      expect([...dates].sort((a, b) => b.localeCompare(a))).toEqual(dates);
+    }
   });
 });
 
@@ -279,6 +324,19 @@ describe('sample fallback — an un-seeded fork still gets a mixed grid', () => 
     expect(note.title).toBe(front.title);
     expect(note.location).toBe(front.location);
     expect(note.body).toBe(m[2].trim());
+    // The DATE is load-bearing since the reorder swap came out of pickAutomatic
+    // (2026-09-13): it is the only reason a fresh fork's visible 3-up row reads
+    // photo · photo · note instead of three photographs. Three copies say it —
+    // here, the frontmatter, and js/page-fn-list.js — so all three are pinned.
+    expect(note.date).toBe(front.date);
+  });
+
+  it('the sample note is dated BETWEEN two sample frames — the fork\'s mixed row, earned by publish order', () => {
+    const frameDates = sampleFrames().map((f) => f.date);
+    expect(frameDates.every(Boolean), 'every sample frame carries a date').toBe(true);
+    const note = sampleNote().date;
+    expect(frameDates.filter((d) => d > note), 'two frames newer than the note').toHaveLength(2);
+    expect(frameDates.filter((d) => d < note), 'one frame older than the note').toHaveLength(1);
   });
 
   it('the sample note lands the feature tier — the drop-cap pull-quote, not the plain wall', () => {
@@ -293,6 +351,8 @@ describe('sample fallback — an un-seeded fork still gets a mixed grid', () => 
     const note = sampleNote();
     expect(src).toContain(`fn_id: '${note.fn_id}'`);
     expect(src).toContain(`title: '${note.title}'`);
+    expect(src, 'the date is what orders the fork\'s opening row — it must not drift here')
+      .toContain(`date: '${note.date}'`);
   });
 });
 

@@ -157,21 +157,50 @@ describe('the console derives its brand rather than hardcoding it', () => {
   });
 
   it('the rendered preview takes its accent from a token, not a hex', () => {
-    const start = consoleCss.indexOf('.fn-preview-area');
+    // The preview proxies the PUBLIC page, which is dark whatever mode the
+    // console is in, so it pins the dark palette locally. Pinning the MODE is
+    // right; pinning the BRAND was not — an aperture site previewed its // marks
+    // in noir red. (Renamed .fn-preview-area → .fn-preview-body in the 2026-08-23
+    // studio rewrite, when the split pane became a slide-over panel.)
+    const start = consoleCss.indexOf('.fn-preview-body');
+    expect(start, '.fn-preview-body — the preview palette pin — is missing').toBeGreaterThan(-1);
     const body = consoleCss.slice(start, consoleCss.indexOf('}', start));
     const accent = body.match(/--accent:\s*([^;]+);/);
-    expect(accent, '.fn-preview-area still pins its own --accent').toBeTruthy();
+    expect(accent, '.fn-preview-body still pins its own --accent').toBeTruthy();
     expect(accent[1].trim(), 'pin the dark MODE, derive the BRAND').toMatch(/^var\(--/);
   });
 
-  it('the OG card canvas reads the brand token at draw time', () => {
-    const focal = readFileSync(
-      join(import.meta.dirname, '..', 'js', 'console', 'focal.js'), 'utf8');
-    expect(focal, 'canvas has to pull --brand, it cannot inherit it')
-      .toMatch(/getPropertyValue\(\s*['"]--brand['"]\s*\)/);
-    // One literal is allowed: the fallback when the token is missing.
-    const reds = focal.match(/#(?:FF0000|ff0000|ff2b2b)/gi) || [];
+  // The contract this pins MOVED in chunk 7 (docs/cards-core-complete.md): the
+  // share image is no longer composited in focal.js, it is painted by
+  // js/console/card-paint.js from the card's own record. The rule is unchanged
+  // and asserted harder — a canvas cannot resolve a CSS variable, so EVERY
+  // colour it draws with has to be read at paint time or a fork's link previews
+  // wear this instance's preset. It is now the whole palette, not just --brand.
+  it('the share painter reads its palette at paint time, never a table', () => {
+    const paint = readFileSync(
+      join(import.meta.dirname, '..', 'js', 'console', 'card-paint.js'), 'utf8');
+    expect(paint, 'canvas has to pull --brand, it cannot inherit it')
+      .toMatch(/getPropertyValue\(\s*name\s*\)|getPropertyValue\(\s*['"]--brand['"]\s*\)/);
+    for (const token of ['--brand', '--fg-strong', '--muted', '--surface', '--line', '--font-display', '--font-meta']) {
+      expect(paint, `${token} has to be read, not restated`).toContain(token);
+    }
+    // The hexes are allowed in exactly one place: the no-document fallback
+    // block, which is neutral greys plus the generic red the old painter used.
+    const afterFallbacks = paint.slice(paint.indexOf('export function readCardTokens'));
+    expect(/#[0-9a-fA-F]{3,8}\b/.test(afterFallbacks), 'a colour literal past the fallbacks').toBe(false);
+    const reds = paint.match(/#(?:FF0000|ff0000|ff2b2b)/gi) || [];
     expect(reds.length, `expected at most a single fallback, found ${reds.length}`)
       .toBeLessThanOrEqual(1);
+  });
+
+  it('focal.js no longer draws a share image itself', () => {
+    // Its card mode is one paintCard() call. A second compositing path here is
+    // how the OG card became a third design of the card in the first place.
+    const focal = readFileSync(
+      join(import.meta.dirname, '..', 'js', 'console', 'focal.js'), 'utf8');
+    expect(focal).toContain("from './card-paint.js'");
+    expect(/drawSegments|PHOTO_H|cardCoverRect/.test(focal), 'the old rail geometry is gone').toBe(false);
+    const reds = focal.match(/#(?:FF0000|ff0000|ff2b2b)/gi) || [];
+    expect(reds.length, 'no brand literal left in the modal at all').toBe(0);
   });
 });

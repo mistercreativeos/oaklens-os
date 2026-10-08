@@ -32,6 +32,14 @@ function seedState() {
     },
     // minimal: every optional field absent
     { id: 'buf-2', filename: 'f2.jpg', captured_at: '2026-01-04', published_at: null, added_at: '2026-01-04', archived: true },
+    // a retired frame (dark tombstone). It still carries stale live fields in
+    // memory (published_at/archived/featured/hash) — buildBundle must emit ONLY
+    // the tombstone shape, or a publish silently un-retires it over gone media.
+    {
+      id: 'buf-dark', filename: 'gone.jpg', captured_at: '2026-01-05',
+      dark: true, darked_at: '2026-02-01T00:00:00.000Z', burst_id: 'burst-2026-01-05-001',
+      published_at: '2026-01-06', archived: false, featured: true, hash: 'stale', _imported: true,
+    },
     { id: 'buf-err', filename: 'bad.jpg', _uploadError: true },       // filtered
     { id: 'buf-up', filename: 'busy.jpg', _uploading: true },         // filtered
   ];
@@ -48,7 +56,7 @@ function seedState() {
     {
       id: 'p-1', fn_id: 'fn-001', title: 'Post One', location: 'Loc', date: '2026-03-01',
       hero_filename: 'hero.jpg', body: 'Body text', buffer_dates: '2026-01-02', added_at: '2026-03-01',
-      focus: '50% 50%', status: 'published',
+      focus: '50% 50%', status: 'published', card: { layout: 'hero' },
     },
     // no status at all is treated as published; hero comes from `hero` when it
     // is not an inline data: URL
@@ -62,7 +70,6 @@ function seedState() {
     { id: 'w-2', title: 'W2', added_at: '2026-04-02' },
     { id: 'w-err', _uploading: true },                                // filtered
   ];
-  STATE.barrel = [{ id: 'b-1', date: '2026-05-01', title: 'B1', url: 'https://example.test/1', _imported: true }];
   STATE.friends = [
     { id: 'fr-1', name: 'N1', tag: 'T', location: 'L', url: 'https://example.test/f', added_at: '2026-06-01' },
     { id: 'fr-2', name: 'N2' },
@@ -83,7 +90,32 @@ function seedState() {
     { id: 'aud-err', filename: 'bad.mp3', _uploadError: true },       // filtered
     { id: 'aud-up', filename: 'busy.mp3', _uploading: true },         // filtered
   ];
-  STATE.staged = { buffer: 1, archive: 1, posts: 1, wallpapers: 0, barrel: 0, friends: 0, library: 0, audio: 1 };
+  STATE.cards = [
+    {
+      id: 'card-1', order: 1, added_at: '2026-09-01', kind: 'photo',
+      source: { type: 'archive', id: 'arc-1' }, media: 'c1.webp', folder: 'archive',
+      focus: '10% 20%', cardFocus: '30% 40%', title: 'C1 Title', tease: 'C1 tease.',
+      label: 'Archive', link: '/archive/?f=arc-1', palette: 'flow', card: { layout: 'hero' },
+      // The overlay band and the measurement its ink is derived from (chunk 3).
+      // `img` is the shape measureCardBands actually produces — three band
+      // luminances of the 4:5 crop — not the `{ w, h, lum }` sketch that sat in
+      // docs before the ladder was built.
+      overlay: { place: 'top', treat: 'blur', blur: 3 },
+      img: { lum: { top: 0.42, mid: 0.61, bottom: 0.18 } },
+    },
+    // minimal: a free-form card with nothing but words
+    { id: 'card-2', order: 2, title: 'C2 Title', added_at: '2026-09-02' },
+    // An audio card borrowing a set (chunk 5) — a slug, never a copy of the
+    // tracks. The set is the one answer to what it plays.
+    { id: 'card-3', order: 3, kind: 'audio', set: 'dusk', added_at: '2026-09-03' },
+    // A retired card (chunk 6) — the fourth tombstone. It carried words and a
+    // picture before it was retired; none of that may survive the serializer.
+    {
+      id: 'card-4', order: 4, retired: true, retired_at: '2026-09-11T00:00:00.000Z',
+      title: 'Should not publish', media: 'gone.webp', _imported: true,
+    },
+  ];
+  STATE.staged = { buffer: 1, archive: 1, posts: 1, wallpapers: 0, friends: 0, library: 0, audio: 1 };
 }
 
 const parse = (name) => JSON.parse(bundle[name]);
@@ -101,9 +133,10 @@ describe('buildBundle()', () => {
     expect(Object.keys(bundle).sort()).toEqual([
       'MANIFEST.txt',
       'data/archive.json',
+      'data/audio-sets.json',
       'data/audio.json',
-      'data/barrel.json',
       'data/buffer.json',
+      'data/cards.json',
       'data/friends.json',
       'data/library.json',
       'data/posts.json',
@@ -123,6 +156,24 @@ describe('buildBundle()', () => {
     ]);
   });
 
+  it('a dark frame publishes as a tombstone, never resurrected as a live cell', () => {
+    // The bug this guards: buildBundle ran every buffer frame through the
+    // live-frame whitelist, which has no `dark`/`darked_at` — so retiring a
+    // published frame and then publishing dropped the tombstone flags and
+    // re-listed it as a live frame pointing at R2 media that retire deleted.
+    const dark = parse('data/buffer.json').find((b) => b.id === 'buf-dark');
+    expect(Object.keys(dark).sort()).toEqual([
+      'burst_id', 'captured_at', 'dark', 'darked_at', 'filename', 'id',
+    ]);
+    expect(dark.dark).toBe(true);
+    expect(dark.darked_at).toBe('2026-02-01T00:00:00.000Z');
+    // the stale live fields it still held in memory must NOT be republished —
+    // emitting any of them is exactly the un-retirement.
+    for (const k of ['published_at', 'added_at', 'archived', 'featured', 'hash']) {
+      expect(k in dark, `dark frame must not republish live field ${k}`).toBe(false);
+    }
+  });
+
   it('archive keeps every whitelisted field', () => {
     expect(keysOf('data/archive.json')).toEqual([
       'added_at', 'camera', 'cardFocus', 'filename', 'focus', 'hash', 'id',
@@ -132,8 +183,19 @@ describe('buildBundle()', () => {
 
   it('posts keep every whitelisted field', () => {
     expect(keysOf('data/posts.json')).toEqual([
-      'added_at', 'body', 'buffer_dates', 'date', 'fn_id', 'focus', 'hero', 'id', 'location', 'title',
+      'added_at', 'body', 'buffer_dates', 'card', 'date', 'fn_id', 'focus', 'hero', 'id', 'location', 'title',
     ]);
+  });
+
+  // The homepage card descriptor rides the same conditional-spread rule as
+  // every other optional flag: a note that never opted into a layout must come
+  // out of the serializer exactly as it went in, or an untouched published
+  // posts.json grows a key on the next publish.
+  it('posts carry the card descriptor only when one was chosen', () => {
+    const posts = parse('data/posts.json');
+    expect(posts[0].card).toEqual({ layout: 'hero' });
+    expect('card' in posts[1]).toBe(false);
+    expect('card' in posts[2]).toBe(false);
   });
 
   it('wallpapers keep every whitelisted field', () => {
@@ -157,15 +219,75 @@ describe('buildBundle()', () => {
     ]);
   });
 
-  it('barrel passes entries through, minus the _imported marker', () => {
-    expect(keysOf('data/barrel.json')).toEqual(['date', 'id', 'title', 'url']);
+  // 'img' IS BACK, and this time it has a producer. It was whitelisted from the
+  // day composed cards landed, for an image ladder that was handed off and never
+  // shipped — nothing in the repo ever wrote or read it, so the entry described a
+  // mechanism that did not exist, and it was removed on 2026-09-08. This list
+  // pinned the field as PRESENT, which is why it never caught it: a whitelist
+  // test proves what publish will emit, not that anything fills it. Chunk 3 of
+  // docs/cards-core-complete.md built the writer (measureCardBands in
+  // js/console/focal.js, called from cardsPickImage/cardsCropCard) and the reader
+  // (overlayInk in js/recent-index.js), so the condition on its return is met.
+  it('composed cards keep every whitelisted field', () => {
+    // `kind` joined on 2026-09-10 (cards-core-complete chunk 2): which real kind
+    // draws the card. Conditional — absent means Automatic, which is also how
+    // every record written before it is read. `overlay` and `img` joined the
+    // same day with chunk 3 — the band's three choices, and the luminance its
+    // ink is derived from.
+    expect(keysOf('data/cards.json')).toEqual([
+      'added_at', 'card', 'cardFocus', 'folder', 'id', 'img', 'kind', 'label',
+      'link', 'media', 'order', 'overlay', 'palette', 'source', 'tease', 'title',
+    ]);
+    // `set` joined with chunk 5 and belongs to the audio card alone, so it is
+    // asserted on the record that carries it rather than widened into the list
+    // above — which would have said every card may carry one.
+    expect(keysOf('data/cards.json', 2)).toContain('set');
+  });
+
+  // A SLUG, never a track list. A copy of the tracks on the record would be a
+  // second answer to "what does this card play" the moment the shelf reorders
+  // the set — the argument chunk 4 made for putting the resolver in one place.
+  it('an audio card publishes the set it borrows, and nothing about its tracks', () => {
+    const [, , audio] = parse('data/cards.json');
+    expect(Object.keys(audio).sort()).toEqual(['added_at', 'id', 'kind', 'order', 'set']);
+    expect(audio.set).toBe('dusk');
+  });
+
+  // Both fields ride through whole, and both are conditional — a record that
+  // never wore the overlay layout publishes exactly the bytes it always did
+  // (proved by the minimal-card test below, which carries neither).
+  it('carries the overlay band and its measurement verbatim', () => {
+    const [ov] = parse('data/cards.json');
+    expect(ov.overlay).toEqual({ place: 'top', treat: 'blur', blur: 3 });
+    expect(ov.img).toEqual({ lum: { top: 0.42, mid: 0.61, bottom: 0.18 } });
+  });
+
+  // ⚠️ THE FOURTH TOMBSTONE. A composed card's id is its address at /card/<id>
+  // the moment it is published, so a retire that ran through the live whitelist
+  // would republish the record as a live card with no words — un-retiring
+  // itself on the next publish and freeing the address for the next card to
+  // take. Its own branch, asserted the way the other three are.
+  it('a retired card publishes as a tombstone and nothing else', () => {
+    const [, , , tomb] = parse('data/cards.json');
+    expect(Object.keys(tomb).sort()).toEqual(['id', 'order', 'retired', 'retired_at']);
+    expect(tomb.retired).toBe(true);
+    expect(tomb.title, 'the words must not ride through the live whitelist').toBeUndefined();
+    expect(tomb.media, 'nor the picture it used to show').toBeUndefined();
+  });
+
+  // A card may be a picture with no words, words with no picture, or a plain
+  // reference. Everything but id/order/added_at is conditional, so a minimal
+  // card must not carry a single null.
+  it('a minimal composed card emits nothing it was not given', () => {
+    const [, minimal] = parse('data/cards.json');
+    expect(Object.keys(minimal).sort()).toEqual(['added_at', 'id', 'order', 'title']);
   });
 
   // ---- filters ----
 
   it('never publishes a frame or audio track whose upload failed or is still running', () => {
     // A committed frame pointing at a CDN object that does not exist renders blank.
-    expect(parse('data/buffer.json').map((b) => b.id)).toEqual(['buf-1', 'buf-2']);
+    expect(parse('data/buffer.json').map((b) => b.id)).toEqual(['buf-1', 'buf-2', 'buf-dark']);
     expect(parse('data/archive.json').map((a) => a.id)).toEqual(['arc-1', 'arc-2']);
     expect(parse('data/wallpapers.json').map((w) => w.id)).toEqual(['w-1', 'w-2']);
     expect(parse('data/library.json').map((l) => l.id)).toEqual(['l-1', 'l-2']);
@@ -218,7 +340,7 @@ describe('buildBundle()', () => {
   it('reports per-surface counts in the manifest', () => {
     const m = bundle['MANIFEST.txt'];
     expect(m).toMatch(/^OAKLENS BUNDLE · \d{4}-\d{2}-\d{2}T/);
-    expect(m).toMatch(/data\/buffer\.json\s+4 entries \(1 imported \+ 3 new\)/);
+    expect(m).toMatch(/data\/buffer\.json\s+5 entries \(2 imported \+ 3 new\)/);
     expect(m).toMatch(/data\/archive\.json\s+3 entries/);
     expect(m).toMatch(/data\/friends\.json\s+2 nodes/);
     expect(m).toMatch(/data\/library\.json\s+3 entries/);

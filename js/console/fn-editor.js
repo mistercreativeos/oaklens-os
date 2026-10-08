@@ -1,9 +1,9 @@
 // OAKLENS Field Console — fn-editor.
 //
-// The Field Notes editor, whole: compose/stage/preview, the hero slot, the
-// write/preview portrait panes, keyboard + inline-image enhancements, the
-// D1-backed cloud drafts (LWW upsert, merge on sync), the buffer-dates picker
-// and the frame browser. The two pickers and the draft sync are mutually
+// The Field Notes editor, whole: compose/stage/preview, the cover slot, the
+// preview panel and the insert drawer, keyboard + inline-image enhancements,
+// the D1-backed cloud drafts (LWW upsert, merge on sync), the buffer-dates
+// picker and the frame browser. The two pickers and the draft sync are mutually
 // recursive with the editor (fnInsertAtCursor ↔ fnDebouncedSave,
 // fnClearBufferDates → fnRender), so splitting them out is the one grouping
 // that produces a genuine cycle — they stay together.
@@ -12,23 +12,62 @@
 // reconnect resume (above this module) read it; only the editor assigns it.
 //
 // Extracted from console-ui.js 2026-07-29. See dev/console-module-plan.md.
+//
+// ---- 2026-08-23: the studio rewrite ----
+// The DOM half of this module was rebuilt against new markup (a manuscript
+// canvas, not a two-pane compose grid — see the FIELD NOTES STUDIO section of
+// css/field-console.css and docs/maintenance/2026-08-23-field-notes-studio.md).
+// The DATA half — stage/publish, cloud drafts, the merge, the two pickers' own
+// rendering — was deliberately not touched: none of it was what was broken.
+//
+// The one behavioural change worth knowing: fnRender() no longer renders
+// markdown on every keystroke. It updates the counters and returns unless the
+// preview panel is open. The old split pane was always on screen, so it had no
+// choice; a closed overlay should cost nothing.
 
-import { STATE, save, bumpStage, trashItem } from '../console-state.js';
+import { STATE, save, stageChange, trashItem, toggleFnBar } from '../console-state.js';
 import { getToken, isLoggedIn, pushDraft, deleteDraft, uploadFilesWithRetry } from '../console-api.js';
 import { renderMarkdown } from '../markdown-engine.js';
-import { toast, escapeHTML } from './chrome.js';
+import { toast, escapeHTML, openSheet, closeSheet } from './chrome.js';
 import { CDN_BASE, SITE_LOCATION, _resizeToWebP, generateVariants } from './assets.js';
 import { cleanFilename, readFileAsDataURL, todayISO, uid, ymd } from './utils.js';
-import { upsertAutoBarrel, barrelDateFromYMD } from './more-views.js';
 
 let fnCurrentBufferDates = [];   // selected dates for current post's buffer_dates field
 let fnSelectedFrameIds = new Set(); // selected frames in frame browser
 
-let fnBufferDatesOpen = false;
-let fnFrameBrowserOpen = false;
+// Which overlays are open. fnPreviewOpen is load-bearing rather than cosmetic:
+// it is what lets fnRender() skip the markdown pass.
+let fnPreviewOpen = false;
+let _fnDrawerTab = "frames";
 
 // ============== FN// MARKDOWN ==============
 export let fnCurrentId = null;
+
+// ---- studio chrome: the three things every load / new / stage has to say ----
+
+// The accent underline on the studio's bar and the DRAFT/LIVE stamp beside the
+// note's id are one fact shown twice — keep it written in one place.
+function _fnSetStatus(status) {
+  const draft = status === "draft";
+  document.querySelector(".fn-studio")?.classList.toggle("is-draft", draft);
+  const badge = document.getElementById("fn-status-badge");
+  if (!badge) return;
+  badge.textContent = draft ? "DRAFT" : "LIVE";
+  badge.dataset.state = draft ? "draft" : "live";
+}
+
+// Delete lives in the ⋯ menu, and only for a note that has been saved.
+function _fnSetDeletable(on) {
+  const btn = document.getElementById("fn-delete-btn");
+  if (btn) btn.style.display = on ? "flex" : "none";
+}
+
+// Point the one document picker at whatever is open (including "nothing yet").
+function _fnSyncPicker() {
+  const sel = document.getElementById("fn-doc-select");
+  if (!sel) return;
+  sel.value = STATE.posts.some((p) => p.id === fnCurrentId) ? fnCurrentId : "";
+}
 
 export function fnNewPost() {
   fnCurrentId = uid();
@@ -42,15 +81,10 @@ export function fnNewPost() {
   document.getElementById("fn-location").value = SITE_LOCATION;
   document.getElementById("fn-date").value = ymd(new Date());
   document.getElementById("fn-body").value = "";
-  document.getElementById("fn-current-slug").textContent = "NEW";
-  const badge = document.getElementById("fn-status-badge");
-  if (badge) {
-    badge.textContent = "DRAFT";
-    badge.style.color = "var(--text-faint)";
-  }
-  document.querySelector(".fn-compose .editor")?.classList.add("is-draft");
-  document.getElementById("fn-delete-btn").style.display = "none";
+  _fnSetStatus("draft");
+  _fnSetDeletable(false);
   fnHeroClear();
+  _fnSyncPicker();
   fnRender();
 }
 
@@ -64,29 +98,28 @@ export function fnLoadPost(id) {
   document.getElementById("fn-location").value = post.location || SITE_LOCATION;
   document.getElementById("fn-date").value = post.date || "";
   document.getElementById("fn-body").value = post.body || "";
-  document.getElementById("fn-current-slug").textContent = post.fn_id || "—";
-  const isDraft = post.status === "draft";
-  const badge = document.getElementById("fn-status-badge");
-  if (badge) {
-    badge.textContent = isDraft ? "DRAFT" : "LIVE";
-    badge.style.color = isDraft ? "var(--text-faint)" : "var(--green)";
-  }
-  // Elastic band (craft pass): the editor card wears the accent band only
-  // while the open post is an unpublished draft.
-  document.querySelector(".fn-compose .editor")?.classList.toggle("is-draft", isDraft);
-  document.getElementById("fn-delete-btn").style.display = "block";
+  // Elastic band (craft pass): the bar wears its accent underline, and the stamp
+  // beside the id reads DRAFT, only while the open note is unpublished.
+  _fnSetStatus(post.status === "draft" ? "draft" : "published");
+  _fnSetDeletable(true);
   fnCurrentBufferDates = post.buffer_dates ? post.buffer_dates.split(',').map(d => d.trim()).filter(Boolean) : [];
   fnSelectedFrameIds = new Set();
   // Restore the hero focal point before fnHeroSet() so its thumbnail preview
   // reflects the stored crop (fnHeroClear() drops it when there's no hero).
   const _heroSlot = document.getElementById("fn-hero-slot");
   if (post.focus) _heroSlot.dataset.focus = post.focus; else delete _heroSlot.dataset.focus;
+  // Same idea for the homepage card layout: restore it BEFORE fnHeroSet() so
+  // the opt-in button comes up in the right state (and fnHeroClear() drops it
+  // when the note has no hero to lead with).
+  if (post.card && post.card.layout) _heroSlot.dataset.cardLayout = post.card.layout;
+  else delete _heroSlot.dataset.cardLayout;
   if (post.hero && post.hero.startsWith("data:")) fnHeroSet(post.hero, post.hero_filename || "hero");
   else if (post.hero_filename || (post.hero && !post.hero.startsWith("data:"))) {
     const filename = post.hero_filename || post.hero;
     fnHeroSet("", filename);
   }
   else fnHeroClear();
+  _fnSyncPicker();
   fnRender();
 }
 
@@ -95,26 +128,24 @@ export function fnDeletePost() {
   const p = STATE.posts.find(x => x.id === fnCurrentId);
   if (!p) return;
   if (!confirm(`Delete ${p.fn_id || "post"}: ${p.title || "Untitled"}?`)) return;
-  // The post's auto-barrel entry keys off this slug via `ref` (and embeds it in the
-  // timeline URL as ?slug=...) — capture it before the post is spliced out.
-  const deletedSlug = p.fn_id || p.id;
   // Drop its cloud draft row too, so a deleted draft doesn't resurrect on next sync.
   if (p.status === "draft") { fnCloudDeleteDraft(fnCurrentId); _setCloudStatus(''); }
   trashItem("posts", fnCurrentId);
-  // Drop the matching auto-barrel entry too, or the homepage timeline keeps an orphan
-  // link to the now-deleted post. Route through trashItem (like barrelRemove) so the
-  // removal stages with the right sign, saves, re-renders the barrel, and stays
-  // restorable just like every other deletion. filter() snapshots the matches first,
-  // so splicing STATE.barrel inside the loop is safe.
-  STATE.barrel
-    .filter(b => b.type === "auto" && b.source === "post" && b.ref === deletedSlug)
-    .forEach(b => trashItem("barrel", b.id));
+  // No reset needed here: trashItem's `posts` renderer already runs
+  // `renderFN(); fnNewPost()`, which rebuilds the picker without the deleted
+  // note and leaves a blank one open.
 }
 
 export function fnHeroSet(dataURL, filename) {
   const slot = document.getElementById("fn-hero-slot");
   slot.dataset.image = dataURL;
   slot.dataset.filename = filename;
+  // A class, not the shape of an inline style: the CSS switches the slot from
+  // dashed dropzone to solid cover banner off this one fact.
+  slot.classList.add("has-cover");
+  // …and a photograph is not glass: the empty slot is a bay whose rim is a
+  // seam (data-seam="box"); the cover is opaque and gives no light.
+  slot.removeAttribute("data-seam");
   document.getElementById("fn-hero-empty").style.display = "none";
   const thumb = document.getElementById("fn-hero-thumb");
   const base = encodeURIComponent((filename || '').replace(/\.[^.]+$/, ''));
@@ -123,8 +154,10 @@ export function fnHeroSet(dataURL, filename) {
   const name = document.getElementById("fn-hero-name");
   name.textContent = filename;
   name.style.display = "block";
-  document.getElementById("fn-hero-clear").style.display = "flex";
+  document.getElementById("fn-hero-clear").style.display = "inline-flex";
   document.getElementById("fn-hero-focal").style.display = "inline-flex";
+  document.getElementById("fn-hero-card").style.display = "inline-flex";
+  _fnHeroCardSync();
   // Preview the current crop focal point on the slot thumbnail.
   thumb.style.objectPosition = slot.dataset.focus || "50% 50%";
   fnRender();
@@ -135,12 +168,54 @@ export function fnHeroClear() {
   delete slot.dataset.image;
   delete slot.dataset.filename;
   delete slot.dataset.focus;
-  document.getElementById("fn-hero-empty").style.display = "block";
+  // No picture, no picture-led card. The homepage gate would fall back to the
+  // text tile anyway; clearing it here keeps the composer from showing an
+  // opt-in that has nothing to act on.
+  delete slot.dataset.cardLayout;
+  slot.classList.remove("has-cover");
+  slot.setAttribute("data-seam", "box");
+  document.getElementById("fn-hero-empty").style.display = "flex";
   document.getElementById("fn-hero-thumb").style.display = "none";
   document.getElementById("fn-hero-name").style.display = "none";
   document.getElementById("fn-hero-clear").style.display = "none";
   document.getElementById("fn-hero-focal").style.display = "none";
+  document.getElementById("fn-hero-card").style.display = "none";
+  _fnHeroCardSync();
   fnRender();
+}
+
+// ---- the homepage card layout for this note (card: { layout }) ----
+// A field note can lead the homepage card with its hero picture instead of
+// rendering as the typographic tile (js/recent-index.js, CARD_LAYOUTS.text).
+// Offered only when a hero exists, because with no picture the layout falls
+// back to the text tile anyway and a control that could still be switched on
+// would be lying about what publish will produce.
+//
+// Stored on the hero slot next to the focal point and applied on stage/update,
+// exactly like ◎ FOCAL: the slot's dataset is the draft, fnStage() is the
+// commit. Nothing here bumps the stage counter — fnStage() already counts the
+// whole edit as one change.
+function _fnHeroCardSync() {
+  const slot = document.getElementById("fn-hero-slot");
+  const btn = document.getElementById("fn-hero-card");
+  if (!slot || !btn) return;
+  const on = slot.dataset.cardLayout === "hero";
+  btn.classList.toggle("active", on);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.textContent = on ? "▣ HERO CARD" : "▢ HERO CARD";
+}
+
+export function fnToggleHeroCard() {
+  const slot = document.getElementById("fn-hero-slot");
+  if (!slot) return;
+  if (!slot.dataset.filename && !slot.dataset.image) return toast("add a hero image first", "error");
+  if (slot.dataset.cardLayout === "hero") delete slot.dataset.cardLayout;
+  else slot.dataset.cardLayout = "hero";
+  _fnHeroCardSync();
+  fnMarkDirty();
+  toast(slot.dataset.cardLayout
+    ? "✓ homepage card leads with the picture — applies on stage/update"
+    : "✓ homepage card back to the text tile — applies on stage/update", "success");
 }
 
 export async function fnHeroIngest(files) {
@@ -257,31 +332,29 @@ export function fnStage(explicitStatus = null) {
     hero: slot.dataset.image || null,
     hero_filename: slot.dataset.filename || null,
     focus: (slot.dataset.focus && slot.dataset.focus !== '50% 50%') ? slot.dataset.focus : null,
+    // The card descriptor the homepage engine reads. An object rather than a
+    // bare string so future per-card decisions join it as keys — see the CARD
+    // ENGINE block in js/recent-index.js.
+    card: slot.dataset.cardLayout ? { layout: slot.dataset.cardLayout } : null,
     buffer_dates: fnCurrentBufferDates.length ? fnCurrentBufferDates.join(', ') : null,
-    added_at: todayISO(),
     status: finalStatus,
+    // Staged or saved from the full editor, it is a note, whatever it began
+    // as (a spark, K66).
+    kind: "note",
   };
-  // Preserve _imported flag so trash staging counts correctly
-  if (existingPost && existingPost._imported) post._imported = true;
-  if (existingPost && existingPost._cloud_updated) post._cloud_updated = existingPost._cloud_updated;
-
-  const idx = STATE.posts.findIndex(p => p.id === fnCurrentId);
-  if (idx >= 0) STATE.posts[idx] = post;
-  else STATE.posts.unshift(post);
+  // Over what is kept, so nothing the editor does not show is dropped.
+  _fnWritePost(fnCurrentId, post);
 
   if (finalStatus === "published") {
     // A draft graduating to published leaves the D1 drafts table — publish carries
     // it to GitHub/posts.json from here on.
     fnCloudDeleteDraft(fnCurrentId);
     _setCloudStatus('');
-    bumpStage("posts");
-    // Auto-barrel entry
-    upsertAutoBarrel({
-      source: "post",
-      ref: post.fn_id || post.id,
-      date: barrelDateFromYMD(post.date),
-      title: `${post.fn_id ? post.fn_id.toUpperCase() + ": " : ""}${post.title}`,
-      url: `/field-notes/post?slug=${post.fn_id || post.id}`,
+    stageChange("posts", {
+      id: post.id,
+      label: `${post.fn_id ? post.fn_id.toUpperCase() + ': ' : ''}${post.title}`
+        + `${post.card?.layout === 'hero' ? ' — hero layout' : ''}`,
+      kind: existingPost && existingPost._imported ? 'edit' : 'add',
     });
     toast(`✓ ${fn_id || "post"} staged for publish`, "success");
   } else {
@@ -292,14 +365,8 @@ export function fnStage(explicitStatus = null) {
 
   save();
   renderFN();
-
-  // Update badge visually
-  const badge = document.getElementById("fn-status-badge");
-  if (badge) {
-    const isDraft = finalStatus === "draft";
-    badge.textContent = isDraft ? "DRAFT" : "LIVE";
-    badge.style.color = isDraft ? "var(--text-faint)" : "var(--green)";
-  }
+  _fnSetStatus(finalStatus);
+  _fnSetDeletable(true);
 }
 
 export function fnPreview() {
@@ -325,7 +392,46 @@ export function fnPreview() {
 }
 
 
+// The counters, the auto-grow, and — only if the preview panel is actually
+// open — the markdown pass. Every call site in this module still says
+// fnRender(); what changed is what that costs when nothing is watching.
 export function fnRender() {
+  _fnStats();
+  if (fnPreviewOpen) _fnRenderPreview();
+}
+
+// Cheap, and runs on every keystroke. The two `ch`-width slots in the bar mean
+// writing a longer number in here cannot move a button (see the CSS section's
+// invariant 2), which is the whole reason the readout is allowed to be live.
+function _fnStats() {
+  const body = document.getElementById("fn-body");
+  if (!body) return;
+  const words = (body.value.match(/\S+/g) || []).length;
+  const wc = document.getElementById("fn-word-count");
+  if (wc) wc.textContent = `${words} words`;
+  const rt = document.getElementById("fn-read-time");
+  if (rt) rt.textContent = words > 0 ? `· ${Math.max(1, Math.ceil(words / 230))} min` : "";
+  _fnAutoGrow();
+}
+
+// The textarea has no height of its own: it grows to fit what you have written
+// and the CANVAS scrolls. That is what keeps a caret visible over an on-screen
+// keyboard without any of the scroll maths the old nested panes needed.
+// rAF-throttled, because this forces a reflow and it is called per keystroke.
+let _fnGrowQueued = false;
+export function _fnAutoGrow() {
+  if (_fnGrowQueued) return;
+  _fnGrowQueued = true;
+  requestAnimationFrame(() => {
+    _fnGrowQueued = false;
+    const ta = document.getElementById("fn-body");
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight}px`;
+  });
+}
+
+function _fnRenderPreview() {
   const title = document.getElementById("fn-title").value || "Untitled";
   const loc = document.getElementById("fn-location").value || SITE_LOCATION;
   const date = document.getElementById("fn-date").value || ymd(new Date());
@@ -447,14 +553,9 @@ export function fnRender() {
   // the live site uses (sort by day + filename, number 1..N), so the author
   // sees the working red link — or a loud not-found — while writing.
   if (bodyHtml.includes('class="frame-ref"')) {
-    const numToEntry = new Map();
-    [...STATE.buffer].sort((a, b) => {
-      const dayA = ymd(a.captured_at || a.published_at);
-      const dayB = ymd(b.captured_at || b.published_at);
-      const c = dayA.localeCompare(dayB);
-      if (c !== 0) return c;
-      return (a.filename || '').localeCompare(b.filename || '');
-    }).forEach((e, i) => numToEntry.set(i + 1, e));
+    // The one numbering (getBufferFrameNumbers), turned around: number → frame.
+    const byId = new Map(STATE.buffer.map((e) => [e.id, e]));
+    const numToEntry = new Map([...getBufferFrameNumbers()].map(([id, n]) => [n, byId.get(id)]));
     bodyHtml = bodyHtml.replace(/<a class="frame-ref" data-frame="(\d+)">([^<]*)<\/a>/g, (m, num, text) => {
       const entry = numToEntry.get(parseInt(num, 10));
       if (!entry) {
@@ -478,19 +579,22 @@ export function fnRender() {
     return `<div class="fn-preview-placeholder">📅 BUFFER DATE: ${date.replace(/-/g, '·')}${countStr}</div>`;
   });
 
+  // Join what exists: a fork that has not set a location in site.config would
+  // otherwise preview its notes under "NOTES // // 2026-08-23".
+  const metaLine = ['NOTES', loc, date].filter(Boolean).join(' // ');
   document.getElementById("fn-preview").innerHTML = `
     ${heroHtml}
     ${bufferDatesHtml}
-    <div class="fn-meta"><span class="arr">↪</span> NOTES // ${loc} // ${date}</div>
+    <div class="fn-meta"><span class="arr">↪</span> ${metaLine}</div>
     <div class="fn-title">${title}</div>
     ${bodyHtml}
   `;
-  document.getElementById("fn-current-slug").textContent =
-    document.getElementById("fn-id").value || "UNTITLED";
-  const wordCount = (body.match(/\S+/g) || []).length;
-  document.getElementById("fn-word-count").textContent = `${wordCount} words`;
-  const readMin = Math.max(1, Math.ceil(wordCount / 230));
-  document.getElementById("fn-read-time").textContent = wordCount > 0 ? `· ${readMin} min read` : "";
+}
+
+/** A spark's name: its first words, on one line. */
+export function sparkLabel(body, max = 48) {
+  const line = String(body || '').replace(/\s+/g, ' ').trim();
+  return !line ? 'Empty spark' : line.length > max ? line.slice(0, max - 1).trimEnd() + '…' : line;
 }
 
 export function renderFN() {
@@ -504,40 +608,135 @@ export function renderFN() {
   // keeps its job, which is starting a SECOND one.
   if (!fnCurrentId) fnNewPost();
 
-  const drafts    = STATE.posts.filter(p => p.status === "draft");
+  // Sparks (K66) are drafts of their own kind: the Bridge's quick drafts,
+  // kept in their own group until one is expanded into a note.
+  const sparks    = STATE.posts.filter(p => p.status === "draft" && p.kind === "spark");
+  const drafts    = STATE.posts.filter(p => p.status === "draft" && p.kind !== "spark");
   const published = STATE.posts.filter(p => !p.status || p.status === "published");
-  document.getElementById("fn-stats").textContent =
-    `${published.length} published · ${drafts.length} draft${drafts.length === 1 ? '' : 's'}`;
 
-  // Drafts get their own picker so several can be kept in flight and switched between.
-  const draftSel = document.getElementById("fn-draft-select");
-  if (draftSel) {
-    draftSel.innerHTML = `<option value="">— Drafts (${drafts.length}) —</option>` +
-      drafts.map(p =>
-        `<option value="${p.id}">◇ ${p.date ? p.date + ' · ' : ''}${escapeHTML(p.title || 'Untitled')}</option>`
-      ).join("");
+  // ONE picker, two <optgroup>s. Two side-by-side selects spent half the bar's
+  // width on a single decision, and neither of them could show you which note
+  // was actually open — this one does, because its value IS the open note.
+  const sel = document.getElementById("fn-doc-select");
+  if (sel) {
+    const row = (p, mark) => `<option value="${p.id}">${mark} ${p.date ? p.date + ' · ' : ''}`
+      + `${p.fn_id ? escapeHTML(p.fn_id) + ' · ' : ''}${escapeHTML(p.title || 'Untitled')}</option>`;
+    const group = (label, rows) => rows ? `<optgroup label="${label}">${rows}</optgroup>` : '';
+    // A spark has no title yet: it is named by its first words.
+    const spark = (p) => `<option value="${p.id}">✦ ${escapeHTML(sparkLabel(p.body))}</option>`;
+    const any = drafts.length + published.length + sparks.length;
+    sel.innerHTML =
+      `<option value="">${any ? '— open a note —' : '— no notes yet —'}</option>`
+      + group(`SPARKS (${sparks.length})`, sparks.map(spark).join(''))
+      + group(`DRAFTS (${drafts.length})`, drafts.map(p => row(p, '◇')).join(''))
+      + group(`PUBLISHED (${published.length})`, published.map(p => row(p, p._imported ? '⤓' : '●')).join(''));
+    _fnSyncPicker();
   }
-
-  const sel = document.getElementById("fn-post-select");
-  sel.innerHTML = `<option value="">— Published (${published.length}) —</option>` +
-    published.map(p =>
-      `<option value="${p.id}">${p._imported ? '⤓ ' : '● '}${p.date ? p.date + ' · ' : ''}${p.fn_id || ""} ${escapeHTML(p.title || '')}</option>`
-    ).join("");
   fnRender();
 }
 
-// ============== FN// PORTRAIT PANES (WRITE / PREVIEW) ==============
-// Portrait shows one pane at a time (stacking buried the preview and its
-// actions below the fold). CSS scopes the swap to the portrait band, so this
-// class is inert on desktop and in the landscape split.
-export function fnSetPane(pane) {
-  const v = document.getElementById("view-fn");
-  if (!v) return;
-  const preview = pane === "preview";
-  v.classList.toggle("pane-preview", preview);
-  document.getElementById("fn-seg-write")?.classList.toggle("active", !preview);
-  document.getElementById("fn-seg-preview")?.classList.toggle("active", preview);
-  if (preview) fnPreview();   // always render fresh on switch
+// ============== FN// THE PREVIEW PANEL ==============
+// An overlay, not a second pane. It slides over the manuscript on a wide screen
+// and covers it on a phone, and while it is shut fnRender() does no markdown
+// work at all. `fnPreview()` above is the OTHER preview — the real published
+// page in a new tab — and both are offered: this one to glance, that one to be
+// sure. (The panel's header carries a link to it.)
+export function fnOpenPreview() {
+  const panel = document.getElementById("fn-preview-panel");
+  if (!panel) return;
+  fnPreviewOpen = true;
+  panel.hidden = false;
+  _fnRenderPreview();
+  // Two frames so the slide transition runs from its start value — same shape
+  // as chrome.js openSheet(), for the same reason.
+  requestAnimationFrame(() => requestAnimationFrame(() => panel.classList.add("open")));
+  document.getElementById("fn-preview-btn")?.setAttribute("aria-expanded", "true");
+}
+
+export function fnClosePreview() {
+  const panel = document.getElementById("fn-preview-panel");
+  if (!panel || !fnPreviewOpen) return;
+  fnPreviewOpen = false;
+  panel.classList.remove("open");
+  setTimeout(() => { if (!fnPreviewOpen) panel.hidden = true; }, 380);   // past --dur-3
+  document.getElementById("fn-preview-btn")?.setAttribute("aria-expanded", "false");
+}
+
+export function fnTogglePreview() {
+  if (fnPreviewOpen) fnClosePreview(); else fnOpenPreview();
+}
+
+// ============== FN// THE INSERT DRAWER ==============
+// Everything you can put INTO a note, behind one door. Three tabs rather than
+// six, because six chips is a row that cannot survive a 320px screen: two
+// buffer pickers, and one list of the surfaces that own their own modal.
+//
+// Rides the console's shared .sheet-overlay/.sheet pair (chrome.js
+// openSheet/closeSheet), so it inherits the scrim, the spring and the grabber
+// drag instead of becoming a fourth way to present a panel.
+export function fnOpenDrawer(tab) {
+  _fnDrawerTab = tab || _fnDrawerTab;
+  _fnPaintDrawer();
+  openSheet("fn-drawer");
+}
+
+export function fnCloseDrawer() {
+  closeSheet("fn-drawer");
+  document.getElementById("fn-frames-btn")?.classList.remove("active");
+  document.getElementById("fn-dates-btn")?.classList.remove("active");
+}
+
+export function fnDrawerTab(tab) {
+  _fnDrawerTab = tab;
+  _fnPaintDrawer();
+}
+
+const _FN_DRAWER_PANES = {
+  frames: "fn-frame-browser",
+  days:   "fn-buffer-dates-panel",
+  media:  "fn-media-pane",
+};
+
+function _fnPaintDrawer() {
+  for (const [name, id] of Object.entries(_FN_DRAWER_PANES)) {
+    const pane = document.getElementById(id);
+    if (pane) pane.hidden = name !== _fnDrawerTab;
+    document.getElementById(`fn-tab-${name}`)
+      ?.setAttribute("aria-selected", name === _fnDrawerTab ? "true" : "false");
+  }
+  // The dock's two shortcuts light up for the tab they opened.
+  document.getElementById("fn-frames-btn")?.classList.toggle("active", _fnDrawerTab === "frames");
+  document.getElementById("fn-dates-btn")?.classList.toggle("active", _fnDrawerTab === "days");
+  if (_fnDrawerTab === "frames") fnRenderFrameBrowser();
+  if (_fnDrawerTab === "days") fnRenderBufferDates();
+}
+
+// ============== FN// THE ⋯ MENU ==============
+// The controls you reach for once a session, kept out of a row that has to
+// survive a 320px screen. One handler, so a new entry is one line in the
+// markup and one case here.
+export function fnToggleMenu(force) {
+  const menu = document.getElementById("fn-menu");
+  if (!menu) return;
+  const open = typeof force === "boolean" ? force : menu.hidden;
+  menu.hidden = !open;
+  document.getElementById("fn-menu-btn")?.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+// FIFTH SEAM. Sharing a note means painting its card, and the painter lives
+// several layers up — so the ⋯ menu keeps its one handler and the thing above
+// registers with it, the same way sync gets its upload probe. Wired in
+// js/console/init.js; unset, the menu item simply is not offered.
+let _shareNote = null;
+export function _registerFnShare(fn) { _shareNote = fn; }
+
+export function fnMenuRun(action) {
+  fnToggleMenu(false);
+  if (action === "focus") fnToggleFocus();
+  else if (action === "realpreview") fnPreview();
+  else if (action === "tabbar") toggleFnBar();
+  else if (action === "share") _shareNote?.();
+  else if (action === "delete") fnDeletePost();
 }
 
 // ============== FN// v0.7 ENHANCEMENTS ==============
@@ -547,22 +746,41 @@ export function fnSetPane(pane) {
 let fnAutoSaveTimer = null;
 let fnIsDirty = false;
 
+// ---- the one live readout ----
+// Local autosave and the D1 push used to own a span each, side by side in the
+// same wrapping row as the toolbar — so every save changed that row's width and
+// the buttons jumped between one line and two. They share ONE fixed-width slot
+// now (.fn-sync, 9ch), which is why a live readout is safe to have at all.
+//
+// _fnSyncSeq guards the fade-out: a clear scheduled 2s ago must not wipe a
+// status written since. Whoever wrote last owns the slot.
+let _fnSyncSeq = 0;
+function _fnSyncPill(text, state) {
+  const el = document.getElementById("fn-sync");
+  const seq = ++_fnSyncSeq;
+  if (el) { el.textContent = text; el.dataset.state = state || ""; }
+  return seq;
+}
+function _fnSyncClearLater(seq, ms) {
+  setTimeout(() => {
+    if (seq !== _fnSyncSeq) return;      // someone wrote after us — leave it
+    const el = document.getElementById("fn-sync");
+    if (el) { el.textContent = ""; el.dataset.state = ""; }
+  }, ms);
+}
+
 export function fnMarkDirty() {
   fnIsDirty = true;
-  const dot = document.getElementById("fn-unsaved-dot");
-  if (dot) dot.classList.add("dirty");
+  _fnSyncPill("UNSAVED", "saving");
 }
 
 export function fnMarkClean() {
   fnIsDirty = false;
-  const dot = document.getElementById("fn-unsaved-dot");
-  if (dot) dot.classList.remove("dirty");
 }
 
 export function fnAutoSave() {
   if (!fnCurrentId) return;
-  const status = document.getElementById("fn-save-status");
-  if (status) { status.textContent = "saving…"; status.className = "fn-save-status saving"; }
+  _fnSyncPill("SAVING…", "saving");
 
   const fn_id = document.getElementById("fn-id").value.trim();
   const title = document.getElementById("fn-title").value.trim();
@@ -571,8 +789,12 @@ export function fnAutoSave() {
   const existingPost = STATE.posts.find(p => p.id === fnCurrentId);
   const currentStatus = existingPost ? (existingPost.status || "published") : "draft";
 
-  const post = {
-    id: fnCurrentId,
+  // What the editor shows, written over what is kept (fnUpsertDraft), so a
+  // field the editor does not show (a spark's kind, _imported, the cloud
+  // watermark) is never dropped by an edit. Drafts are mirrored to D1 so they
+  // survive tab close / device switch; published posts flow to GitHub via
+  // Publish, so they don't go to the drafts table.
+  fnUpsertDraft(fnCurrentId, {
     fn_id,
     title: title || "Untitled",
     location: document.getElementById("fn-location").value.trim() || SITE_LOCATION,
@@ -581,38 +803,61 @@ export function fnAutoSave() {
     hero: slot.dataset.image || null,
     hero_filename: slot.dataset.filename || null,
     focus: (slot.dataset.focus && slot.dataset.focus !== '50% 50%') ? slot.dataset.focus : null,
+    card: slot.dataset.cardLayout ? { layout: slot.dataset.cardLayout } : null,
     buffer_dates: fnCurrentBufferDates.length ? fnCurrentBufferDates.join(', ') : null,
-    added_at: todayISO(),
     status: currentStatus,
-  };
-  // Preserve _imported flag so trash staging counts correctly
-  if (existingPost && existingPost._imported) post._imported = true;
-  // Preserve the cloud-sync watermark so re-sync conflict checks stay accurate
-  if (existingPost && existingPost._cloud_updated) post._cloud_updated = existingPost._cloud_updated;
-
-  const idx = STATE.posts.findIndex(p => p.id === fnCurrentId);
-  if (idx >= 0) STATE.posts[idx] = post;
-  else STATE.posts.unshift(post);
-
-  save();
-
-  // Drafts are mirrored to D1 so they survive tab close / device switch. Published
-  // posts already flow to GitHub via Publish, so they don't go to the drafts table.
-  if (currentStatus === "draft") fnScheduleCloudDraft(fnCurrentId);
+  });
 
   setTimeout(() => {
-    if (status) { status.textContent = "saved"; status.className = "fn-save-status saved"; }
     fnMarkClean();
+    // A logged-in draft is about to report its cloud state into the same slot,
+    // so don't flash "SAVED" first and make the readout stutter.
+    if (currentStatus === "draft" && isLoggedIn()) return;
+    _fnSyncClearLater(_fnSyncPill("SAVED", "saved"), 2000);
   }, 300);
-  setTimeout(() => {
-    if (status) status.textContent = "";
-  }, 2000);
 }
 
 export function fnDebouncedSave() {
   fnMarkDirty();
   clearTimeout(fnAutoSaveTimer);
-  fnAutoSaveTimer = setTimeout(fnAutoSave, 1500);
+  fnAutoSaveTimer = setTimeout(() => { fnAutoSaveTimer = null; fnAutoSave(); }, 1500);
+}
+
+// A save still waiting out its debounce lands now: on leaving the view, the
+// words typed in the last second and a half are not left to a timer.
+export function fnFlushSave() {
+  if (!fnAutoSaveTimer) return;
+  clearTimeout(fnAutoSaveTimer);
+  fnAutoSaveTimer = null;
+  fnAutoSave();
+}
+
+// ============== THE DRAFT STORE (K65) ==============
+// One way a note is written to STATE, whoever writes it: the editor (from its
+// fields), the Bridge's spark, a dropped .md. `fields` are written OVER what
+// is kept, so a key the writer does not know about survives (the cloud
+// watermark, _imported, a spark's kind); fnAutoSave used to build a fresh
+// object and drop every key it did not list. A new note starts as a draft of
+// kind "note" at the site's place and today's date. Nothing here reads or
+// touches the editor's DOM, so writing one note never disturbs the note open
+// in the editor.
+function _fnWritePost(id, fields) {
+  const idx = STATE.posts.findIndex((p) => p.id === id);
+  const kept = idx >= 0 ? STATE.posts[idx]
+    : { fn_id: "", title: "Untitled", location: SITE_LOCATION, date: ymd(new Date()), body: "", status: "draft", kind: "note" };
+  const post = { ...kept, ...fields, id, added_at: todayISO() };
+  if (idx >= 0) STATE.posts[idx] = post;
+  else STATE.posts.unshift(post);
+  return post;
+}
+
+/** Write a note (merge over what is kept), save, and mirror a draft to D1. */
+export function fnUpsertDraft(id, fields = {}) {
+  if (!id) return null;
+  const post = _fnWritePost(id, fields);
+  save();
+  if ((post.status || "published") === "draft") fnScheduleCloudDraft(id);
+  return post;
 }
 
 // ============== CLOUD DRAFTS (D1-backed) ==============
@@ -623,19 +868,22 @@ export function fnDebouncedSave() {
 // safe in localStorage and the next save (or next login sync) reconciles it.
 const _draftCloudTimers = {};
 
+// Same slot as the local save (see _fnSyncPill). Cloud state is the more
+// meaningful signal when it exists, so it lands last and stays put — only
+// `saved` fades, because "☁ SYNCED" forever is noise, while "☁ RETRY" is not.
 export function _setCloudStatus(state) {
-  const el = document.getElementById('fn-cloud-status');
-  if (!el) return;
+  // Words, not glyphs: a ☁ that resolves out of a fallback face has no width
+  // this layout can reserve for, and a clipped status is worse than none.
   const map = {
-    saving:  ['☁ saving…', 'var(--accent)'],
-    saved:   ['☁ synced',  'var(--green)'],
-    offline: ['☁ local',   'var(--text-faint)'],
-    error:   ['☁ retry',   'var(--accent)'],
-    '':      ['',          'var(--text-faint)'],
+    saving:  ['SYNCING…',   'saving'],
+    saved:   ['SYNCED',     'saved'],
+    offline: ['LOCAL ONLY', ''],
+    error:   ['RETRYING',   'error'],
+    '':      ['',           ''],
   };
-  const [txt, color] = map[state] || ['', 'var(--text-faint)'];
-  el.textContent = txt;
-  el.style.color = color;
+  const [txt, tone] = map[state] || ['', ''];
+  const seq = _fnSyncPill(txt, tone);
+  if (state === 'saved') _fnSyncClearLater(seq, 2600);
 }
 
 export function fnScheduleCloudDraft(id) {
@@ -663,6 +911,9 @@ export async function fnCloudPushDraft(id, { force = false } = {}) {
     body: post.body || '',
     hero_filename,
     buffer_dates: post.buffer_dates || null,
+    // A note or a spark (K65). The worker keeps the row's own when a console
+    // sends none, so an older cached console never demotes a spark.
+    kind: post.kind === 'spark' ? 'spark' : 'note',
     // The version this device last saw from the server. The worker applies the
     // write only while the row still matches it, so a device that has been
     // asleep with a stale copy can no longer overwrite newer work — it gets a
@@ -678,8 +929,7 @@ export async function fnCloudPushDraft(id, { force = false } = {}) {
     // this version with an equal-or-older cloud copy.
     const live = STATE.posts.find(p => p.id === id);
     if (live && data.updated_at) live._cloud_updated = data.updated_at;
-    _setCloudStatus('saved');
-    setTimeout(() => { const el = document.getElementById('fn-cloud-status'); if (el && el.textContent === '☁ synced') _setCloudStatus(''); }, 2500);
+    _setCloudStatus('saved');   // fades itself; see _fnSyncClearLater
   } catch (err) {
     if (err.status === 409 && err.data && err.data.code === 'draft_conflict') {
       _fnDraftConflict(id, payload, err.data.draft);
@@ -703,8 +953,9 @@ export async function fnCloudPushDraft(id, { force = false } = {}) {
 //    force-overwrite on our own initiative: losing a field note to a silent
 //    resolution is the whole failure this replaced.
 function _fnDraftConflict(id, sent, server) {
-  const same = server && ['fn_id', 'title', 'location', 'date', 'body', 'hero_filename', 'buffer_dates']
-    .every(k => (server[k] ?? '') === (sent[k] ?? ''));
+  const same = server && ['fn_id', 'title', 'location', 'date', 'body', 'hero_filename', 'buffer_dates', 'kind']
+    // (A D1 without 0003 answers no kind at all; that is not a difference.)
+    .every(k => (k === 'kind' && server.kind == null) || (server[k] ?? '') === (sent[k] ?? ''));
   const live = STATE.posts.find(p => p.id === id);
 
   if (same) {
@@ -792,6 +1043,8 @@ export function mergeCloudDrafts(cloudDrafts) {
       buffer_dates: cd.buffer_dates || null,
       added_at: todayISO(),
       status: 'draft',
+      // A D1 that never ran 0003 sends no kind: a note, as every draft was.
+      kind: cd.kind === 'spark' ? 'spark' : 'note',
       _cloud_updated: cd.updated_at || 0,
     };
     if (idx === -1) {
@@ -828,37 +1081,49 @@ export function mergeCloudDrafts(cloudDrafts) {
 }
 
 // -- Focus mode --
+// Everything that is not the writing goes; the dock and the actions stay,
+// dimmed, so this is never a room you can only leave with a keystroke.
+// Re-measures the textarea afterwards — the measure changes when the chrome does.
 export function fnToggleFocus() {
   document.body.classList.toggle("fn-focus");
+  _fnAutoGrow();
 }
 
-// -- Collapsible frontmatter --
-// Collapsed by default on touch. On an iPad Mini in landscape the four fields
-// cost 121px of a pane that only had 239px left to write in, so the editor was
-// unusable until they were hidden by hand every single time. Desktop has the
-// height to spare and opens expanded, as before.
-//
-// The hero slot deliberately does NOT collapse with them any more. It used to,
-// which meant the one action that reclaimed writing room also hid the hero
-// dropzone — so on a small screen the hero was effectively unreachable.
-let fnFrontmatterCollapsed = matchMedia("(max-width: 1180px), (pointer: coarse)").matches;
-export function fnToggleFrontmatter() {
-  fnFrontmatterCollapsed = !fnFrontmatterCollapsed;
-  _applyFnFrontmatter();
-}
-
-// "META" said nothing to anyone who does not write software. The panel's job is
-// to name the post; once it is open, Location/Date/FN ID explain themselves.
-export function _applyFnFrontmatter() {
-  document.querySelector(".fn-frontmatter")?.classList.toggle("collapsed", fnFrontmatterCollapsed);
-  const btn = document.getElementById("fn-collapse-btn");
-  if (btn) {
-    btn.textContent = fnFrontmatterCollapsed ? "+ TITLE" : "TITLE ▾";
-    btn.title = fnFrontmatterCollapsed
-      ? "Add a title, location and date"
-      : "Hide title, location and date";
+// Arriving with a seed (the view seam, K65): `load` opens that note, `caret:
+// 'end'` puts the cursor after its last word, and `focus` raises the keyboard
+// (the seam swaps at once for a focus seed, so this runs inside the tap,
+// which is the only place iOS will). The canvas is the scroller, so it is
+// brought to the end once the writing has grown to its words.
+export function fnEnter(seed = {}) {
+  if (seed.load) fnLoadPost(seed.load);
+  if (!seed.focus && seed.caret !== "end") return;
+  const body = document.getElementById("fn-body");
+  if (!body) return;
+  if (seed.focus) body.focus({ preventScroll: true });
+  if (seed.caret === "end") {
+    const n = body.value.length;
+    body.setSelectionRange(n, n);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const canvas = document.getElementById("fn-canvas");
+      if (canvas) canvas.scrollTop = canvas.scrollHeight;
+    }));
   }
 }
+
+// Leaving the view leaves focus mode. It is a class on <body>, so nothing
+// else would take it off: the topbar, sidebar and tab bar stayed hidden on
+// every other surface until you came back to FN// to turn it off (K62).
+export function fnExitFocus() {
+  if (document.body.classList.contains("fn-focus")) fnToggleFocus();
+}
+
+// -- The frontmatter no longer collapses, because there is nothing to reclaim --
+// It used to be four stacked form fields costing 121px of a pane that had 239px
+// left to write in, so it shipped with a TITLE ▾ toggle. It is one inline row of
+// about 30px now (.fn-meta), which is cheaper than the button that hid it — and
+// that button had a history: it used to take the cover dropzone down with it,
+// putting the cover out of reach on exactly the screens where space was tight.
+// A control that isn't needed cannot regress.
 
 // -- Insert text at cursor in textarea --
 export function fnInsertAtCursor(textarea, before, after) {
@@ -882,16 +1147,31 @@ export function fnInsertAtCursor(textarea, before, after) {
 // -- Keyboard shortcuts --
 export function fnHandleKeyboard(e) {
   const textarea = document.getElementById("fn-body");
-  if (document.activeElement !== textarea && !e.target.closest("#view-fn")) return;
+  const inFn = document.getElementById("view-fn")?.classList.contains("active");
 
-  // Escape exits focus mode
-  if (e.key === "Escape" && document.body.classList.contains("fn-focus")) {
+  // Escape unwinds the overlays newest-first, then focus mode. Works from
+  // anywhere in the view, not just the textarea — you press it having just
+  // clicked something in the thing you want closed.
+  if (e.key === "Escape" && inFn) {
+    if (document.getElementById("fn-menu") && !document.getElementById("fn-menu").hidden) {
+      e.preventDefault(); fnToggleMenu(false); return;
+    }
+    if (!document.getElementById("fn-drawer")?.classList.contains("hidden")) {
+      e.preventDefault(); fnCloseDrawer(); return;
+    }
+    if (fnPreviewOpen) { e.preventDefault(); fnClosePreview(); return; }
+    if (document.body.classList.contains("fn-focus")) { e.preventDefault(); fnToggleFocus(); return; }
+  }
+
+  // ⌘P toggles the preview from anywhere in the view (it is a view-level
+  // overlay, not a textarea command) — and stops the browser print dialog.
+  if (inFn && (e.metaKey || e.ctrlKey) && e.key === "p") {
     e.preventDefault();
-    fnToggleFocus();
+    fnTogglePreview();
     return;
   }
 
-  // Only handle shortcuts when textarea is focused
+  // Everything below edits text, so it needs the caret.
   if (document.activeElement !== textarea) return;
 
   const isMod = e.metaKey || e.ctrlKey;
@@ -960,15 +1240,6 @@ export function fnHandleImageDrop(e) {
   });
 }
 
-// -- Scroll sync (proportional) --
-export function fnScrollSync(e) {
-  const editor = e.target;
-  const preview = document.querySelector(".fn-preview-area");
-  if (!preview) return;
-  const ratio = editor.scrollTop / (editor.scrollHeight - editor.clientHeight || 1);
-  preview.scrollTop = ratio * (preview.scrollHeight - preview.clientHeight);
-}
-
 // -- Wire everything up on load --
 export function fnSetupEnhancements() {
   const body = document.getElementById("fn-body");
@@ -1025,34 +1296,50 @@ export function fnSetupEnhancements() {
     });
   }
 
-  // Scroll sync
-  if (body) {
-    body.addEventListener("scroll", fnScrollSync);
-  }
+  // The textarea has no scrollbar of its own to sync any more — it grows and
+  // the canvas scrolls — so re-measure it whenever its content changes by a
+  // route that isn't typing (a load, an insert, a paste).
+  if (body) body.addEventListener("input", _fnAutoGrow);
+
+  // Click-away closes the ⋯ menu. Capture phase, so a click on a control
+  // inside the menu still runs its own handler first (fnMenuRun closes it).
+  document.addEventListener("click", (e) => {
+    const menu = document.getElementById("fn-menu");
+    if (!menu || menu.hidden) return;
+    if (e.target.closest("#fn-menu") || e.target.closest("#fn-menu-btn")) return;
+    fnToggleMenu(false);
+  });
+
+  // The measure changes with the window, so the grown height has to as well.
+  window.addEventListener("resize", _fnAutoGrow);
 }
 
 // ============== PHASE 4: BUFFER DATES PICKER ==============
 
+// The console's one frame numbering (f#N): every Buffer entry, dark ones
+// included, by local day then filename, 1..N. The live site numbers the same
+// way twice (js/lighttable.js assignFrameNumbers; src/api/site-meta.js
+// _featuredRawFrames, in the site's time zone), and tests/frame-number-
+// parity.test.js holds all three to one answer. An undated entry is day ''
+// in all three (it was "NaN-NaN-NaN" here, which sorted it last, not first).
+//
+// Computed once per change to the Buffer (K69): the Bridge alone asked for it
+// three times a paint (the shelf, the send-out line, the preview), each a
+// sort of every frame with two date parses per comparison, ~4 ms at iPad
+// speed apiece. The key is what the numbering reads (id, day, filename), so
+// an edit in place moves it as surely as an added frame. The map is shared:
+// callers read it and never write it.
+let _frameNums = { key: null, map: new Map() };
 export function getBufferFrameNumbers() {
-  const sorted = [...STATE.buffer].sort((a, b) => {
-    const dayA = ymd(a.captured_at || a.published_at);
-    const dayB = ymd(b.captured_at || b.published_at);
-    const dayCmp = dayA.localeCompare(dayB);
-    if (dayCmp !== 0) return dayCmp;
-    return (a.filename || '').localeCompare(b.filename || '');
-  });
+  const key = STATE.buffer.map((e) => `${e.id}\u0001${e.captured_at || e.published_at || ''}\u0001${e.filename || ''}`).join('\u0002');
+  if (key === _frameNums.key) return _frameNums.map;
+  const day = (v) => (v ? ymd(v) : '');
+  const rows = STATE.buffer.map((e) => ({ e, d: day(e.captured_at || e.published_at), f: e.filename || '' }));
+  rows.sort((a, b) => a.d.localeCompare(b.d) || a.f.localeCompare(b.f));
   const map = new Map();
-  sorted.forEach((e, i) => map.set(e.id, i + 1));
+  rows.forEach((r, i) => map.set(r.e.id, i + 1));
+  _frameNums = { key, map };
   return map;
-}
-
-export function fnToggleBufferDates() {
-  fnBufferDatesOpen = !fnBufferDatesOpen;
-  const panel = document.getElementById("fn-buffer-dates-panel");
-  if (!panel) return;
-  panel.style.display = fnBufferDatesOpen ? "block" : "none";
-  if (fnBufferDatesOpen) fnRenderBufferDates();
-  document.getElementById("fn-dates-btn")?.classList.toggle("active", fnBufferDatesOpen);
 }
 
 // Clear the selected buffer dates. Exported because the Clear button is rendered
@@ -1114,15 +1401,6 @@ export function fnToggleBufferDate(date) {
 
 // ============== PHASE 4: FRAME BROWSER ==============
 
-export function fnToggleFrameBrowser() {
-  fnFrameBrowserOpen = !fnFrameBrowserOpen;
-  const panel = document.getElementById("fn-frame-browser");
-  if (!panel) return;
-  panel.style.display = fnFrameBrowserOpen ? "flex" : "none";
-  if (fnFrameBrowserOpen) fnRenderFrameBrowser();
-  document.getElementById("fn-frames-btn")?.classList.toggle("active", fnFrameBrowserOpen);
-}
-
 export function fnRenderFrameBrowser() {
   const panel = document.getElementById("fn-frame-browser");
   if (!panel) return;
@@ -1148,7 +1426,7 @@ export function fnRenderFrameBrowser() {
       const base = (e.filename || '').replace(/\.webp$/, '');
       const src = e.image || `${CDN_BASE}/archive/${encodeURIComponent(base)}-480w.webp`;
       const selected = fnSelectedFrameIds.has(e.id) ? ' fb-selected' : '';
-      return `<div class="fb-thumb${selected}" data-id="${e.id}"
+      return `<div class="fb-thumb${selected}" data-tier="card" data-id="${e.id}"
           onclick="fnToggleFrameSelect('${e.id}')"
           draggable="true" ondragstart="fnDragFrame('${e.id}', event)">
           <img src="${src}" alt="" onerror="this.style.display='none'">
@@ -1200,6 +1478,7 @@ export function fnInsertFrameStrip() {
   const textarea = document.getElementById("fn-body");
   fnInsertAtCursor(textarea, shortcode, "");
   toast(`✓ inserted strip: ${fnSelectedFrameIds.size} frame${fnSelectedFrameIds.size !== 1 ? 's' : ''}`, "success");
+  fnCloseDrawer();   // the drawer's job is done; get back to the page
 }
 
 export function fnInsertDateBlocks() {
@@ -1213,4 +1492,5 @@ export function fnInsertDateBlocks() {
   fnCurrentBufferDates = [];
   fnRenderBufferDates();
   toast(`✓ inserted ${count} date block${count !== 1 ? 's' : ''}`, "success");
+  fnCloseDrawer();
 }

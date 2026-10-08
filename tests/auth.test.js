@@ -68,6 +68,22 @@ describe('createRawToken / verifyRawToken', () => {
     expect(await verifyRawToken('a.b.c.d', SECRET)).toBeNull();
     expect(await verifyRawToken('garbage', SECRET)).toBeNull();
   });
+
+  it('refuses to sign with an empty secret (no forgeable constant-key tokens)', async () => {
+    // An unset SESSION_SECRET would otherwise be encoded as a constant HMAC key
+    // anyone can reproduce — see the createRawToken guard. Signing must throw,
+    // not silently mint a forgeable token.
+    for (const bad of ['', undefined, null]) {
+      await expect(createRawToken(bad, { role: 'admin' }, 3600)).rejects.toThrow();
+    }
+  });
+
+  it('verifies nothing when the secret is empty (fails closed)', async () => {
+    const tok = await createRawToken(SECRET, { role: 'guest' }, 3600);
+    for (const bad of ['', undefined, null]) {
+      expect(await verifyRawToken(tok, bad)).toBeNull();
+    }
+  });
 });
 
 describe('console token scope boundary (privilege-escalation guard)', () => {

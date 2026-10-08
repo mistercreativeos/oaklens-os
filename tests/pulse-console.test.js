@@ -6,9 +6,13 @@
 // this, and does it have rules to draw it with?"
 //
 //   1. THE PACKS NEVER LOADED. js/pulse-packs.js shipped as a classic script
-//      hanging window.MoodPacks, but dev/field-console.html carries no
+//      hanging window.MoodPacks, but dev/field-console.html carried no
 //      <script src> tags at all — it is an ES-module surface with an import
 //      map. So the composer rendered its "starter packs" heading above nothing.
+//      (2026-08-23: the console now loads exactly ONE classic script on
+//      purpose — the public homepage's js/recent-index.js, so the Cards view
+//      previews with the real selection logic. The rule below names it rather
+//      than counting to zero.)
 //   2. THE CARD HAD NO STYLES. The card markup uses .wk-pulse/.wk-p-*, which
 //      live in css/main.css, and the console loads only css/field-console.css.
 //      It came out as two lines of unstyled text.
@@ -17,7 +21,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PACKS, pulseFrom, allPulses, trayGlyphs } from '../js/pulse-packs.js';
+import { PACKS, pulseFrom, allPulses, trayGlyphs, glyphGroups } from '../js/pulse-packs.js';
 import { PULSE_LABEL } from '../src/shared/pulse.js';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -31,14 +35,34 @@ const packsSrc = read('js/pulse-packs.js');
 describe('the packs are reachable from the console', () => {
   it('js/pulse-packs.js is an ES MODULE, not a global-hanging classic script', () => {
     expect(packsSrc).toMatch(/^export /m);
-    // The console has no <script src> tags, so a global would never be defined.
+    // Nothing loads this file as a classic script, so a global it hung would
+    // never be defined — the original bug, exactly.
     expect(packsSrc).not.toMatch(/globalThis\.(Mood|Pulse)Packs|window\.(Mood|Pulse)Packs/);
   });
 
-  it('the console has no <script src> tags at all — the reason above', () => {
-    // If this ever stops being true the rule changes, and whoever changes it
-    // should have to update this test on purpose.
-    expect(consoleHtml).not.toMatch(/<script\s+src=/i);
+  it('loads same-origin classic scripts ONLY to run real public-page code', () => {
+    // This read "no <script src> tags at all" until the Cards view landed, and
+    // the rule it protected is unchanged: a console MODULE is reachable only
+    // through the import map, so anything that hangs a global is a dead file.
+    // The exceptions are deliberate and named here, and they are all the same
+    // exception — a PUBLIC page's own classic script, loaded so the console
+    // runs the real code instead of a second copy of it that drifts:
+    //
+    //   js/recent-index.js  the homepage grid, for the Cards view's preview
+    //   js/audio-player.js  the shared audio module, for the SETS shelf's
+    //                       AudioPlayer.resolveSetTracks (cards chunk 4)
+    //
+    // A new entry here that is NOT that — anything hanging a global purely for
+    // the console's own benefit — is the old bug coming back, and whoever adds
+    // one has to say so here on purpose.
+    const sameOrigin = [...consoleHtml.matchAll(/<script\b[^>]*\ssrc=["'](\/[^"']+)["']/gi)]
+      .map((m) => m[1].split('?')[0]);
+    expect(sameOrigin).toEqual(['/js/recent-index.js', '/js/audio-player.js']);
+    // Both must be files the public site actually serves to visitors, which is
+    // the whole justification for loading them here.
+    for (const src of sameOrigin) {
+      expect(read('index.html') + read('listen/index.html')).toContain(src);
+    }
   });
 
   it('every js/ file the pulse module imports is listed in the import map', () => {
@@ -84,7 +108,8 @@ describe('the packs are reachable from the console', () => {
     // uses the same class, so it matches them by construction rather than by
     // someone remembering to.
     expect(consoleHtml).toMatch(/class="settings-btn"[^>]*id="pulse-topbar-btn"/);
-    expect(consoleHtml).toMatch(/id="pulse-topbar-btn"[^>]*onclick="showView\('pulse'\)"/);
+    // Pressed again while Pulse is up, it goes back to the Bridge (2026-10-06).
+    expect(consoleHtml).toMatch(/id="pulse-topbar-btn"[^>]*onclick="topbarKey\('pulse'\)"/);
   });
 
   it('the topbar chip and the More-sheet entry wear the SAME glyph', () => {
@@ -160,15 +185,18 @@ describe('the SMD indicator', () => {
     // The snippet set `box-shadow: none` at rest, which drops the inset
     // highlight along with the glow and flattens the part to a painted square
     // between beats. Only the outer glow should go.
-    for (const [label, css, frames] of [
-      ['card', mainCss, /@keyframes wk-p-led \{[\s\S]*?\n\}/],
-      ['sys lamp', consoleCss, /@keyframes lamp-smd \{[\s\S]*?\n\}/],
-    ]) {
-      const block = css.match(frames);
-      expect(block, `the ${label} LED has no SMD keyframes`).toBeTruthy();
-      expect(block[0], `the ${label} LED drops its inset specular at rest`).not.toMatch(/box-shadow:\s*none/);
-      expect(block[0]).toContain('inset 0 0 2px');
-    }
+    const block = mainCss.match(/@keyframes wk-p-led \{[\s\S]*?\n\}/);
+    expect(block, 'the card LED has no SMD keyframes').toBeTruthy();
+    expect(block[0], 'the card LED drops its inset specular at rest').not.toMatch(/box-shadow:\s*none/);
+    expect(block[0]).toContain('inset 0 0 2px');
+    // The SYS lamp (K69): its specular is its own static box-shadow, the beat
+    // moves opacity only (the compositor's), and the glow rides on ::after.
+    const smd = consoleCss.match(/@keyframes lamp-smd \{[\s\S]*?\n\}/);
+    expect(smd, 'the sys lamp has no SMD keyframes').toBeTruthy();
+    expect(smd[0]).not.toMatch(/box-shadow/);
+    expect(consoleCss).toMatch(/\.sys-lamp-led \{[^}]*box-shadow: inset 0 0 2px var\(--led-spec\);/);
+    expect(consoleCss).toMatch(/#sys-lamp\[data-state="idle"\] \.sys-lamp-led::after \{[^}]*box-shadow: 0 0 12px[^}]*animation: lamp-smd-glow/);
+    expect(consoleCss.match(/@keyframes lamp-smd-glow \{[\s\S]*?\n\}/)[0]).not.toMatch(/box-shadow/);
   });
 
   it('both LEDs have a reduced-motion escape', () => {
@@ -351,7 +379,7 @@ describe('the starter pack itself', () => {
   });
 });
 
-describe('the glyph tray', () => {
+describe('the glyph menu', () => {
   // Six came free by mapping the lane's starter lines. It was tidy and it was
   // not enough to write with (owner, 2026-08-13), so each lane carries its own
   // list of twelve.
@@ -359,10 +387,10 @@ describe('the glyph tray', () => {
     expect(trayGlyphs(key)).toHaveLength(12);
   });
 
-  it('every lane leads with its own starter glyphs, in order', () => {
-    // This is what keeps "the tray follows the lane you tapped" true. Without
-    // it the extra six could drift into a generic set and the lane would stop
-    // meaning anything to the picker.
+  it('every section leads with its own starter glyphs, in order', () => {
+    // This is what makes the HEADING mean something. Without it the extra six
+    // could drift into a generic set and "Photography" would stop describing
+    // the twelve underneath it.
     for (const p of PACKS) {
       expect(trayGlyphs(p.key).slice(0, 6), p.key).toEqual(p.pulses.map((m) => m.glyphs));
     }
@@ -381,18 +409,282 @@ describe('the glyph tray', () => {
     expect(trayGlyphs('astrology')).toEqual([]);
   });
 
-  it('the tray reads the list and does not re-derive six from the lines', () => {
-    const code = pulseModule.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
-    expect(code).toContain('trayGlyphs(activePack)');
-    expect(code, 'the tray is back to mapping the starter lines').not.toMatch(/pulses\.map\(\(m\) => m\.glyphs\)/);
+  // ---- universal, not per-lane (owner, 2026-08-24) ----
+  //
+  // The inverse of the assertion that used to live here, which pinned
+  // `trayGlyphs(activePack)` — i.e. pinned the behaviour being fixed. Choosing a
+  // lane silently narrowed the vocabulary to twelve, so a photographer writing
+  // about a late edit had to leave the lane seeding their line to reach ☕.
+  it('glyphGroups() offers every discipline, in PACKS order, with its label', () => {
+    const groups = glyphGroups();
+    expect(groups.map((g) => g.key)).toEqual(PACKS.map((p) => p.key));
+    expect(groups.map((g) => g.label)).toEqual(PACKS.map((p) => p.label));
+    for (const g of groups) expect(g.glyphs, g.key).toEqual(trayGlyphs(g.key));
+    expect(groups.reduce((n, g) => n + g.glyphs.length, 0)).toBe(72);
   });
 
-  it('the tray clear says NO GLYPH, so only one control on screen says "clear"', () => {
+  it('the menu renders every group, and no longer filters by the open lane', () => {
+    const code = pulseModule.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(code).toContain('glyphGroups()');
+    expect(code, 'the menu went back to showing one lane at a time').not.toContain('trayGlyphs(activePack)');
+    expect(code, 'the menu is back to mapping the starter lines').not.toMatch(/pulses\.map\(\(m\) => m\.glyphs\)/);
+  });
+
+  it('each group is a labelled section the composer can mark by lane', () => {
+    expect(pulseModule).toContain('class="pulse-glyph-head"');
+    expect(pulseModule).toMatch(/data-lane="\$\{escapeHTML\(g\.key\)\}"/);
+    for (const cls of ['.pulse-glyph-group', '.pulse-glyph-head', '.pulse-glyph-grid']) {
+      expect(consoleCss, `${cls} is emitted by the menu but has no rule`).toContain(cls);
+    }
+    // The open lane is MARKED, not filtered — so the menu's order can stay put.
+    expect(consoleCss).toMatch(/\.pulse-glyph-group\.is-lane/);
+    expect(pulseModule).toMatch(/function syncTrayLane\(/);
+  });
+
+  it('a lane tap moves a class instead of rebuilding the panel', () => {
+    // Rebuilding it would throw away the author's scroll position in a
+    // six-section menu, and could do it while their thumb was mid-flick.
+    const fn = pulseModule.match(/export function _pulseSetPack\(key\) \{[\s\S]*?\n\}/);
+    expect(fn, '_pulseSetPack is gone').toBeTruthy();
+    expect(fn[0], 'the lane rebuilds the glyph menu again').not.toMatch(/tray\.innerHTML/);
+    expect(fn[0]).toContain('syncTrayLane()');
+  });
+
+  it('the panel is actually the width it claims', () => {
+    // The shipped rule was `left: 50%; transform: translateX(-50%)` with no
+    // `width` and no `right`, so the containing block ran from the stage's
+    // midpoint to its right edge and the panel shrink-to-fit into half a stage
+    // — three glyphs wide on a phone with room for six.
+    const rule = consoleCss.match(/^\.pulse-tray \{[^}]*\}/m);
+    expect(rule, '.pulse-tray has no base rule').toBeTruthy();
+    expect(rule[0], 'a centred absolute panel with no width shrink-to-fits').toMatch(/\n\s*width:/);
+    expect(rule[0], 'the panel needs a cap, or a six-section menu runs off the stage')
+      .toMatch(/max-height:/);
+  });
+
+  it('the panel scrolls inside itself, and contains that scroll', () => {
+    const rule = consoleCss.match(/\.pulse-tray-body \{[^}]*\}/);
+    expect(rule, '.pulse-tray-body has no rule').toBeTruthy();
+    expect(rule[0]).toMatch(/overflow-y:\s*auto/);
+    expect(rule[0], 'a flick through the glyphs can chain into the view behind the panel')
+      .toMatch(/overscroll-behavior-y:\s*contain/);
+  });
+
+  it('the scroll cue is drawn IN FRONT, and only at an edge with more behind it', () => {
+    // The CSS-only `background-attachment: local` version was written first and
+    // does not work here: background layers paint behind an element's content,
+    // and every tile carries an opaque --surface-2, so the shadow strip was
+    // covered by whatever row sat at the edge. Verified in Chromium.
+    for (const sel of ['.pulse-tray-scroll::before', '.pulse-tray-scroll::after']) {
+      expect(consoleCss, `${sel} is gone — the menu stopped saying it continues`).toContain(sel);
+    }
+    expect(consoleCss).toMatch(/\.pulse-tray-scroll\[data-up\]::before \{[^}]*opacity:\s*1/);
+    expect(consoleCss).toMatch(/\.pulse-tray-scroll\[data-down\]::after \{[^}]*opacity:\s*1/);
+    // A cue you can tap is a cue that eats a glyph.
+    const edge = consoleCss.match(/\.pulse-tray-scroll::before,\s*\.pulse-tray-scroll::after \{[^}]*\}/);
+    expect(edge, 'the shared edge rule is gone').toBeTruthy();
+    expect(edge[0]).toMatch(/pointer-events:\s*none/);
+    // Both halves or neither: the attributes have to be set by something.
+    expect(pulseModule).toMatch(/export function _pulseTrayCue\(/);
+    expect(pulseModule).toContain('onscroll="_pulseTrayCue()"');
+  });
+
+  it('the glyph tiles are bigger than the 46px they replaced, and stay tappable', () => {
+    // The owner's note against the original mockup: "the glyphs were larger and
+    // centered." A tile that shrinks under the tap floor on a narrow phone is
+    // the other way to fail this.
+    const rule = consoleCss.match(/^\.pulse-glyph \{[^}]*\}/m);
+    expect(rule, '.pulse-glyph has no rule').toBeTruthy();
+    expect(rule[0]).toMatch(/min-height:\s*44px/);
+    const size = rule[0].match(/font-size:\s*([\d.]+)rem/);
+    expect(size, '.pulse-glyph has no font-size').toBeTruthy();
+    expect(Number(size[1])).toBeGreaterThan(1.4);
+  });
+
+  it('the whole emoji set arrives as a keyboard doorway, not a bundled table', () => {
+    // The answer to "is there a cost to making all the emoji available?" —
+    // ~1,900 emoji of payload, as many colour-font nodes to paint on open, tofu
+    // on older platform fonts, and a list that goes stale every Unicode
+    // release. The device already solves all four, with search. This guard
+    // fails if someone ships the table instead.
+    expect(pulseModule).toContain('id="pulse-glyph-any"');
+    expect(pulseModule).toMatch(/export function _pulseSetGlyphAny\(/);
+    const fn = pulseModule.match(/export function _pulseSetGlyphAny\([\s\S]*?\n\}/);
+    expect(fn[0], 'the doorway keeps what you typed — two elements claiming to be the glyph')
+      .toMatch(/box\.value = ''/);
+    expect(fn[0], 'the doorway shuts the panel out from under the keyboard it just opened')
+      .not.toContain('closeTray()');
+    // It rides .pulse-input, which carries the 16px floor that stops iOS
+    // zooming the page on focus.
+    expect(pulseModule).toMatch(/class="pulse-input pulse-tray-any"/);
+  });
+
+  it('the menu closes on Escape and on a tap outside', () => {
+    expect(pulseModule).toMatch(/export function _pulseCloseTray\(/);
+    expect(pulseModule).toContain('id="pulse-tray-scrim"');
+    // Shown by the panel's own state, so the two cannot drift apart.
+    expect(consoleCss).toMatch(/\.pulse-tray\.open \+ \.pulse-tray-scrim \{[^}]*display:\s*block/);
+    expect(read('js/console/init.js'), 'the glyph menu is not in the Escape ladder')
+      .toContain('pulse-tray")?.classList.contains("open")');
+  });
+
+  it('the menu clear says NO GLYPH, so only one control on screen says "clear"', () => {
     // The dock's RESET CARD sits a thumb away. Two buttons both saying CLEAR
     // while meaning "drop one emoji" and "empty the whole card" is how a
     // mis-tap becomes a lost draft.
     expect(pulseModule).toContain('>NO GLYPH<');
     expect(pulseModule, 'a second CLEAR came back to this surface').not.toMatch(/>CLEAR</);
+  });
+
+  it('every glyph on the card can be taken back off, one at a time', () => {
+    // Second pass, 2026-08-24: "you can't remove an individual glyph or
+    // character without pressing reset card" — and RESET CARD also throws away
+    // the line. So the panel carries a removable chip per glyph, which is the
+    // ONLY way back for an emoji picked from the platform keyboard (it has no
+    // curated tile to un-toggle).
+    expect(pulseModule).toContain('id="pulse-tray-picked"');
+    expect(pulseModule).toMatch(/export function _pulseRemoveGlyph\(/);
+    expect(pulseModule).toMatch(/onclick="_pulseRemoveGlyph\(\$\{i\}\)"/);
+    for (const cls of ['.pulse-tray-picked', '.pulse-picked']) {
+      expect(consoleCss, `${cls} is emitted but has no rule`).toContain(cls);
+    }
+    // Removing a glyph works on the LIST, so it cannot corrupt a multi-glyph
+    // string the way a substring replace would.
+    expect(pulseModule).toMatch(/function glyphList\(/);
+  });
+
+  it('a curated tile is a toggle, and shows whether it is on', () => {
+    // The tile no longer fires once and closes the menu — it toggles, so the
+    // owner can try glyphs "without losing context". A toggle has to look
+    // toggled, so the tile carries data-glyph + aria-pressed and an is-on class.
+    expect(pulseModule).toMatch(/data-glyph="\$\{escapeHTML\(ch\)\}"/);
+    expect(pulseModule).toMatch(/aria-pressed=/);
+    expect(consoleCss).toMatch(/\.pulse-glyph\.is-on/);
+    // and it must NOT close the panel — that was the reopen-per-try cost.
+    const fn = pulseModule.match(/export function _pulseSetGlyph\(glyph\)[\s\S]*?\n\}/);
+    expect(fn, '_pulseSetGlyph is gone').toBeTruthy();
+    expect(fn[0], 'a curated tap still closes the menu').not.toContain('closeTray()');
+  });
+
+  it('the menu yields to the PLATFORM emoji keyboard instead of stacking under it', () => {
+    // The reported stack: emoji keyboard over the menu, menu over the card. The
+    // curated grid has nowhere to be while the OS picker is up and is not what
+    // is being used, so it collapses to a bar (title + chips + field) and drops
+    // into flow so the card stays visible above it.
+    //
+    // :has(#pulse-glyph-any:focus), not :focus-within — a curated tile taking
+    // focus is not this state — and gated on body.kb-open so a desktop click
+    // into the field keeps the whole menu.
+    const rule = consoleCss.match(/body\.kb-open #view-pulse[^\n]*:has\(#pulse-glyph-any:focus\)[\s\S]{0,400}?\{[^}]*\}/);
+    expect(rule, 'nothing collapses the menu under the platform emoji keyboard').toBeTruthy();
+    // The grid and NO GLYPH fold.
+    expect(consoleCss).toMatch(/:has\(#pulse-glyph-any:focus\) \.pulse-tray-scroll,[\s\S]{0,200}?display:\s*none/);
+    // The dock and status fold, and the header meta with them — that stack was
+    // 46% of the surface once the keys landed.
+    expect(consoleCss).toMatch(/#view-pulse:has\(#pulse-glyph-any:focus\) \.pulse-dock[\s\S]{0,40}?display:\s*none/);
+    expect(consoleCss).toMatch(/body\.kb-open #view-pulse \.view-header--tight \.view-meta[\s\S]{0,40}?display:\s*none/);
+  });
+});
+
+describe('the card survives the keyboard', () => {
+  // The 2026-08-24 report: on a phone you could not see the line you were
+  // typing. Nothing was covering it — --kb-inset lifted the whole studio above
+  // the keys correctly. The CARD collapsed: every row on this stage is
+  // `flex: 0 0 auto` except .pulse-card-slot, so the one elastic child paid the
+  // whole ~350px in a single step and came out ~90px tall, and the textarea
+  // inside it (`min-height: 0`, in a card that clips its overflow) was crushed
+  // out of existence while the empty card's 4rem glyph placeholder held its
+  // size.
+  //
+  // These are the guards that were missing. The existing viewport suite checks
+  // that --kb-inset is COUNTED; nothing checked what happens to the card once
+  // it is.
+  const WRITE_MODE = /body\.kb-open #view-pulse/g;
+
+  it('the field the author types into has a floor, not min-height: 0', () => {
+    const rule = consoleCss.match(/\.pulse-card-slot \.wk-p-text \{[^}]*\}/);
+    expect(rule, '.wk-p-text has no rule in the console stylesheet').toBeTruthy();
+    expect(
+      rule[0],
+      'min-height: 0 is back — the textarea can be flexed to nothing and clipped away',
+    ).not.toMatch(/min-height:\s*0\s*;/);
+    expect(rule[0]).toMatch(/min-height:\s*[\d.]+em/);
+  });
+
+  it('write mode exists and folds the rows that are not typing', () => {
+    expect([...consoleCss.matchAll(WRITE_MODE)].length, 'no body.kb-open rules on the pulse stage')
+      .toBeGreaterThan(0);
+    const folded = consoleCss.match(/body\.kb-open #view-pulse[\s\S]*?\{[^}]*display:\s*none[^}]*\}/);
+    expect(folded, 'write mode folds nothing').toBeTruthy();
+    for (const cls of ['.pulse-lanes', '.pulse-strip', '.pulse-palette', '.pulse-log-btn']) {
+      expect(folded[0], `${cls} still holds its row while the keyboard is up`).toContain(cls);
+    }
+  });
+
+  it('the POST button is never one of the folded rows', () => {
+    // The whole point of getting the keys up is to finish a line and send it.
+    const folded = consoleCss.match(/body\.kb-open #view-pulse[\s\S]*?\{[^}]*display:\s*none[^}]*\}/)[0];
+    expect(folded, 'write mode hides the dock — you can type but not post').not.toMatch(/\.pulse-dock\b/);
+  });
+
+  it('an OPEN footer fold is exempt, so a focused field is never collapsed', () => {
+    // Collapsing a fold with focus inside it blurs the field and drops the
+    // keyboard — the reported bug wearing the fix's clothes.
+    const folded = consoleCss.match(/body\.kb-open #view-pulse[\s\S]*?\{[^}]*display:\s*none[^}]*\}/)[0];
+    expect(folded).toMatch(/\.pulse-more:not\(\[open\]\)/);
+  });
+
+  it('the glyph yields to a fixed size instead of riding the tier ladder', () => {
+    // An empty card is tier `glyph`, whose 4rem hero is exactly what was eating
+    // the room the field needed.
+    const rule = consoleCss.match(/body\.kb-open #view-pulse[^{]*\.wk-p-glyph \{[^}]*\}/);
+    expect(rule, 'nothing caps the glyph while the keyboard is up').toBeTruthy();
+    const size = Number(rule[0].match(/font-size:\s*([\d.]+)rem/)[1]);
+    expect(size, 'the capped glyph is no smaller than the 4rem hero it caps').toBeLessThan(4);
+  });
+
+  it('the card has a floor, and the field is capped so it cannot eat the card', () => {
+    // Both came out of measuring eight device sizes in Chromium rather than
+    // reading the CSS. Without the floor a 320x568 phone still clipped the
+    // field (that device leaves the whole studio ~151px once the keys land);
+    // without the cap an uncapped `flex: 1 1 auto` field grew to 450px inside a
+    // tablet's 4:5 card, and the half below the keyboard line is a field you
+    // cannot see — worse than the crushed one, not better.
+    const card = consoleCss.match(/body\.kb-open #view-pulse[^{]*\.wk-pulse \{[^}]*\}/);
+    expect(card, 'write mode no longer touches the card box').toBeTruthy();
+    expect(card[0], 'the card lost its floor').toMatch(/min-height:\s*\d+px/);
+    const field = consoleCss.match(/body\.kb-open #view-pulse[^{]*\.wk-p-text \{[^}]*\}/);
+    expect(field, 'write mode no longer touches the field').toBeTruthy();
+    expect(field[0], 'the field can grow without limit again').toMatch(/max-height:/);
+  });
+
+  it('a surface too short for the floor scrolls instead of clipping the dock', () => {
+    // The release valve. It is gated on a height, not on body.kb-open alone:
+    // `height: auto` un-anchors every `height: 100%` inside the view, and
+    // applied unconditionally it cost an iPad in PORTRAIT the `max-height` that
+    // keeps its card at a true 4:5 — on a surface that needed no valve at all.
+    const at = consoleCss.search(/body\.kb-open #view-pulse\.view--bounded\.active/);
+    expect(at, 'the release valve is gone').toBeGreaterThan(-1);
+    const opener = consoleCss.lastIndexOf('@media', at);
+    expect(consoleCss.slice(opener, at), 'the valve is no longer gated on a short viewport')
+      .toMatch(/max-height:\s*\d+px/);
+    const rule = consoleCss.slice(at).match(/^[^{]*\{[^}]*\}/)[0];
+    expect(rule).toMatch(/height:\s*auto/);
+    expect(rule).toMatch(/min-height:\s*100%/);
+    expect(rule).toMatch(/overflow-y:\s*auto/);
+    // overflow-y ONLY: the shell shorthand's overflow-x: hidden has to survive,
+    // or the lane reel scrolls the page sideways.
+    expect(rule, 'an overflow shorthand here lets the lane reel scroll the page')
+      .not.toMatch(/overflow:\s/);
+  });
+
+  it('write mode lives in THE BAND, not only in the 900px block', () => {
+    // Same regression shape as tests/console-viewport.test.js was written for:
+    // an iPad Mini in landscape is 1133px and coarse, sails past 900px, and is
+    // the shortest surface of all once the keys are up.
+    const at = consoleCss.search(/body\.kb-open #view-pulse/);
+    const opener = consoleCss.lastIndexOf('@media', at);
+    expect(consoleCss.slice(opener, at)).toContain('(pointer: coarse)');
   });
 });
 

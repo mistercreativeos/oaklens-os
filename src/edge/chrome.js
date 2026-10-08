@@ -30,27 +30,67 @@ export function _frameImg(origin, filename, width) {
 
 // OG card override. The field console can stamp a branded 1200x630 card for a
 // frame and upload it to meta/<base>-og.webp. When one exists it becomes the
-// og:image — it already bakes in the photo + FRAME // date + wordmark rail, so
-// platforms show a consistent, on-brand unfurl. Falls back to the raw frame.
+// og:image — the stamp already carries the picture, the title and the wordmark,
+// so platforms show a consistent, on-brand unfurl. Falls back to the raw frame.
 // Keyed by image basename so a buffer frame and its archived copy share a card.
 function _cardKey(filename) {
   if (!filename) return null;
   return `meta/${String(filename).replace(/\.[^.]+$/, '')}-og.webp`;
 }
 // Whether a stamped OG card exists for this frame. The R2 head() used to run on
-// every unfurl; cache the boolean at the edge (short TTL) so repeat crawls skip
-// the round-trip. A freshly stamped card may take up to the TTL to surface.
-const _OG_CACHE_TTL = 300; // seconds
+// every unfurl; cache the boolean at the edge so repeat crawls skip the
+// round-trip.
+//
+// ⚠️ THE TWO ANSWERS ARE NOT SYMMETRIC, AND SHARING ONE TTL WAS A BUG.
+// A cached '1' goes stale when a stamp is DELETED: the old card unfurls for a
+// few more minutes, which is harmless — an un-stamp has no publish horizon
+// either way. A cached '0' goes stale when a stamp is PUBLISHED, and that is
+// expensive out of all proportion: the page serves the bare photograph to
+// crawlers that cache their own answer for DAYS, and many (X, Facebook,
+// LinkedIn) never re-crawl without a manual purge. Stamp a card, share it
+// inside the window, and the wrong image is effectively permanent over there.
+// Reported 2026-09-18 with six minutes of timestamped evidence; the owner only
+// recovered because iMessage happens to re-crawl.
+// So: remember "yes" for a while, re-check "no" almost immediately. The short
+// negative TTL still collapses the burst the cache was added for — one share
+// fans out to several fetches within seconds — while a fresh stamp surfaces
+// essentially at once.
+// Purging this from the console instead does NOT work: caches.default is
+// per-colo, so a purge from the author's browser clears their data centre and
+// not the one the crawler lands in — the same limitation purgeCdnCache already
+// documents in src/api/assets.js. See
+// docs/maintenance/2026-09-18-og-stamp-invisible-for-five-minutes.md.
+//
+// ⚠️ THE POSITIVE SIDE IS 60s, NOT 300s, BECAUSE A STAMP CAN NOW BE REMOVED.
+// While nothing could delete a stamp, a stale '1' cost nothing — the worst case
+// was the right card for a few extra minutes. The console can turn a stamp OFF
+// now, and a stale '1' then points og:image at a key that is GONE: the crawler
+// fetches it and gets a 404, i.e. a BROKEN image, not the old card. Bounded to
+// a minute rather than five. Still collapses any realistic crawl burst — a
+// share fans out over seconds, not minutes — and the extra R2 head()s are Class
+// B operations against a 10M/month free allowance, which no fork will notice.
+const _OG_CACHE_TTL = 60;       // seconds — a stamp we FOUND (bounded: it can be removed)
+const _OG_MISS_TTL = 10;        // seconds — a stamp we did NOT find
+
+// ONE SPELLING of the probe-cache address. The delete path purges this key as a
+// best-effort courtesy to the author's own colo (src/api/assets.js), and a
+// second literal over there is how the two would drift into never matching —
+// silently, because a purge that misses looks exactly like a purge that worked.
+export function _cardProbeCacheUrl(origin, key) {
+  return `${origin}/__cardexists/${key}`;
+}
 async function _cardExists(env, origin, key) {
   if (!key) return false;
   try {
     const cache = caches.default;
-    const ck = new Request(`${origin}/__cardexists/${key}`);
+    const ck = new Request(_cardProbeCacheUrl(origin, key));
     const cached = await cache.match(ck);
     if (cached) return (await cached.text()) === '1';
     const exists = !!(await env.CDN.head(key));
     await cache.put(ck, new Response(exists ? '1' : '0', {
-      headers: { 'Cache-Control': `public, max-age=${_OG_CACHE_TTL}` },
+      headers: {
+        'Cache-Control': `public, max-age=${exists ? _OG_CACHE_TTL : _OG_MISS_TTL}`,
+      },
     }));
     return exists;
   } catch (err) {
@@ -75,6 +115,90 @@ export async function _audioOgImage(env, origin, slug) {
   return (await _cardExists(env, origin, key)) ? `${cdnBase(origin)}/${key}` : null;
 }
 
+// And the same for a saved set. A separate key prefix, not a shared one: a set
+// and a track may legitimately carry the same slug (they answer different
+// parameters), so `meta/audio-<slug>` for both would have one stamp overwrite
+// the other. Null until something stamps it — chunk 7 of
+// docs/cards-core-complete.md is what will.
+export async function _setOgImage(env, origin, slug) {
+  if (!slug) return null;
+  const key = `meta/set-${slug}-og.webp`;
+  return (await _cardExists(env, origin, key)) ? `${cdnBase(origin)}/${key}` : null;
+}
+
+// And the same for a composed card (chunk 6). Its own key prefix again, for
+// the reason the set's has one: a card id and a track slug answer different
+// addresses, so a shared `meta/audio-<x>` would let one overwrite the other.
+// Null until something stamps it — chunk 7 of docs/cards-core-complete.md is
+// what will, so today a card link unfurls as the site rather than as a broken
+// image (injectOg skips a null).
+export async function _cardOgImage(env, origin, id) {
+  if (!id) return null;
+  const key = `meta/card-${id}-og.webp`;
+  return (await _cardExists(env, origin, key)) ? `${cdnBase(origin)}/${key}` : null;
+}
+
+// And the same for a FIELD NOTE, keyed by its public slug (`fn_id` — the one
+// thing that identifies a note at the edge, since `?slug=` is all the request
+// carries).
+//
+// This one exists for a case the frame key cannot cover: a note with NO HERO.
+// `_ogImage` keys off an image basename, so a note that leads with words rather
+// than a picture had no share image at all — it unfurled as a bare line of
+// text, which is the least any writing surface should do. The painter draws
+// that note's own words tile (chunk 7), and this is where it lands.
+//
+// A note WITH a hero keeps `meta/<base>-og.webp`, so nothing already stamped
+// re-stamps and old stamps keep serving.
+export async function _fnOgImage(env, origin, id) {
+  if (!id) return null;
+  const key = `meta/fn-${id}-og.webp`;
+  return (await _cardExists(env, origin, key)) ? `${cdnBase(origin)}/${key}` : null;
+}
+
+// An id in a URL path is untrusted input. Composed ids are minted as `c-<uid>`
+// and this is the one place the shape is enforced, deliberately loose about the
+// prefix (a later console may mint differently and a PERMANENT address must
+// keep resolving) and strict about the characters, so nothing reaches the asset
+// layer or a cache key that is not one safe segment.
+export function _validCardId(id) {
+  return typeof id === 'string' && id.length > 0 && id.length <= 64
+    && /^[A-Za-z0-9_-]+$/.test(id);
+}
+
+// What lives at /card/<id>, as one of three answers the route needs to tell
+// apart: the live record, the tombstone that reserves the id (→ 410), or
+// nothing (→ the page's own plain state). A read failure answers `missing`
+// rather than throwing — an unreadable registry must degrade to "no card
+// here", never to a 500 on a share link.
+export async function getCardRecord(origin, env, id) {
+  if (!_validCardId(id)) return { state: 'missing', card: null };
+  try {
+    const cards = await loadDataJson(origin, env, 'data/cards.json');
+    const c = Array.isArray(cards) && cards.find((x) => x && x.id === id);
+    if (!c) return { state: 'missing', card: null };
+    return c.retired ? { state: 'retired', card: c } : { state: 'live', card: c };
+  } catch (err) {
+    console.error('[card] registry read failed:', err.message);
+    return { state: 'missing', card: null };
+  }
+}
+
+// The OG block for a card page. A card carries the author's own words, so the
+// unfurl is those words and not a derived summary; a card with none (a picture
+// with no caption is a legitimate card) falls back to the site's own line
+// rather than to an empty tag.
+export async function getCardOgData(url, env, card) {
+  const name = String((card && card.title) || '').trim();
+  const tease = String((card && card.tease) || '').trim();
+  return {
+    title: `${name || 'Card'} — ${siteConfig.name.toUpperCase()}`,
+    description: tease || name || siteConfig.tagline || 'A card.',
+    image: await _cardOgImage(env, url.origin, (card && card.id) || ''),
+    ogUrl: `${url.origin}/card/${encodeURIComponent((card && card.id) || '')}`,
+  };
+}
+
 // Parse a field-notes post's frontmatter into a flat field map (or null).
 export async function getPostMeta(url, env) {
   const slug = url.searchParams.get('slug');
@@ -93,7 +217,13 @@ export async function getPostMeta(url, env) {
         fields[key] = line.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
       }
     }
-    return fields.hero ? fields : null;
+    // A HEROLESS NOTE IS STILL A NOTE. This used to return null without a
+    // hero, which meant a note that leads with words got no injected OG block
+    // at all — no title, no description, no image. The hero was load-bearing
+    // only because the image was keyed off it; since chunk 7 a note has its own
+    // stem (`meta/fn-<id>-og.webp`), so the frontmatter is returned either way
+    // and the caller picks the key.
+    return fields;
   } catch {
     return null;
   }
@@ -120,10 +250,10 @@ export async function getFrameOgData(url, env, page) {
       const data = await loadDataJson(url.origin, env, 'data/buffer.json');
       const e = Array.isArray(data) && data.find(x => x.id === f);
       if (!e) return null;
-      const day = localDay(e.captured_at || e.published_at);
+      const day = localDay(e.captured_at || e.published_at, siteConfig.timezone);
       return {
         // Quiet title: the domain row already shows the site's own host, and
-        // the card image carries the FRAME // date branding — so the title
+        // a stamped card image carries the branding itself — so the title
         // de-screams to just the project name (no site-name echo).
         title: 'The Rolling Buffer',
         description: ['Capture first. Process later.', day].filter(Boolean).join(' · '),
@@ -153,10 +283,48 @@ export async function getAudioOgData(url, env) {
     image: null,
     ogUrl: `${url.origin}/listen`,
   };
+  // A saved set answers a different parameter and is resolved FIRST: /listen/
+  // carrying both is a link someone hand-edited, and the set is the more
+  // specific claim. A retired set is skipped — that record reserves an address
+  // and holds nothing — so an old link unfurls as the index rather than as a
+  // title with no audio behind it.
+  const setSlug = url.searchParams.get('set');
+  if (setSlug && /^[a-z0-9-]+$/i.test(setSlug)) {
+    try {
+      const [sets, tracks] = await Promise.all([
+        loadDataJson(url.origin, env, 'data/audio-sets.json'),
+        loadDataJson(url.origin, env, 'data/audio.json'),
+      ]);
+      const s = Array.isArray(sets) && sets.find((x) => x && x.slug === setSlug && !x.retired);
+      if (s) {
+        // Counted the way the page counts them: a slug whose track is gone or
+        // retired is not something this set plays, so it must not be advertised
+        // in the unfurl either.
+        const live = new Set(
+          (Array.isArray(tracks) ? tracks : [])
+            .filter((t) => t && t.slug && t.filename && !t.retired)
+            .map((t) => t.slug)
+        );
+        const n = ((s.tracks) || []).filter((slug) => live.has(slug)).length;
+        if (n) return {
+          title: `${s.name || 'Set'} — ${siteConfig.name.toUpperCase()}`,
+          description: `${n} track${n === 1 ? '' : 's'}`,
+          image: await _setOgImage(env, url.origin, s.slug),
+          ogUrl: `${url.origin}/listen/?set=${encodeURIComponent(setSlug)}`,
+        };
+      }
+    } catch (err) {
+      console.error('[og] set resolve failed:', err.message);
+    }
+    return indexOg;
+  }
   if (!a || !/^[a-z0-9-]+$/i.test(a)) return indexOg;
   try {
     const data = await loadDataJson(url.origin, env, 'data/audio.json');
-    const e = Array.isArray(data) && data.find((x) => x.slug === a);
+    // `x.filename` is not decoration: a RETIRED track is a tombstone carrying a
+    // reserved slug and no media (manual §3.9), so matching on slug alone would
+    // unfurl a share link with the title of something that no longer plays.
+    const e = Array.isArray(data) && data.find((x) => x && x.slug === a && x.filename);
     if (!e) return indexOg;
     const mins = e.duration > 0 ? `${Math.max(1, Math.round(e.duration / 60))} min` : '';
     return {
@@ -519,7 +687,23 @@ export function consoleFeatureOn(name, features = siteConfig.console) {
   return (features || {})[name] === true;
 }
 
+// The surface the console opens to when a device has not chosen its own
+// (Settings → "Opens to"). Not a feature switch — a name — so it is read
+// exact-shaped like the switches: a lowercase word, or the engine default.
+// The console checks it against the surfaces it actually has, so a name for a
+// gated or misspelt surface falls through to the Bridge rather than to nothing.
+//
+//   site.config.js -> console: { startView: 'fn' }
+export const CONSOLE_START_VIEW = 'bridge';
+export function consoleStartView(features = siteConfig.console) {
+  const v = (features || {}).startView;
+  return typeof v === 'string' && /^[a-z]+$/.test(v) ? v : CONSOLE_START_VIEW;
+}
+
 export function injectConsoleFeatures(rewriter, features = siteConfig.console) {
+  rewriter.on('meta[name="console-start-view"]', {
+    element(el) { el.setAttribute('content', consoleStartView(features)); },
+  });
   rewriter.on('[data-console-feature]', {
     element(el) {
       if (consoleFeatureOn(el.getAttribute('data-console-feature'), features)) {
@@ -542,6 +726,9 @@ export function injectConsoleFeatures(rewriter, features = siteConfig.console) {
 //   <title data-site-title>About</title>          -> "About — WORDMARK"
 //   <title data-site-title="prefix">CONSOLE</title> -> "WORDMARK // CONSOLE"
 //   <title data-site-title="brand">…</title>      -> "WORDMARK" (homepage)
+//   <title data-site-title="plain">Field Console</title> -> "Field Console"
+//     (K97: the console's window is the app's own, named once in its
+//     manifest; a wordmark in the title bar read as a second name)
 //   <x data-site-wordmark>            plain-text wordmark
 //   <x data-site-wordmark="accent">   wordmark with the accent half in .accent
 //   <x data-site-location>            "CITY, ST" from location.name/region
@@ -572,7 +759,7 @@ function injectWordmark(rewriter) {
         chunk.remove();
         return;
       }
-      const page = titleBuf.trim();
+      const page = _decodeEntities(titleBuf).trim();
       titleBuf = '';
       chunk.replace(_composeTitle(titleMode, page, mark.text));
     },
@@ -602,8 +789,27 @@ function injectWordmark(rewriter) {
   });
 }
 
+// HTMLRewriter hands back the SOURCE text of a text node, entities and all —
+// it does not decode them — while chunk.replace() escapes what we give it. So
+// a title written `<title>&gt;Dev</title>` round-trips to `&amp;gt;Dev` and the
+// browser tab literally reads "&gt;Dev". That shipped on /dev until 2026-09-20.
+//
+// Decoding here closes the round trip: the entity becomes the character, the
+// wordmark is joined on, and chunk.replace() re-escapes exactly what needs it.
+// The five XML entities are enough — a page title is authored markup, not
+// arbitrary HTML — and `&amp;` MUST be last or `&amp;gt;` decodes twice.
+function _decodeEntities(s) {
+  return String(s)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
 function _composeTitle(mode, page, brand) {
   if (!brand) return page;
+  if (mode === 'plain') return page || brand;
   if (mode === 'brand') return brand;
   if (mode === 'prefix') return page ? `${brand} // ${page}` : brand;
   return page ? `${page} — ${brand}` : brand;

@@ -39,7 +39,7 @@ This trips people up once and then never again:
 
 | You changed… | How it goes live |
 |---|---|
-| **Photos, posts, anything in the console** | Hit **▲ Publish to GitHub** in the console |
+| **Photos, posts, anything in the console** | Hit **▲ Publish** in the console |
 | **Settings — anything in `site.config.js`** | Save the file and `git push` |
 
 Both end the same way: GitHub tells Cloudflare, Cloudflare rebuilds, and your
@@ -58,7 +58,7 @@ Six places you'll actually use, whatever the screen size:
 
 - **BUFFER** — everything you've dropped in, newest first. Raw, unsorted, yours.
 - **FN** — Field Notes. The writing.
-- **ARCHIVE** — the curated work, with titles and camera details.
+- **ARCHIVE** — the curated work, with titles and gear details.
 - **LIBRARY** — images staged for reuse without being published anywhere.
 - **PUBLISH** — the button that sends it all live, plus sync and export.
 - **⚙** — session status and sign-out.
@@ -367,13 +367,27 @@ by design, so featuring is per-frame and deliberate.
 **Do step 2.** Skipping it is the most common reason a featured frame looks wrong
 or doesn't seem to land properly on the homepage.
 
-**How you know it worked.** A **★** badge sits on the frame in the console, and
-after publishing there's a RAW card on your homepage.
+**How you know it worked — before you publish.** Open **Cards** in the sidebar.
+It shows your homepage grid twice: what's on it right now, and what it'll be
+after your next publish, with the changed slots marked. Your starred frame
+should be sitting in the staged column. You can star, unstar and set the crop
+right there too, on the card itself.
 
-> **The homepage shows one RAW card** — the most recently featured one wins.
-> Featuring several doesn't break anything; the extras simply wait.
+A **★** badge also sits on the frame in the console, and after publishing
+there's a RAW card on your homepage.
 
-To take it down: click **★** again. It's off the homepage at your next publish.
+> **The homepage shows one RAW card, and starring is exclusive** — starring a
+> frame un-stars the previous one in the same click (the toast names the frame
+> that stepped down). The old frame keeps its card crop, so re-starring it
+> later is one click with the crop intact.
+
+To take it down: click **★** again — on the frame, or on its tile in **Cards**.
+It's off the homepage at your next publish.
+
+**Changed your mind straight away?** Cards keeps a **↩ RE-PIN** button naming
+the frame your last star pushed off, and a small **ready to re-feature** row of
+frames you've already framed for this card. Either one is a single click, and
+the crop comes back with the frame.
 
 ### 12 · Make the share card ▣
 
@@ -412,7 +426,12 @@ link into a message to yourself and watch it unfurl.
 archive — the work with a title, a location, and the camera details.
 
 **Do it.** Click **▲** on the frame, then fill in the fields: title, subtitle,
-location, camera, lens, and whether it's digital or film.
+location, and the three gear fields — camera, lens, medium. Those three are
+write-in, so put whatever fits your work in them ("Hasselblad 500", "35mm",
+"oil on linen"), and leave any of them blank if it doesn't apply. What you type
+is remembered on this device and offered back next time, so you only type your
+setup once. Shooting with something borrowed? Switch **Remember this gear** off
+for that frame.
 
 **How you know it worked.** The frame says **ARCHIVED**, and it turns up under
 **ARCHIVE** with everything you typed.
@@ -449,7 +468,7 @@ every frame after it keeps the number it had.
 
 **What it does.** Sends everything above out into the world, all at once.
 
-**Do it.** Open **PUBLISH** and click **▲ Publish to GitHub**.
+**Do it.** Open **PUBLISH** and click **▲ Publish**.
 
 Everything staged goes as a single commit — photos, posts, archive entries,
 settings — all or nothing. There's no partial state to land in, and no order you

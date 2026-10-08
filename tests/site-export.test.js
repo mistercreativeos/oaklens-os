@@ -6,6 +6,7 @@
 // no origin-dependent references the offline runtime can't cover.
 import { describe, it, expect } from 'vitest';
 import { HAS_CONTENT } from './helpers/instance-content.js';
+import { IS_INSTANCE } from './helpers/instance.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -267,6 +268,43 @@ describe('harvest + expansion + tiers', () => {
     expect(byKey['wallpaper/full/old.jpg']).toBe('full'); // pre-fullres assumes .jpg
   });
 
+  it('a field-note hero travels at the tier the homepage hero card asks for', () => {
+    // The picture-led field-note card (js/recent-index.js textHeroCard) builds
+    // its background at 1024w through frameSrc(), so an exported tree that
+    // carries the note but not that object renders a blank tile from file://.
+    // posts.json heroes ride the archive/ prefix, same as a frame.
+    const keys = expandImageRules(
+      { 'data/posts.json': [{ fn_id: 'fn-001', hero: 'note hero.webp', card: { layout: 'hero' } }] },
+      EXPORT_MANIFEST.imageRules
+    );
+    const byKey = Object.fromEntries(keys.map((k) => [k.key, k.tier]));
+    expect(byKey['archive/note%20hero-1024w.webp']).toBe('web');
+  });
+
+  it('an overlay card needs nothing the picture card did not already carry', () => {
+    // THE OVERLAY LAYOUT ADDS NO ASSET AND NO FETCH (docs/cards-core-complete.md
+    // chunk 3). That is the whole reason its legibility decision is measured in
+    // the console and stored on the record: the exported tree runs from file://
+    // with no network, so a card that sampled its own picture at render time
+    // would be a blank band there and a correct card everywhere else.
+    //
+    // So the only thing the export owes it is the same 1024w object the plain
+    // picture card already asks for — and `img.lum` travels inside
+    // data/cards.json as a number, costing nothing.
+    const card = {
+      id: 'c-ov', order: 1, media: 'over water.webp', kind: 'photo',
+      card: { layout: 'overlay' },
+      overlay: { place: 'top', treat: 'blur', blur: 2 },
+      img: { lum: { top: 0.42, mid: 0.61, bottom: 0.18 } },
+    };
+    const withOverlay = expandImageRules({ 'data/cards.json': [card] }, EXPORT_MANIFEST.imageRules);
+    const plain = { ...card };
+    delete plain.card; delete plain.overlay; delete plain.img;
+    const without = expandImageRules({ 'data/cards.json': [plain] }, EXPORT_MANIFEST.imageRules);
+    expect(withOverlay).toEqual(without);
+    expect(withOverlay.map((k) => k.key)).toContain('archive/over%20water-1024w.webp');
+  });
+
   it('merges duplicates keeping the most essential tier', () => {
     const merged = mergeKeyTiers([
       { key: 'archive/a-2048w.webp', tier: 'hires' },
@@ -296,7 +334,7 @@ describe('generated offline runtime', () => {
     // statement (module-only syntax) would throw right here.
     expect(() => new Function(src)).not.toThrow();
     expect(src).toContain('"/archive":"archive/index.html"');
-    // Runtime-built post links (barrel entries store the canonical
+    // Runtime-built post links (published entries store the canonical
     // extensionless URL) must resolve offline via the shim's route table.
     expect(src).toContain('"/field-notes/post":"field-notes/post.html"');
   });
@@ -401,7 +439,9 @@ describe('integration: repo pages survive the export rewrite', () => {
     expect(css).not.toMatch(/url\(['"]?\//);
   });
 
-  it.skipIf(!HAS_CONTENT)('real data files expand to a plausible media set', () => {
+  // This instance's numbers and posts: a fork with content of its own has
+  // neither (tests/helpers/instance.js), so these skip there.
+  it.skipIf(!HAS_CONTENT || !IS_INSTANCE)('real data files expand to a plausible media set', () => {
     const datasets = Object.fromEntries(
       EXPORT_MANIFEST.dataFiles.map((p) => [p, readJson(p)])
     );
@@ -416,7 +456,63 @@ describe('integration: repo pages survive the export rewrite', () => {
     }
   });
 
-  it.skipIf(!HAS_CONTENT)('real post bodies surface their inline CDN media', () => {
+  // A set is a list of SLUGS riding a data file — no media of its own, so it
+  // needs no image rule. What it does need is to be carried, and to be readable
+  // from file:// through the offline data island: the listen page reads it on
+  // every render, and the exporter treats a dataFile as required (a 404 sinks
+  // the whole export). Both halves are asserted, because "it works online" is
+  // exactly the thing that would hide here.
+  it('carries the sets registry into the zip and the offline data island', () => {
+    expect(EXPORT_MANIFEST.dataFiles).toContain('data/audio-sets.json');
+    expect(existsSync(join(ROOT, 'data/audio-sets.json'))).toBe(true);
+    expect(Array.isArray(readJson('data/audio-sets.json'))).toBe(true);
+  });
+
+  // THE READ LIST AND THE SHIPPED LIST MUST AGREE. js/recent-index.js runs from
+  // file:// inside the export, where every fetch is answered by the data island
+  // — so a data file the homepage reads and the manifest does not carry is a
+  // card that silently vanishes offline, with nothing red anywhere to say so.
+  // Chunk 5 added the seventh read (data/audio-sets.json); this is the guard
+  // that makes the eighth impossible to forget.
+  it('every data file the homepage reads is one the export carries', () => {
+    const src = readFileSync(join(ROOT, 'js/recent-index.js'), 'utf8');
+    const reads = [...src.matchAll(/getJson\('\/(data\/[a-z0-9-]+\.json)'\)/g)].map((m) => m[1]);
+    expect(reads.length).toBeGreaterThan(3);
+    for (const file of reads) {
+      expect(EXPORT_MANIFEST.dataFiles, `${file} is read by the homepage`).toContain(file);
+    }
+  });
+
+  // THE CARD PAGE (chunk 6). One saved file for every address, the way /listen
+  // carries one file for every track — and the same guard on both halves: the
+  // page has to be in the manifest AND its script has to travel with it, or the
+  // saved page is a blank main element with nothing to fill it.
+  it('carries the card page and the script that fills it', () => {
+    const routes = EXPORT_MANIFEST.pages.map((p) => p.route);
+    expect(routes).toContain('/card/');
+    expect(EXPORT_MANIFEST.assets).toContain('js/page-card.js');
+    expect(existsSync(join(ROOT, 'card/index.html'))).toBe(true);
+    expect(existsSync(join(ROOT, 'js/page-card.js'))).toBe(true);
+  });
+
+  // The path form needs a server to map /card/<id> onto a file, and file:// has
+  // none — so the page reads `?id=` too. That fallback is the ONLY thing making
+  // the exported page mean anything, so it is asserted here rather than only in
+  // the page's own test file, where a later refactor would not connect the two.
+  it('the card page can still resolve an id with no server in front of it', () => {
+    const src = readFileSync(join(ROOT, 'js/page-card.js'), 'utf8');
+    expect(src).toMatch(/\[\?&\]id=/);
+  });
+
+  it('a set contributes no CDN key — it references tracks, it does not hold media', () => {
+    const datasets = {
+      'data/audio-sets.json': [{ id: 's1', slug: 'm', name: 'M', tracks: ['one', 'two'] }],
+    };
+    const merged = mergeKeyTiers(expandImageRules(datasets, EXPORT_MANIFEST.imageRules));
+    expect([...merged.keys()]).toEqual([]);
+  });
+
+  it.skipIf(!HAS_CONTENT || !IS_INSTANCE)('real post bodies surface their inline CDN media', () => {
     const keys = harvestCdnKeys(read('posts/fn-004.md'), CDN_BASES);
     expect([...keys]).toContain('blog/rolling_buffer_update_v2.mp4');
   });

@@ -143,3 +143,59 @@ describe('a surface with no data file at all still shows sample content', () => 
     expect(holder.children.length).toBeGreaterThan(0);
   });
 });
+
+// The server-rendered sibling of the block above, and the one that was wrong.
+//
+// /archive/manifest.html is built by the Worker, not a page module, and it read
+// data/archive.json with a bare env.ASSETS.fetch that collapsed every failure
+// into 500 — including the 404 an un-seeded fork legitimately produces, because
+// os-extract's DATA_OMITTED deliberately ships forks without that file. And
+// /sitemap.xml advertises the page. So a brand-new fork handed crawlers a
+// server error from day one, invisible on any seeded instance (2026-08-23).
+describe('the crawlable archive manifest on an un-seeded fork', () => {
+  let _savedCaches;
+  beforeEach(() => {
+    // loadDataJson reads through caches.default — give it a cold one.
+    _savedCaches = globalThis.caches;
+    globalThis.caches = { default: { async match() { return undefined; }, async put() {} } };
+  });
+  afterEach(() => { globalThis.caches = _savedCaches; });
+
+  const ctx = { waitUntil() {} };
+  const req = () => new Request('https://example.com/archive/manifest.html');
+  const envWith = (respond) => ({
+    SESSION_SECRET: 'test-secret-please-ignore',
+    SUBSCRIBERS: { get: async () => null, put: async () => {} },
+    ASSETS: { fetch: async () => respond() },
+  });
+
+  it('serves an empty manifest, not a 500, when archive.json is absent', async () => {
+    const { default: worker } = await import('../worker.js');
+    const res = await worker.fetch(req(), envWith(() => new Response('nope', { status: 404 })), ctx);
+
+    expect(res.status, 'an un-seeded fork must not answer crawlers with a server error').toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<html');
+    expect(html, 'a real page, just with nothing in it yet').not.toContain('Internal Server Error');
+  });
+
+  it('still answers 500 when the read genuinely fails', async () => {
+    // The distinction that matters: an empty manifest served during an outage
+    // would tell the Wayback Machine this archive is empty, and that snapshot
+    // is the thing we cannot take back.
+    const { default: worker } = await import('../worker.js');
+    const res = await worker.fetch(req(), envWith(() => new Response('boom', { status: 500 })), ctx);
+    expect(res.status).toBe(500);
+  });
+
+  it('renders entries normally when the file is there', async () => {
+    const { default: worker } = await import('../worker.js');
+    const entry = { slug: 'evening-light', filename: 'OAKLENS_Evening.webp', title: 'Evening Light', added_at: '2026-08-01T00:00:00Z' };
+    const res = await worker.fetch(req(), envWith(
+      () => new Response(JSON.stringify([entry]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    ), ctx);
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('Evening Light');
+  });
+});

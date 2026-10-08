@@ -19,7 +19,7 @@
 //
 // Extracted from console-ui.js 2026-07-29. See dev/console-module-plan.md.
 
-import { STATE, save, bumpStage } from '../console-state.js';
+import { STATE, save, stageChange } from '../console-state.js';
 import { appleMusicEmbedSrc, appleMusicIframe } from '../markdown-engine.js';
 import { toast, escapeHTML, escapeAttrJS, hideOverlay } from './chrome.js';
 import { CDN_BASE, cdnThumb, isVideoAsset } from './assets.js';
@@ -170,6 +170,8 @@ export function openAssetLibrary(callback, folderFilter, multiSelect = false) {
 
 export function closeAssetLibrary() {
   hideOverlay('asset-library-modal');
+  if (_assetSeen) _assetSeen.disconnect();
+  _assetShown = [];
   _assetLibraryCallback = null;
   _assetLibraryMultiSelect = false;
   _assetLibrarySelected = new Set();
@@ -210,7 +212,7 @@ export function renderAssetLibrary() {
   toolbar.innerHTML = `
     ${filters.map(f => `<button class="asset-lib-pill${_assetLibraryFilter === f ? ' active' : ''}"
       onclick="_assetLibrarySetFilter('${f}')">${f.toUpperCase()}</button>`).join('')}
-    <input class="asset-lib-search" id="asset-lib-search" placeholder="search filename…"
+    <input class="asset-lib-search" data-tier="field" id="asset-lib-search" placeholder="search filename…"
       value="${escapeHTML(searchVal)}"
       oninput="_assetLibSearchDebounced()">
     <button class="asset-lib-sort" onclick="_assetLibraryToggleSort()">
@@ -270,29 +272,61 @@ export function renderAssetLibrary() {
   gridEl.style.display = 'grid';
   emptyEl.style.display = 'none';
 
+  // A page at a time (K90; the picker's way since K81). All 823 thumbnails at
+  // once was an 816 ms frame in WebKit at iPad size (docs/bridge-lighting-
+  // field-guide.md §9). The first page is more than a screen; the next is
+  // built as the scroll nears the end of this one, appended, never rebuilt.
+  gridEl.innerHTML = '';
+  _assetShown = items;
+  _assetBuilt = 0;
+  gridEl.scrollTop = 0;
+  _assetMore();
+}
+
+export const ASSET_PAGE = 48;
+let _assetShown = [];
+let _assetBuilt = 0;
+let _assetSeen = null;
+
+function _assetItemHTML(item, selOrder) {
+  const isVideo = item.kind === 'video';
+  const thumbUrl = cdnThumb(item, item.folder);
+  const hqUrl = isVideo
+    ? `${CDN_BASE}/videos/${encodeURIComponent(item.filename)}`
+    : `${CDN_BASE}/${item.folder}/${encodeURIComponent(item.filename.replace(/\.[^.]+$/, ''))}-2048w.webp`;
+  const selIdx = selOrder.indexOf(item.filename);
+  const isSel = selIdx >= 0;
+  const onClick = _assetLibraryMultiSelect
+    ? `_assetLibraryToggleSelect('${escapeAttrJS(item.filename)}')`
+    : `selectAssetLibraryItem('${escapeAttrJS(item.filename)}')`;
+  return `<div class="asset-lib-item${isSel ? ' selected' : ''}${isVideo ? ' is-video' : ''}" data-tier="card" data-filename="${escapeHTML(item.filename)}" onclick="${onClick}">
+    <button class="asset-lib-open" onclick="event.stopPropagation(); window.open('${escapeAttrJS(hqUrl)}', '_blank')" title="${isVideo ? 'Open video in new tab' : 'Open 2048w in new tab'}">↗</button>
+    <img src="${thumbUrl}" alt="" loading="lazy" onerror="this.style.display='none'">
+    <div class="asset-lib-badge${isVideo ? ' video' : ''}">${escapeHTML(item.surface)}</div>
+    <div class="asset-lib-item-label">${escapeHTML(item.label)}</div>
+    ${isSel ? `<div class="asset-lib-select-num">${selIdx + 1}</div>` : ''}
+  </div>`;
+}
+
+/** Build the next page of the grid, and watch for the scroll to need another. */
+function _assetMore() {
+  const gridEl = document.getElementById('asset-lib-grid');
+  if (!gridEl) return;
   // In multi-select mode each thumbnail toggles into _assetLibrarySelected
   // (selection order) instead of firing the single-pick callback.
   const selOrder = _assetLibraryMultiSelect ? [..._assetLibrarySelected] : [];
-
-  gridEl.innerHTML = items.map(item => {
-    const isVideo = item.kind === 'video';
-    const thumbUrl = cdnThumb(item, item.folder);
-    const hqUrl = isVideo
-      ? `${CDN_BASE}/videos/${encodeURIComponent(item.filename)}`
-      : `${CDN_BASE}/${item.folder}/${encodeURIComponent(item.filename.replace(/\.[^.]+$/, ''))}-2048w.webp`;
-    const selIdx = selOrder.indexOf(item.filename);
-    const isSel = selIdx >= 0;
-    const onClick = _assetLibraryMultiSelect
-      ? `_assetLibraryToggleSelect('${escapeAttrJS(item.filename)}')`
-      : `selectAssetLibraryItem('${escapeAttrJS(item.filename)}')`;
-    return `<div class="asset-lib-item${isSel ? ' selected' : ''}${isVideo ? ' is-video' : ''}" data-filename="${escapeHTML(item.filename)}" onclick="${onClick}">
-      <button class="asset-lib-open" onclick="event.stopPropagation(); window.open('${escapeAttrJS(hqUrl)}', '_blank')" title="${isVideo ? 'Open video in new tab' : 'Open 2048w in new tab'}">↗</button>
-      <img src="${thumbUrl}" alt="" loading="lazy" onerror="this.style.display='none'">
-      <div class="asset-lib-badge${isVideo ? ' video' : ''}">${escapeHTML(item.surface)}</div>
-      <div class="asset-lib-item-label">${escapeHTML(item.label)}</div>
-      ${isSel ? `<div class="asset-lib-select-num">${selIdx + 1}</div>` : ''}
-    </div>`;
-  }).join('');
+  const end = Math.min(_assetShown.length, _assetBuilt + ASSET_PAGE);
+  const html = [];
+  for (let i = _assetBuilt; i < end; i++) html.push(_assetItemHTML(_assetShown[i], selOrder));
+  if (html.length) gridEl.insertAdjacentHTML('beforeend', html.join(''));
+  _assetBuilt = end;
+  if (_assetSeen) _assetSeen.disconnect();
+  if (_assetBuilt >= _assetShown.length || typeof IntersectionObserver !== 'function') return;
+  // The last tile built, a screen before it is reached (the grid is the scroller).
+  _assetSeen = new IntersectionObserver((seen) => {
+    if (seen.some((e) => e.isIntersecting)) _assetMore();
+  }, { root: gridEl, rootMargin: '0px 0px 600px 0px' });
+  if (gridEl.lastElementChild) _assetSeen.observe(gridEl.lastElementChild);
 }
 
 export function selectAssetLibraryItem(filename) {
@@ -380,6 +414,11 @@ export function _assetLibraryInsertStrip() {
 // never also fires.
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !document.getElementById('asset-library-modal').classList.contains('hidden')) {
+    // The key stops here. This modal opens from the Cards composer, whose own
+    // Escape exits edit mode — without this, one press closed the picker AND the
+    // composer behind it. (hideOverlay defers `.hidden` by a frame on a phone,
+    // so a "is anything open" check downstream cannot be relied on alone.)
+    e.stopPropagation();
     e.preventDefault();
     e.stopPropagation();
     closeAssetLibrary();
@@ -403,7 +442,7 @@ export function assetToBuffer(filename) {
     archived: false,
     _uploaded: true,  // already on CDN
   });
-  bumpStage('buffer');
+  stageChange('buffer', { id: STATE.buffer[0].id, label: `${filename} — new frame (from library)`, kind: 'add' });
   save();
   renderBuffer();
 }

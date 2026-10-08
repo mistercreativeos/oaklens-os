@@ -18,7 +18,7 @@
 //
 // Extracted from console-ui.js 2026-07-29. See dev/console-module-plan.md.
 
-import { STATE, bumpStage, save } from '../console-state.js';
+import { STATE, stageChange, save, cancelPendingDeleteForKeys } from '../console-state.js';
 import { getToken, uploadFilesWithRetry } from '../console-api.js';
 import { showToast, startProgress, updateProgress, endProgress } from '../console-telemetry.js';
 import { toast, refreshSurface } from './chrome.js';
@@ -35,6 +35,12 @@ let _uploadAbort = null;       // AbortController for the in-flight upload (SKIP
 let _uploadHideTimer = null;   // auto-hide timer for the panel
 
 export function _enqueueUpload(entryId, surface, variants, filename) {
+  // Uploading a key is a statement that you want the object at that key, so it
+  // un-arms any queued R2 delete for it. Without this, trashing a file and then
+  // re-adding one with the same name had publish commit a registry pointing at
+  // the new object and THEN delete it — every step reporting success. Each
+  // variant File is named with its full R2 key path by the calling surface.
+  cancelPendingDeleteForKeys((variants || []).map(v => v && v.name).filter(Boolean));
   _uploadQueue.push({ entryId, surface, variants, filename, status: 'queued' });
   if (_uploadHideTimer) { clearTimeout(_uploadHideTimer); _uploadHideTimer = null; }
   _refreshUploadUI();
@@ -257,7 +263,12 @@ export function _markEntryUploadDone(item) {
   entry._uploaded = true;
   entry.image = null;  // drop local blob; CDN URL via cdnThumb()
   entry.src = null;    // also clear src for wallpapers
-  bumpStage(item.surface);   // stage into the publish count only now that upload is confirmed
+  // Stage into the publish count only now that upload is confirmed.
+  stageChange(item.surface, {
+    id: entry.id,
+    label: `${entry.title || entry.filename || item.surface + ' item'} — new`,
+    kind: 'add',
+  });
   save();
   refreshSurface(_VIEW_OF_SURFACE[item.surface]);
   if (item.surface === 'library') scheduleLibrarySync();

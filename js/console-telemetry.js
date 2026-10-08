@@ -52,7 +52,25 @@ function _busyLabel() {
     return label || 'WORKING';
   }
   const last = [..._active.values()].pop();
+  // A request this slow is a fact worth saying: what it is waiting on, and
+  // for how long (K68 — a hung network was 50 s of amber with no words).
+  const oldest = [..._active.values()].reduce((a, b) => (b.at < a.at ? b : a), last || { at: Date.now() });
+  const waited = Math.floor((Date.now() - oldest.at) / 1000);
+  if (oldest && waited >= SLOW_S) return `WAITING · ${String(oldest.label || 'NET').replace(/\s*[▲▼✕↻☁]+$/, '')} ${waited}s`;
   return (last && last.label) || 'WORKING';
+}
+
+// While anything has been in flight past SLOW_S the label counts up, once a
+// second; with nothing slow there is no timer at all.
+const SLOW_S = 10;
+let _slowTimer = 0;
+function _watchSlow() {
+  clearTimeout(_slowTimer);
+  _slowTimer = 0;
+  if (!_active.size) return;
+  const oldest = Math.min(...[..._active.values()].map((a) => a.at));
+  const due = oldest + SLOW_S * 1000 - Date.now();
+  _slowTimer = setTimeout(() => { _renderLamp(); _watchSlow(); }, due > 0 ? due : 1000);
 }
 
 function _lampLabel(state) {
@@ -69,25 +87,32 @@ function _renderLamp() {
   const lamp = $('sys-lamp');
   if (!lamp) return;
   const state = _deriveState();
-  lamp.dataset.state = state;
+  // Only what changed (K76): a cold start's first reads asked for the same
+  // amber a dozen times in 30ms, and every rewrite of the label is a change
+  // to the page the light engine repaints for.
+  if (lamp.dataset.state !== state) lamp.dataset.state = state;
   const label = $('sys-lamp-label');
-  if (label) label.textContent = _lampLabel(state);
-  lamp.title = state === 'error'
+  const text = _lampLabel(state);
+  if (label && label.textContent !== text) label.textContent = text;
+  const title = state === 'error'
     ? 'System error — click for the activity ledger'
     : 'System activity — click for the ledger';
+  if (lamp.title !== title) lamp.title = title;
 }
 
 // ============== PUBLIC: ACTIVITY ==============
 // Track one async operation. Returns end(ok = true, errMsg = '').
 export function beginActivity(channel, label) {
   const token = _nextToken++;
-  _active.set(token, { channel, label });
+  _active.set(token, { channel, label, at: Date.now() });
   _renderLamp();
+  _watchSlow();
   let ended = false;
   return function end(ok = true, errMsg = '') {
     if (ended) return;   // idempotent — double-end must not corrupt the count
     ended = true;
     _active.delete(token);
+    _watchSlow();
     if (ok) {
       _errors.delete(channel);   // success clears this channel's latched error
       _renderLamp();
@@ -185,6 +210,11 @@ export function showToast(msg, opts = {}) {
 
   const key = opts.id || (kind + '|' + msg);
   let t = _toasts.get(key);
+  // A notification is light rising under the frosted corner (K40b): the toast
+  // is an emitter for as long as it is on screen, in its severity's tone,
+  // and cools as it fades. Info carries no light — the console telling you
+  // something went right or wrong is doing something; a plain note is not.
+  const lit = { success: 'ok', warn: 'warn', error: 'accent' }[kind];
 
   if (t && t.el.isConnected) {
     // Coalesce (same message) or update in place (explicit id).
@@ -196,10 +226,14 @@ export function showToast(msg, opts = {}) {
       t.el.textContent = msg;
       t.el.className = 'toast ' + kind;
     }
+    if (lit) t.el.setAttribute('data-lit', lit); else t.el.removeAttribute('data-lit');
+    t.el.style.opacity = '';
+    t.el.style.transform = '';
   } else {
     t = { el: document.createElement('div'), timer: null, count: 1 };
     t.el.className = 'toast ' + kind;
     t.el.textContent = msg;
+    if (lit) t.el.setAttribute('data-lit', lit);
     zone.appendChild(t.el);
     _toasts.set(key, t);
     _enforceToastCap(zone);
@@ -209,6 +243,7 @@ export function showToast(msg, opts = {}) {
   if (!opts.sticky) {
     const ms = opts.duration || TOAST_MS[kind] || TOAST_MS.info;
     t.timer = setTimeout(() => {
+      t.el.removeAttribute('data-lit');   // the light starts cooling as the toast fades
       t.el.style.opacity = '0';
       t.el.style.transform = 'translateX(20px)';
       setTimeout(() => { t.el.remove(); _toasts.delete(key); }, TOAST_FADE_MS);

@@ -21,14 +21,21 @@
     "static-site",
     "portfolio"
   ],
+  "cloudflare": {
+    "bindings": {
+      "AUTH_PASSWORD": {
+        "description": "The password for your site's console, where you publish from. Pick a long one you use nowhere else. You can change it later under **Settings → Runtime variables and secrets**."
+      }
+    }
+  },
   "author": "OakLens.art",
   "license": "MIT",
   "dependencies": {
     "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
-    "happy-dom": "^20.11.1",
+    "happy-dom": "^20.14.5",
     "vitest": "^4.1.9",
-    "wrangler": "^4.103.0"
+    "wrangler": "^4.133.0"
   }
 }

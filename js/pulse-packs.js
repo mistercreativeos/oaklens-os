@@ -30,12 +30,16 @@
 // One palette per discipline — a starting colour, not a rule. The author can
 // switch any pulse to any of the six (src/shared/pulse.js PULSE_STATES).
 //
-// `tray` is the GLYPH PICKER for that lane: twelve, of which the first six are
-// the glyphs already on that lane's own starter lines. It is a separate list
-// rather than being derived from `pulses` because six was not enough to write
-// with (owner, 2026-08-13) — and because a picker and a set of example lines are
-// two different jobs, even though they overlap. Keeping the lane's own six at
-// the front means the tray still visibly belongs to the lane you tapped.
+// `tray` is this discipline's SECTION of the glyph menu: twelve, of which the
+// first six are the glyphs already on that lane's own starter lines. It is a
+// separate list rather than being derived from `pulses` because six was not
+// enough to write with (owner, 2026-08-13) — and because a picker and a set of
+// example lines are two different jobs, even though they overlap. Keeping the
+// lane's own six at the front is what makes the heading mean something: the
+// section reads as the lane whose lines you have been looking at.
+//
+// Since 2026-08-24 all six sections are in the menu at once (`glyphGroups()`
+// below), so `tray` is a heading's worth of curation rather than a filter.
 //
 // Repeats ACROSS lanes are fine and expected (🎧 belongs to music and to
 // podcasting). Repeats WITHIN a lane are not — they waste one of twelve slots,
@@ -149,4 +153,24 @@ export function allPulses() {
 export function trayGlyphs(packKey) {
   const pack = PACKS.find((p) => p.key === packKey);
   return pack && Array.isArray(pack.tray) ? pack.tray : [];
+}
+
+// EVERY lane's tray at once, in PACKS order, for the one glyph menu.
+//
+// The tray used to follow the open lane: tap Music, get music glyphs. That was
+// tidy and it was wrong for the same reason the packs are all shown to everyone
+// (see the header) — a photographer writing about a late edit wants ☕ and 🌙,
+// and had to leave the lane that seeded their line to reach them. Owner,
+// 2026-08-24: "there are infinite creative combinations."
+//
+// So a lane now seeds LINES only, and the glyphs are universal. The discipline
+// groupings survive as HEADINGS rather than as a filter — the curation is the
+// part that was working, and 72 unlabelled emoji in one grid is not a curated
+// set, it is a worse emoji keyboard.
+//
+// Order is PACKS order and stays that way: the picker's job is muscle memory,
+// and a menu that reshuffles itself under the thumb has none. The composer
+// marks the open lane and scrolls to it instead.
+export function glyphGroups() {
+  return PACKS.map((p) => ({ key: p.key, label: p.label, glyphs: trayGlyphs(p.key) }));
 }

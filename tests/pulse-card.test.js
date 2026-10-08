@@ -4,7 +4,15 @@
 // desktop, and TWO of them were already spoken for (featured audio, the
 // featured RAW daily). A third pin would leave a homepage where nothing is
 // actually recent — three owner-chosen tiles and no work. So a live pulse takes
-// slot 0 and the older content pin yields.
+// the first card and the older content pin yields.
+//
+// It also protects the RANK the pins sit in, which is the half that broke: the
+// pins used to carry fixed card NUMBERS and were spliced in one after another,
+// so a live pulse pushed the RAW daily from card 3 to card 4 — the tablet-only
+// card. A starred frame reached the homepage and no desktop or phone visitor
+// could see it. Pins now compact to the top in rank order, and the last
+// describe below is the regression that says so.
+// (2026-08-27 — docs/maintenance/2026-08-27-starred-frame-hidden-fourth-slot.md)
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,16 +58,14 @@ describe('the pin budget — at most two pinned tiles are visible', () => {
     // Audio is newer than the RAW frame, so RAW is the one that gives up its pin.
     const picks = R.pickRecent(archive, posts, raw('2026-01-01'), audio('2026-08-10'), pulse());
     const visible = picks.slice(0, 3).map((p) => p.kind);
+    // Both the budget AND the positions, now that pins compact: two pinned
+    // cards at the top in rank order, and the third desktop tile is genuine
+    // recent work. (This asserted only the COUNT until 2026-08-27, because the
+    // old fixed indexes moved a pin whenever another one was inserted above it
+    // — the very thing that hid the starred frame.)
     expect(visible[0]).toBe('pulse');
-    expect(visible).toContain('audio');
-    // The claim is about the BUDGET, not about which index each pin lands on:
-    // exactly two of the three desktop tiles are pinned, so the third is
-    // genuine recent work. (Splicing the pulse in at 0 pushes the audio pin from
-    // slot 1 to slot 2, which puts the real work in the middle — fine, and the
-    // reason this asserts the count rather than a position.)
-    const pins = visible.filter((k) => k === 'pulse' || k === 'audio');
-    expect(pins).toHaveLength(2);
-    expect(visible.filter((k) => k === 'photo' || k === 'text')).toHaveLength(1);
+    expect(visible[1]).toBe('audio');
+    expect(['photo', 'text']).toContain(visible[2]);
     // …and the RAW daily is the pin that gave way.
     expect(picks.some((p) => p.raw)).toBe(false);
   });
@@ -76,14 +82,14 @@ describe('the pin budget — at most two pinned tiles are visible', () => {
     const picks = R.pickRecent(archive, posts, [], audio('2026-08-10'), pulse());
     const kinds = picks.slice(0, 3).map((p) => p.kind);
     expect(kinds[0]).toBe('pulse');
-    expect(kinds).toContain('audio');
+    expect(kinds[1]).toBe('audio');
   });
 
   it('no pulse: the grid behaves exactly as it did before this feature', () => {
     const before = R.pickRecent(archive, posts, raw('2026-01-01'), audio('2026-08-10'));
     const withNull = R.pickRecent(archive, posts, raw('2026-01-01'), audio('2026-08-10'), { pulse: null });
     expect(withNull.map((p) => p.kind)).toEqual(before.map((p) => p.kind));
-    // Both pins keep their slots when no pulse is competing.
+    // Both pins are seated when no pulse is competing for the row.
     expect(before.map((p) => p.kind)).toContain('audio');
     expect(before.some((p) => p.raw)).toBe(true);
   });
@@ -99,6 +105,69 @@ describe('the pin budget — at most two pinned tiles are visible', () => {
     const picks = R.pickRecent([], [], [], [], pulse());
     expect(picks).toHaveLength(1);
     expect(picks[0].kind).toBe('pulse');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE REGRESSION. Reported 2026-08-27: the owner starred a buffer frame, kept
+// refreshing the live homepage, and never saw it. It had published fine — it
+// was rendering into card 4, which only a tablet held upright shows. The pins
+// carried fixed card numbers (pulse 0, audio 1, RAW 2) and were spliced in one
+// after another with the pulse LAST, so the pulse's insertion at the front slid
+// the RAW pin one card down and off the visible row.
+//
+// The rule these assert, in the owner's words: the pulse is card 1, the pin is
+// card 2, the most recent work is card 3, and card 4 is tablet-only spillover
+// that is never a pin. With no pulse the pin moves up to card 1 — pins compact,
+// so the most recent always lands in card 2 or card 3 depending on how many
+// pins are live.
+describe('the pin rank — a pin never lands in the card only a tablet shows', () => {
+  const archive = [frame('f1', '2026-08-01'), frame('f2', '2026-07-01'), frame('f3', '2026-06-01')];
+  const posts = [post('fn-1', '2026-08-02')];
+  const VISIBLE = 3;   // desktop and phone render 3 of the 4 cards
+  const kinds = (picks) => picks.map((p) => (p.raw ? 'raw' : p.kind));
+
+  it('pulse + starred frame: pulse card 1, frame card 2 — the reported bug', () => {
+    const picks = R.pickRecent(archive, posts, raw('2026-08-28'), [], pulse());
+    expect(kinds(picks)).toEqual(['pulse', 'raw', 'text', 'photo']);
+    // The assertion that would have caught it: the pin is inside the row a
+    // desktop or a phone actually renders.
+    expect(kinds(picks).slice(0, VISIBLE)).toContain('raw');
+  });
+
+  it('pulse + featured track: same shape, whichever content pin it is', () => {
+    const picks = R.pickRecent(archive, posts, [], audio('2026-08-28'), pulse());
+    expect(kinds(picks).slice(0, 2)).toEqual(['pulse', 'audio']);
+  });
+
+  it('no pulse: the pin compacts up to card 1, recent work behind it', () => {
+    // fn-1 (08-02) is the newest thing in the pool, so it is what moves up.
+    expect(kinds(R.pickRecent(archive, posts, raw('2026-08-28'), [], null)).slice(0, 2))
+      .toEqual(['raw', 'text']);
+    expect(kinds(R.pickRecent(archive, posts, [], audio('2026-08-28'), null)).slice(0, 2))
+      .toEqual(['audio', 'text']);
+  });
+
+  it('pulse alone: the most recent work moves up into card 2', () => {
+    expect(kinds(R.pickRecent(archive, posts, [], [], pulse())).slice(0, 2))
+      .toEqual(['pulse', 'text']);   // fn-1 (08-02) is newer than f1 (08-01)
+  });
+
+  it('no pins at all: the row is pure recent work', () => {
+    expect(R.pickRecent(archive, posts, [], [], null).every((p) => !p.raw)).toBe(true);
+  });
+
+  // The invariant under all of it, stated once: card 3 is never a pin, so a
+  // desktop visitor always sees at least one genuinely recent thing.
+  it('card 3 is never a pin, in every combination of pins', () => {
+    for (const r of [[], raw('2026-08-28')]) {
+      for (const a of [[], audio('2026-08-28')]) {
+        for (const p of [null, pulse()]) {
+          const row = kinds(R.pickRecent(archive, posts, r, a, p));
+          expect(['photo', 'text'], JSON.stringify(row)).toContain(row[2]);
+        }
+      }
+    }
   });
 });
 

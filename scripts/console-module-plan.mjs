@@ -42,6 +42,29 @@ const PLAN = [
     'MORE SHEET (tab bar secondary surfaces)',
     'ACTION SHEET (long-press context menu)',
   ]],
+  // The canvas bloom (phase 2 of the lighting pass). A true leaf: it imports
+  // nothing, discovers its emitters by the [data-lit] attribute rather than by
+  // name, and is called once from init(). It sits directly above chrome because
+  // it is chrome's own kind of thing — generic surface plumbing that knows
+  // nothing about buffers, frames or publishing — and because nothing below
+  // chrome exists for it to sit under.
+  ['lighting', []],
+  // The text classes' one moving part (2026-10-06): the UPDATE, a flare that
+  // runs through a root's readouts in reading order. Like lighting it names
+  // no surface and imports nothing; what a text class LOOKS like is the
+  // stylesheet's (TYPE), so this is only the when.
+  ['text-light', []],
+  // The dot-matrix readout (2026-10-06), lifted out of the Bridge so a
+  // readout is a part, not a page. Imports chrome (escapeHTML) and nothing
+  // else.
+  ['matrix', []],
+  // The split-flap board (K64): a line of type that turns only what changed,
+  // the way a departure board does. A part like the matrix; imports chrome
+  // (escapeHTML) and text-light (the flare as a word lands).
+  ['flap', []],
+  // Never lived in the monolith — it arrived whole, so its section list is
+  // empty on purpose (dev/console-module-plan.md, the `lighting` precedent).
+  ['help', []],
   ['assets', ['IMAGE RESIZING', 'CDN PREVIEW HELPER', 'SERVER API']],
   // Was `trash`, renamed 2026-07-29: line attribution had filed nine generic
   // date/file/hash helpers under the SESSION TRASH banner, and only
@@ -62,18 +85,20 @@ const PLAN = [
   // queue repaints, which is a two-way coupling until the repaint goes through
   // refreshSurface() — see the surface refresh registry seam below.
   ['upload', ['UPLOAD QUEUE']],
-  // The four surfaces reachable only through the More sheet — precisely the
+  // The surfaces reachable only through the More sheet — precisely the
   // MORE_VIEWS constant in VIEW ROUTING, minus bench (which is big enough and
   // self-contained enough to stand alone). They are read-mostly and change
-  // rarely, so they ride together rather than paying four modules' overhead.
+  // rarely, so they ride together rather than paying a module each.
   // LIST DRAG-REORDER is here, not in chrome, despite reading like a generic UI
   // primitive: both functions mutate STATE[listKey] and then re-render the
-  // surface that owns the list — `listKey === "wallpapers" ? renderWall :
-  // renderBarrel`. That is a ternary rather than a call, so the original scanner
-  // never saw it and chrome looked like a leaf when it was reaching two layers
-  // up. Here, renderWall ↔ wireListDrag is an ordinary cycle inside one module.
+  // surface that owns the list. That re-render used to be a ternary rather than
+  // a call — `listKey === "wallpapers" ? renderWall : renderBarrel` — which the
+  // original scanner never saw, so chrome looked like a leaf when it was
+  // reaching two layers up. The barrel was retired 2026-09-20 and the wall is
+  // the only reorderable list left, so it is now a plain renderWall() call;
+  // renderWall ↔ wireListDrag remains an ordinary cycle inside one module.
   ['more-views', [
-    'LIBRARY (PRE-STAGE)', 'BARREL', 'NETWORK · FRIENDS OF (About §004)', 'WALL',
+    'LIBRARY (PRE-STAGE)', 'NETWORK · FRIENDS OF (About §004)', 'WALL',
     'LIST DRAG-REORDER',
   ]],
   ['archive', ['ARCHIVE']],
@@ -88,17 +113,55 @@ const PLAN = [
     'FN// MARKDOWN', 'FN// v0.7 ENHANCEMENTS', 'FN// PORTRAIT PANES (WRITE / PREVIEW)',
     'PHASE 4: FRAME BROWSER', 'PHASE 4: BUFFER DATES PICKER', 'CLOUD DRAFTS (D1-backed)',
   ]],
+  // The card painter (chunk 7). Like `cards`, it has no callgraph sections —
+  // it was written as a module — and it is a leaf: assets for the wordmark,
+  // and the card engine through the window bridge, which imposes no import
+  // edge. It sits BELOW focal because focal's card mode is now one of its
+  // callers, and below `cards` for the same reason chunk 8's share block will
+  // be.
+  ['card-paint', []],
   ['focal', ['FOCAL POINT PICKER']],
+  // The share block (chunk 8) — the four gestures over one card, and the only
+  // thing that ever asks the painter for a `native` or a `story`. Written as a
+  // module, so no callgraph sections. It sits ABOVE card-paint (it paints),
+  // above buffer (it writes the stamped marker into the set the buffer's badge
+  // reads) and above fn-editor (it reads the open note, which cannot hand a
+  // target upward — hence the _registerFnShare seam); BELOW audio and cards,
+  // which build their own targets and hand them over, the same shape focal's
+  // per-surface entry points have.
+  ['share', []],
+  // Send it out (K67): the newest live piece, how its link unfurls, the post
+  // counted per platform, and the story card with a QR home. Above share
+  // (it builds share targets and stamps through it) and card-paint.
+  ['send-out', []],
   ['asset-library', ['ASSET LIBRARY']],
   // Above fn-editor because attaching a track from the editor inserts its
   // shortcode (fnInsertAtCursor) — same direction asset-library already runs.
   ['audio', ['AUDIO SHELF']],
+  // The Cards view. No callgraph sections of its own — it was written as a
+  // module, never extracted from console-ui.js — so its entry carries an empty
+  // section list and contributes no inferred edges. Its real imports are what
+  // tests/console-modules.test.js checks, and they all point below: state,
+  // chrome, assets, fn-editor. It sits under publish so Chunk 4's actions can
+  // reach focal/audio without either of them reaching back.
+  ['cards', []],
   ['publish', ['PUBLISH', 'IMPORT EXISTING DATA']],
   ['session', ['SESSION AUTH (UI)']],
   ['bench', ['BENCH']],
   // The pulse composer. Sits high in the order because nothing else calls it:
   // it stages nothing, touches no publish counter, and its one job is a POST.
   ['pulse', ['PULSE']],
+  // The Bridge, the console's front page (docs/ideas/bridge.md). Written as a
+  // module, so no callgraph sections. It sits at the top because it only READS
+  // the surfaces below it — the stage ledger, the upload queue, the drafts,
+  // the homepage's own selection (cards), the pulse log — and hands drops to
+  // their owners' ingests. Nothing imports it but init.
+  ['bridge', []],
+  // Capture on the Bridge (K66): the spark, a quick draft that keeps itself
+  // privately and expands into the editor, and the shelf of frames to cite.
+  // Above the Bridge, and registers with it (registerBridgeRegion), the way a
+  // surface registers with the router.
+  ['capture', []],
   ['init', ['INIT']],
 ];
 

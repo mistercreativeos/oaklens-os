@@ -1,0 +1,9 @@
+# Secrets the Worker reads, listed so the "Deploy to Cloudflare" button knows
+# to ask for them on its setup screen. Nothing in this file is ever deployed,
+# and the values stay empty on purpose: a default here would become every
+# one-click install's password.
+#
+# AUTH_PASSWORD is the password for your console, as plain text. Pick a long
+# one you use nowhere else. (The terminal install stores a scrambled bcrypt
+# hash instead, AUTH_PASSWORD_HASH; if both are set, the hash wins.)
+AUTH_PASSWORD=

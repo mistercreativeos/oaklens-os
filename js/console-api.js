@@ -33,7 +33,7 @@
 // Transitional coupling: the central 401 handler pings window.checkAuth and
 // window._updateSettingsDots (login-modal UI in console-ui.js).
 
-import { beginActivity, latchError, logEvent, setSystemState } from './console-telemetry.js';
+import { beginActivity, latchError, logEvent, setSystemState, showToast } from './console-telemetry.js';
 
 // ============== SESSION / TOKEN ==============
 // The console JWT lives in sessionStorage only (cleared on tab close) — never
@@ -106,7 +106,7 @@ const _sleep = (ms) => new Promise(r => setTimeout(r, ms));
 // Transient = worth retrying: never-completed requests (unless offline — the
 // reconnect listener owns that) and Cloudflare's transient 5xx trio.
 const _retryable = (err) =>
-  err instanceof ApiError && !err.offline &&
+  err instanceof ApiError && !err.offline && !err.portal &&
   (err.status === 0 || err.status === 502 || err.status === 503 || err.status === 504);
 
 // One attempt: no telemetry, throws ApiError / AbortError. 401 side effects
@@ -152,7 +152,25 @@ async function _requestOnce(path, { method, headers, body, auth, signal, raw, ti
     return res;
   }
 
-  const data = await res.json().catch(() => ({}));
+  // A web page where the API's JSON should be is the network lying, not an
+  // answer: a captive Wi-Fi portal, or an expired Access session, answering
+  // 200 with its sign-in page. It used to parse to {} and fail downstream as
+  // "Cannot read properties of undefined (reading 'data/buffer.json')", with
+  // the lamp still green (2026-10-06, the Bridge field probe). Named here,
+  // once, for every caller (K68).
+  if (res.ok && /text\/html/i.test(res.headers.get('content-type') || '')) {
+    const e = new ApiError('the network answered with a sign-in page, not the console\'s data', 0);
+    e.portal = true;
+    throw e;
+  }
+  const text = await res.text().catch(() => '');
+  let data = {};
+  if (text) {
+    try { data = JSON.parse(text); } catch {
+      if (res.ok) throw new ApiError('the answer could not be read (not JSON)', 0);
+    }
+  }
+  if (data === null) data = {};
   if (!res.ok || data.ok === false) {
     throw new ApiError(data.error || `HTTP ${res.status}`, res.status, data);
   }
@@ -185,6 +203,14 @@ async function apiFetch(path, { method = 'GET', headers = {}, body, auth = true,
       // Same for a 501 notConfigured: the feature is off by configuration, and
       // a red latch would cry wolf on every login of a GitHub-less instance.
       if (err.offline) { end(true); logEvent(`⊘ ${t.channel}: offline — not sent`, 'error'); }
+      else if (err.portal) {
+        // Said once, loudly, whatever the channel: every read behind it is
+        // failing for the same reason, and the fix is outside the console.
+        end(true);
+        latchError('net', 'the network answered with a sign-in page');
+        showToast('⚠ The network answered with a sign-in page (Wi-Fi or Access). Sign in there, then come back: nothing here can load until then.',
+          { kind: 'error', id: 'net-portal' });
+      }
       else if (isNotConfigured(err)) { end(true); logEvent(`▸ ${t.channel}: ${err.message}`, 'info'); }
       else if (isDemoMode(err)) { end(true); logEvent(`▸ ${t.channel}: ${err.message}`, 'info'); }
       else if (t.latch) end(false, err.message);
@@ -218,9 +244,16 @@ export function logoutServer() {
 }
 
 // ============== R2 UPLOAD / DELETE ==============
-export function uploadFiles(files, { signal, tel } = {}) {
+/**
+ * `meta` is an optional { "<r2 key>": "<style>" } sidecar, ridden by share
+ * stamps so the object remembers which style it was painted in (the server
+ * writes it as R2 customMetadata — src/api/assets.js). Everything else ignores
+ * it, and the server drops anything outside its closed set.
+ */
+export function uploadFiles(files, { meta, signal, tel } = {}) {
   const fd = new FormData();
   files.forEach(f => fd.append('files', f, f.name));
+  if (meta && Object.keys(meta).length) fd.append('meta', JSON.stringify(meta));
   return apiFetch('/api/upload', { method: 'POST', body: fd, signal,
     timeoutMs: API_TIMEOUTS.upload,
     tel: { channel: 'r2', label: 'R2 ▲', ...tel } });
@@ -319,15 +352,38 @@ export function retirePulse() {
 }
 // latch:false — the log is a convenience list. A fork whose D1 has not been
 // migrated yet should see the composer, not a red lamp.
-export function fetchPulseLog(limit) {
+//
+// The readouts below take `{ timeoutMs, retries }` from a caller that shows
+// the last value meanwhile (the Bridge, K68), so a dead network is called in
+// seconds, not after the full 20 s deadline and its retries.
+export function fetchPulseLog(limit, { timeoutMs, retries = 1 } = {}) {
   return apiFetch(`/api/pulse/log?limit=${encodeURIComponent(limit || 30)}`,
-    { retries: 1, tel: { channel: 'pulse', label: 'PULSE ▼', latch: false } });
+    { retries, timeoutMs, tel: { channel: 'pulse', label: 'PULSE ▼', latch: false } });
 }
 
 // ============== OG CARDS ==============
 // latch:false — badge decoration; a failure belongs in the ledger, not the lamp.
 export function fetchOgCards() {
   return apiFetch('/api/og-cards', { retries: 1, tel: { channel: 'ogc', label: 'OGC ▼', latch: false } });
+}
+
+// ============== DEPLOYED VERSION ==============
+// Public, never cached (src/api/site-meta.js handleVersion): { version,
+// deployed }. The Bridge watches it after a publish to say when the build is
+// live. latch:false — a readout, not a fault.
+export function fetchVersion({ timeoutMs, retries = 1 } = {}) {
+  return apiFetch('/api/version', { retries, timeoutMs, tel: { channel: 'site', label: 'VER ▼', latch: false } });
+}
+
+// ============== STORAGE ==============
+// How full storage is (src/api/storage.js): measured daily on the server, so
+// a read costs no listing. remeasure() asks for a fresh one, which the server
+// holds to once per ten minutes. latch:false — a gauge, not a fault.
+export function fetchStorage({ timeoutMs, retries = 1 } = {}) {
+  return apiFetch('/api/storage', { retries, timeoutMs, tel: { channel: 'site', label: 'STORE ▼', latch: false } });
+}
+export function remeasureStorage() {
+  return apiFetch('/api/storage', { method: 'POST', tel: { channel: 'site', label: 'STORE ↻', latch: false } });
 }
 
 // ============== SITE TEMPLATE SETTINGS ==============
@@ -338,8 +394,8 @@ export function fetchSiteSettings() {
 }
 
 // ============== BENCH (darkroom RAW queue, D1 + B2) ==============
-export function fetchBench() {   // resolves a raw array
-  return apiFetch('/api/bench', { retries: 2, tel: { channel: 'bench', label: 'BENCH ▼' } });
+export function fetchBench({ timeoutMs, retries = 2 } = {}) {   // resolves a raw array
+  return apiFetch('/api/bench', { retries, timeoutMs, tel: { channel: 'bench', label: 'BENCH ▼' } });
 }
 export function patchBenchEntry(patch) {
   // json_set on fixed fields — same patch twice converges, safe to retry

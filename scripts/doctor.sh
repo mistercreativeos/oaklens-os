@@ -86,7 +86,9 @@ echo "Your project's history"
 if ! have git; then
   note "Git isn't installed, so I can't check what GitHub has"
   fix "Install it from https://git-scm.com/downloads"
-elif [ ! -d .git ]; then
+# -e, not -d: in a worktree or a submodule `.git` is a file pointing at the
+# repository, and that is still a clone (tests/setup-script.test.js).
+elif [ ! -e .git ]; then
   bad "This folder isn't a git project, so nothing here can reach GitHub"
   fix "The code was probably downloaded as a ZIP. Publishing needs a real clone of your own GitHub copy — see setup.md."
 else

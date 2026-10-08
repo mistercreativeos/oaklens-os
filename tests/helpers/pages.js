@@ -29,6 +29,12 @@ export const CHROME_PAGES = [
   'wall/index.html',
   'field-notes/index.html',
   'listen/index.html',
+  // One composed card at its own address (/card/<id>). It carries the same full
+  // chrome as the pages above — nav, footer, site-common.js — so it belongs in
+  // the same sweep. It was parked in THEMED_PAGES only, with a comment citing
+  // "the /listen reason"; /listen is right here, which a code review noticed
+  // before anyone else did.
+  'card/index.html',
   'support/index.html',
   '404.html',
 ].filter(present);
@@ -36,11 +42,15 @@ export const CHROME_PAGES = [
 /**
  * Every served page with a themed <head> — the chrome pages plus the
  * sub-pages that render their own layout (buffer, single post) and the
- * `/dev` landing page where one is shipped.
+ * `/dev` project pages where they are shipped.
  */
 export const THEMED_PAGES = [
   ...CHROME_PAGES,
   'archive/buffer/index.html',
   'field-notes/post.html',
+  // The two public pages under /dev/: the project index and the Fixxer page it
+  // links to. Neither ships in the extracted tree (both are OAKLENS marketing,
+  // not engine), which is exactly what `present` is for.
   'dev/index.html',
+  'dev/fixxer/index.html',
 ].filter(present);

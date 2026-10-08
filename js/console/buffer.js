@@ -15,14 +15,13 @@
 //
 // Extracted from console-ui.js 2026-07-29. See dev/console-module-plan.md.
 
-import { STATE, save, bumpStage, trashItem, _pendingR2Deletes } from '../console-state.js';
+import { STATE, save, stageChange, trashItem, _pendingR2Deletes } from '../console-state.js';
 import { getToken } from '../console-api.js';
 import { showToast, startProgress, updateProgress, endProgress } from '../console-telemetry.js';
 import { toast, showView } from './chrome.js';
-import { cdnThumb, generateVariants, SITE_LOCATION } from './assets.js';
+import { cdnThumb, cdnSrcset, generateVariants, _hasOgCard, _ogCardGen } from './assets.js';
 import { cleanFilename, computeHash, findDuplicateByHash, readEXIFDate, readFileAsDataURL, todayISO, uid, ymd } from './utils.js';
 import { _enqueueUpload } from './upload.js';
-import { _setArchiveComposeFocus, _setArchiveComposeCardFocus } from './archive.js';
 
 // ---- Burst linking (buffer surface) — ephemeral selection state, never persisted ----
 export let burstLinkMode = false;            // is Link mode active on the buffer surface
@@ -104,7 +103,7 @@ export async function bufferIngest(files) {
         archived: false,
         hash,
       });
-      bumpStage('buffer');
+      stageChange('buffer', { id: entryId, label: `${rawName} — new frame (local only)`, kind: 'add' });
       save();
       renderBuffer();
     }
@@ -160,7 +159,7 @@ export function bufferRetire(id) {
       entryId: item.id,
     });
   }
-  bumpStage('buffer');
+  stageChange('buffer', { id: item.id, label: `${item.filename || 'frame'} — retired to dark frame`, kind: 'remove' });
   save();
   renderBuffer();
   toast('◼ retired to dark frame — slot kept, media queued for delete', 'success');
@@ -174,38 +173,27 @@ export function bufferPromote(id) {
   if (item._uploading) return toast('▲ still uploading — promote once it finishes', 'error');
   if (item._uploadError) return toast('✕ upload failed — re-drop this frame before promoting', 'error');
   item.archived = true;
-  // Pre-populate archive form with this photo
-  showView("archive");
-  setTimeout(() => {
-    const imgSrc = item.image || cdnThumb(item);
-    document.getElementById("archive-preview-wrap").innerHTML =
-      `<img src="${imgSrc}" alt="">`;
-    document.getElementById("archive-filename").textContent = cleanFilename(item.filename);
-    _setArchiveComposeFocus(item.focus || '');
-    _setArchiveComposeCardFocus(item.cardFocus || '');
-    const year = new Date(item.captured_at).getFullYear();
-    document.getElementById("arch-loc").value =
-      SITE_LOCATION ? `${SITE_LOCATION}, ${year}` : `${year}`;
-    // Stash on form for the stage handler
-    document.getElementById("view-archive").dataset.fromBuffer = item.id;
-    document.getElementById("view-archive").dataset.image = item.image || '';
-    document.getElementById("view-archive").dataset.filename = cleanFilename(item.filename);
-    delete document.getElementById("view-archive").dataset.uploadState;   // frame's asset is already confirmed
-    document.getElementById("arch-title").focus();
-  }, 80);
+  // Pre-populate the archive form with this photo, handed over through the
+  // view seam (K65): the archive fills its form when it has rendered, not
+  // after a guessed 80ms.
+  showView("archive", { fromBuffer: item });
   toast("✓ promoted to archive — fill in metadata", "success");
 }
 
-// Basenames of frames that already have a live OG card on R2
-// (meta/<base>-og.webp) — renderBuffer draws the ▣ badge from this. Owned here
-// because the renderer is the consumer; the producers sit ABOVE this module
-// (loadOgCards fetches the index, the focal modal's card publish adds one) and
-// write through the setters, because an imported binding cannot be assigned.
-// The extraction guard caught this one as a ReferenceError in the suite — the
-// same dangling-const class as CDN_BASE, stopped by the test this time.
-let OG_CARD_SET = new Set();
-export function _setOgCardSet(bases) { OG_CARD_SET = new Set(bases); }
-export function _addOgCard(base) { OG_CARD_SET.add(base); }
+// The stamped set MOVED DOWN to js/console/assets.js on 2026-09-18, and the
+// reason is the archive. `archive` sits BELOW `buffer` in the plan order, so it
+// could not import this and the ▣ badge could only ever exist on one surface —
+// which is exactly how the archive editor came to give an author no signal at
+// all about what was live. The set was never buffer-specific anyway (its own
+// warning said so: it holds fn-/audio-/set-/card- stems too). It is R2
+// bookkeeping, so it lives in the R2 module, below every reader.
+// Re-exported here because renderBuffer is still a consumer and this module's
+// importers should not have to care where it went.
+// ⚠️ Imported ABOVE as well as re-exported here: `export … from` creates no
+// local binding, and renderBuffer calls _hasOgCard itself. Getting that wrong
+// is a ReferenceError at render time, which is the same dangling shape this
+// module was bitten by once already.
+export { _setOgCardSet, _addOgCard, _removeOgCard, _hasOgCard, _ogCardStyle } from './assets.js';
 
 export function renderBuffer() {
   const display = document.getElementById("buffer-display");
@@ -219,8 +207,19 @@ export function renderBuffer() {
   if (!STATE.buffer.length) {
     display.innerHTML = `<div class="empty">// BUFFER EMPTY · DROP PHOTOS ABOVE</div>`;
     stats.textContent = "0 frames · 0 days";
+    _bufferShown = null;
     return;
   }
+
+  // NOTHING CHANGED, NOTHING BUILT (K79). The router renders a surface each
+  // time it is shown, and the Buffer rebuilt its first screenful every time:
+  // in Safari 160–195 ms of script on each visit, the hitch at the start of
+  // the crossfade (measured through safaridriver). The grid is the image of
+  // the frames, the link selection and the live stamps; while all three are
+  // what the last build drew, the grid it built is still right, and is kept.
+  const shown = _bufferSignature();
+  if (shown === _bufferShown && display.isConnected && display.firstElementChild) return;
+  _bufferShown = shown;
 
   // Sort by captured_at ascending (matches live site renderer)
   const sorted = [...STATE.buffer].sort((a, b) => {
@@ -242,7 +241,25 @@ export function renderBuffer() {
   stats.textContent = `${STATE.buffer.length} frames · ${days.length} days`
     + (darkCount ? ` · ${darkCount} dark` : '');
 
-  display.innerHTML = days.map(day => {
+  // PROGRESSIVE (K49): a buffer is hundreds of frames and growing — 729 on
+  // 2026-10-04 — and building every cell in one task froze a phone for
+  // ~300ms on each visit. The first screenful of whole days is built now;
+  // the rest follows in chunks, each its own task, so the view is usable
+  // at once. A newer render cancels an older one's tail. Every handler on
+  // the grid is delegated (init.js), so a cell that arrives later works.
+  // ON DEMAND (K50c — the owner: the cold start "freezes consistently … it
+  // appears as if it's competing with loading the buffer images"). Measured
+  // at 6× CPU: building all 729 frames in the background was 6s of long
+  // frames whether or not the ignition ran, and the ignition is the only
+  // thing moving while it does. So the chunks are no longer a background
+  // job: a sentinel sits after what is built, and the next chunk is built
+  // when a scroll brings the sentinel within BUFFER_AHEAD of the viewport
+  // (an IntersectionObserver rooted at the scroller — nothing on the scroll
+  // path). A phone that never scrolls past the first screen never builds
+  // the rest, and a day's HTML is generated only when its chunk is. Where
+  // the observer is missing (the test environment) the chunks follow each
+  // other as tasks, as in K49.
+  const build = (day) => {
     const items = byDay[day];
     // Map burst_id -> ordered list of frame ids within this day, for "BURST n/N" badges.
     // burst_ids are unique within a day, so grouping within the day is sufficient.
@@ -282,7 +299,10 @@ export function renderBuffer() {
                 <div style="font-size:0.48rem;color:var(--text-faint);letter-spacing:1px;margin-top:4px;padding:0 8px;text-align:center;">${p._uploadError.slice(0, 50)}</div>
               </div>`;
             } else {
-              inner = `<img src="${cdnThumb(p)}" alt=""${p.focus ? ` style="object-position:${p.focus}"` : ''}>`;
+              // Lazy, decoded off the main thread, and only as big as the cell
+              // (K49): 480w unless the cell is wide enough to want 1024w.
+              const set = cdnSrcset(p);
+              inner = `<img src="${cdnThumb(p, 'archive', set ? 480 : 1024)}"${set ? ` srcset="${set}" sizes="(max-width: 600px) 92vw, 280px"` : ''} alt="" loading="lazy" decoding="async"${p.focus ? ` style="object-position:${p.focus}"` : ''}>`;
             }
             let burstClass = "", burstBadge = "";
             if (p.burst_id && burstGroups[p.burst_id]) {
@@ -296,7 +316,7 @@ export function renderBuffer() {
                  data-id="${p.id}">
               ${inner}
               ${burstBadge}
-              ${OG_CARD_SET.has((p.filename || '').replace(/\.[^.]+$/, '')) ? '<div class="ogc-badge" title="Live OG card on R2">▣</div>' : ''}
+              ${_hasOgCard((p.filename || '').replace(/\.[^.]+$/, '')) ? '<div class="ogc-badge" title="Live share image on R2">▣</div>' : ''}
               ${p.featured ? '<div class="raw-badge" title="Featured as a RAW card on the homepage">★</div>' : ''}
               <div class="frame-actions">
                 ${p._importing || p._uploading ? '' : `<button class="frame-action${p.featured ? ' featured' : ''}" title="${p.featured ? 'Featured on homepage — click to unfeature' : 'Feature as RAW card on the homepage'}"
@@ -315,8 +335,60 @@ export function renderBuffer() {
           }).join("")}
         </div>
       </div>`;
-  }).join("");
+  };
+  const html = [];
+  const htmlOf = (idx) => (html[idx] ??= build(days[idx]));
+  const token = ++_bufferRenderToken;
+  _bufferMore?.disconnect();
+  _bufferMore = null;
+  let i = 0, frames = 0;
+  while (i < days.length && (frames < BUFFER_FIRST_FRAMES || i === 0)) frames += byDay[days[i++]].length;
+  display.innerHTML = days.slice(0, i).map((_, k) => htmlOf(k)).join("");
+  if (i >= days.length) return;
+  const sentinel = document.createElement("div");
+  sentinel.className = "buffer-more";
+  sentinel.setAttribute("aria-hidden", "true");
+  display.appendChild(sentinel);
+  const more = () => {
+    if (token !== _bufferRenderToken) return;
+    let n = 0, chunk = "";
+    while (i < days.length && n < BUFFER_CHUNK_FRAMES) { n += byDay[days[i]].length; chunk += htmlOf(i++); }
+    sentinel.insertAdjacentHTML("beforebegin", chunk);
+    if (i >= days.length) { _bufferMore?.disconnect(); _bufferMore = null; sentinel.remove(); return true; }
+    return false;
+  };
+  if (typeof IntersectionObserver !== "function") {
+    const next = () => { if (more() === false) setTimeout(next, 0); };
+    setTimeout(next, 0);
+    return;
+  }
+  _bufferMore = new IntersectionObserver((entries) => {
+    if (!entries.some((e) => e.isIntersecting)) return;
+    if (more()) return;
+    // Still within reach after the chunk landed? observe() delivers a fresh
+    // notification, so the build continues until the sentinel is out of range.
+    _bufferMore.unobserve(sentinel);
+    _bufferMore.observe(sentinel);
+  }, { root: display.closest("[data-light-layer]"), rootMargin: BUFFER_AHEAD });
+  _bufferMore.observe(sentinel);
 }
+let _bufferMore = null;   // the sentinel's observer for the current render
+// What the grid was last built from (K79): every frame as it is stored (a
+// local picture by its length, not its pixels), the link selection, and the
+// live stamps' generation.
+let _bufferShown = null;
+function _bufferSignature() {
+  const frames = JSON.stringify(STATE.buffer, (k, v) => (k === "image" && typeof v === "string" ? v.length : v));
+  return `${_ogCardGen()}|${[...burstSelectedIds].join(",")}|${frames}`;
+}
+/** Test seam: forget what the grid was built from, so the next render builds. */
+export function _bufferForget() { _bufferShown = null; }
+// The first build's size, and each later chunk's, in frames (whole days).
+export const BUFFER_FIRST_FRAMES = 96;
+export const BUFFER_CHUNK_FRAMES = 48;   // 160 in K49; a chunk is one task, and at 6× CPU 160 frames was half a second (K50c)
+// How far ahead of the viewport the next chunk is built (K50c).
+export const BUFFER_AHEAD = "150% 0px";
+let _bufferRenderToken = 0;
 
 export function loadSampleBuffer() {
   const samples = [
@@ -348,7 +420,7 @@ export function loadSampleBuffer() {
       filename: `sample-${s.time.replace(":","")}.jpg`,
       captured_at: d.toISOString(), published_at: d.toISOString(), archived: false,
     });
-    bumpStage("buffer");
+    stageChange("buffer", { id: STATE.buffer[0].id, label: `${STATE.buffer[0].filename} — sample frame`, kind: 'add' });
   });
   save();
   renderBuffer();
@@ -466,7 +538,13 @@ export function commitBurstLink() {
   STATE.buffer.forEach(b => {
     if (burstSelectedIds.has(b.id)) { b.burst_id = burstId; count++; }
   });
-  if (count) bumpStage("buffer");   // marks PENDING + persists to localStorage
+  // marks PENDING + persists to localStorage; every linked frame changed
+  if (count) {
+    stageChange("buffer", {
+      ids: [...burstSelectedIds],
+      label: `burst linked: ${count} frames → ${burstId}`,
+    });
+  }
   toast(`✓ linked burst: ${count} frames → ${burstId}`, "success");
   exitBurstLinkMode();
 }
@@ -474,10 +552,16 @@ export function commitBurstLink() {
 export function commitBurstUnlink() {
   if (!burstSelectedIds.size) return;
   let count = 0;
+  const unlinkedIds = [];
   STATE.buffer.forEach(b => {
-    if (burstSelectedIds.has(b.id) && b.burst_id) { delete b.burst_id; count++; }
+    if (burstSelectedIds.has(b.id) && b.burst_id) { delete b.burst_id; count++; unlinkedIds.push(b.id); }
   });
-  if (count) bumpStage("buffer");
+  if (count) {
+    stageChange("buffer", {
+      ids: unlinkedIds,
+      label: `burst unlinked: ${count} frame${count !== 1 ? 's' : ''}`,
+    });
+  }
   toast(`✓ unlinked ${count} frame${count !== 1 ? "s" : ""}`, "success");
   exitBurstLinkMode();
 }

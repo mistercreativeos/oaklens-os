@@ -228,33 +228,40 @@ describe('surface refresh registry', () => {
 });
 
 describe('field-notes editor defaults', () => {
-  it('does not hide the hero dropzone when the title fields collapse', () => {
-    // These shared one toggle, so the only action that reclaimed writing room on
-    // a small screen also hid the hero dropzone — making the hero unreachable on
-    // exactly the device where space is tight.
-    const fm = document.querySelector('.fn-frontmatter');
+  // What these two tests guarded — that reclaiming writing room must not take
+  // the cover dropzone with it — is now structural rather than behavioural.
+  // There is no collapse toggle: the note's id/place/date are ONE inline row
+  // (.fn-meta), which is cheaper than the button that used to hide them. So the
+  // assertion is that both are simply there, unconditionally, with nothing in
+  // the markup able to switch either off.
+  //
+  // See docs/maintenance/2026-08-23-field-notes-studio.md § Not doing.
+  it('the note\u2019s meta row and its cover are both always on screen', () => {
+    const meta = document.querySelector('.fn-meta');
     const hero = document.getElementById('fn-hero-slot');
-    expect(fm, '.fn-frontmatter missing').not.toBeNull();
+    expect(meta, '.fn-meta missing').not.toBeNull();
     expect(hero, '#fn-hero-slot missing').not.toBeNull();
-
-    const heroWasCollapsed = hero.classList.contains('collapsed');
-    window.fnToggleFrontmatter();
-    expect(hero.classList.contains('collapsed'), 'hero collapsed along with the title fields').toBe(heroWasCollapsed);
-    window.fnToggleFrontmatter();
-    expect(hero.classList.contains('collapsed')).toBe(heroWasCollapsed);
+    expect(meta.classList.contains('collapsed'), 'the meta row shipped collapsed').toBe(false);
+    expect(hero.classList.contains('collapsed'), 'the cover shipped collapsed').toBe(false);
   });
 
-  it('labels the toggle in words a writer recognises', () => {
-    // "META" is developer vocabulary. The panel names the post; once open,
-    // Location/Date/FN ID speak for themselves.
-    const btn = document.getElementById('fn-collapse-btn');
-    expect(btn, '#fn-collapse-btn missing').not.toBeNull();
-    for (const state of [0, 1]) {
-      expect(btn.textContent).toMatch(/TITLE/);
-      expect(btn.textContent, 'the old developer-facing label is back').not.toMatch(/META/);
-      if (state === 0) window.fnToggleFrontmatter();
+  it('the collapse toggle is gone, not merely restyled', () => {
+    // It came back once already, wearing a different label. If a future change
+    // wants it back, it needs to argue with the log first.
+    expect(document.getElementById('fn-collapse-btn'), 'the frontmatter collapse toggle is back').toBeNull();
+    expect(typeof window.fnToggleFrontmatter, 'fnToggleFrontmatter is back').toBe('undefined');
+  });
+
+  it('every field the editor writes into exists in the shipped markup', () => {
+    // The DOM contract between dev/field-console.html and fn-editor.js. A
+    // rename on one side and not the other is a silent no-op at runtime — the
+    // exact failure mode tests/inline-handlers.test.js was written for.
+    for (const id of ['fn-doc-select', 'fn-id', 'fn-title', 'fn-location', 'fn-date',
+                      'fn-body', 'fn-status-badge', 'fn-sync', 'fn-word-count',
+                      'fn-read-time', 'fn-hero-slot', 'fn-hero-thumb', 'fn-preview',
+                      'fn-preview-panel', 'fn-drawer', 'fn-menu', 'fn-delete-btn']) {
+      expect(document.getElementById(id), `#${id} missing from the console shell`).not.toBeNull();
     }
-    window.fnToggleFrontmatter();   // leave it as we found it
   });
 });
 
@@ -373,5 +380,64 @@ describe('long-press registry', () => {
     window.enterBurstLinkMode();
     expect(bufferTarget().enabled(), 'long press must stand down in link mode').toBe(false);
     window.exitBurstLinkMode();
+  });
+});
+
+
+// ---- E5: storage that throws must not take the console down ----
+//
+// localStorage does not merely return null when site data is blocked or the
+// browser partitions storage — the accessor THROWS. themeInit() runs at boot,
+// so an unguarded read there kills the console before it paints, and the person
+// sees a blank page with no clue why. Every other surface already try/catches
+// its storage access; chrome.js's theme block did not until 2026-09-16.
+//
+// These drive the real exported functions against a localStorage that throws on
+// everything, which is what a partitioned browser actually hands you.
+describe('the theme survives a localStorage that throws', () => {
+  let realStorage;
+  const hostile = () => {
+    realStorage = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        return {
+          getItem() { throw new DOMException('denied', 'SecurityError'); },
+          setItem() { throw new DOMException('denied', 'SecurityError'); },
+          removeItem() { throw new DOMException('denied', 'SecurityError'); },
+        };
+      },
+    });
+  };
+  const restore = () => {
+    if (realStorage) Object.defineProperty(window, 'localStorage', realStorage);
+  };
+
+  it('themeInit() still applies a theme instead of throwing', () => {
+    hostile();
+    try {
+      expect(() => window.themeInit()).not.toThrow();
+      // It fell back to the system preference rather than leaving the document
+      // unthemed — an unstyled console is not a graceful degradation.
+      expect(['dark', 'light']).toContain(document.documentElement.dataset.theme);
+    } finally { restore(); }
+  });
+
+  it('themeToggle() still flips the theme, it just cannot remember it', () => {
+    hostile();
+    try {
+      document.documentElement.dataset.theme = 'dark';
+      expect(() => window.themeToggle()).not.toThrow();
+      expect(document.documentElement.dataset.theme).toBe('light');
+    } finally { restore(); }
+  });
+
+  it('a working localStorage still persists the choice', () => {
+    // The other half — the guards must not have turned persistence into a no-op.
+    document.documentElement.dataset.theme = 'dark';
+    window.themeToggle();
+    expect(localStorage.getItem('console_theme')).toBe('light');
+    window.themeToggle();
+    expect(localStorage.getItem('console_theme')).toBe('dark');
   });
 });

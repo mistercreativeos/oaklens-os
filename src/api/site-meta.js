@@ -8,15 +8,56 @@
 //   GET /feed.xml              — Atom syndication of published field notes
 //   GET /api/buffer-summary    — ~120-byte precomputed buffer counts
 //   GET /.well-known/analogs.txt — webring ownership claim (config-gated)
+//   GET /api/version           — which deploy is this origin serving
 
 import siteConfig from '../shared/config.js';
 import { cdnBase } from '../shared/site.js';
 import { PAGE_ROUTES, pageDisabled, publicPages } from '../shared/pages.js';
 import { configuredNode, analogsToken } from '../shared/webring.js';
+import {
+  configuredPodcast, podcastReadiness, categoryTag, ownerTag,
+  podcastNamespaceTags, generatorName, artworkHref, PODCAST_NS,
+} from '../shared/podcast.js';
 import { escapeHtml, baseName, localDay } from '../shared/text.js';
 import { CORS_HEADERS, jsonRes } from '../shared/http.js';
-import { loadDataJson } from '../edge/data.js';
+import { loadDataJson, _deployToken } from '../edge/data.js';
 import { _frameImg, OG_IMG_WIDTH } from '../edge/chrome.js';
+
+// ---- GET /api/version ----
+//
+// Which deploy is this origin serving? Before this there was no way to answer
+// that from outside the Cloudflare dashboard — which is how a correct publish
+// spent five minutes looking broken (2026-08-23): the build had landed, but
+// nothing on the site could say so. `version` is the SAME token loadDataJson
+// keys its edge cache on, so "the version changed" and "the data cache turned
+// over" are one fact instead of two you have to correlate by hand.
+//
+// PUBLIC and identity-free on purpose. The id is an opaque UUID Cloudflare
+// assigns per version and the timestamp is when it went live; neither names
+// the instance, its owner, its resources or its repo. `tag` is deliberately
+// NOT returned — it is operator-set free text and a fork could have typed
+// anything into it.
+//
+// no-store, not the usual max-age: a cached answer to "is it live yet" is a
+// wrong answer, and being current is this endpoint's entire job. (Same
+// reasoning as handleAnalogsToken's 404 above.)
+//
+// An instance whose wrangler.jsonc has no version_metadata binding answers
+// { version: null } — an honest "unknown", never a 404 and never a guess.
+export function handleVersion(env) {
+  const meta = (env && env.CF_VERSION_METADATA) || null;
+  const res = jsonRes({
+    ok: true,
+    version: (meta && typeof meta.id === 'string') ? meta.id : null,
+    deployed: (meta && typeof meta.timestamp === 'string') ? meta.timestamp : null,
+    // What the edge data cache is scoped by — equals `version` when the
+    // binding is present, 'v0' when it is not. Surfaced so a stale-content
+    // report can be diagnosed without reading the source.
+    cacheScope: _deployToken(env),
+  }, 200);
+  res.headers.set('Cache-Control', 'no-store');
+  return res;
+}
 
 // ---- GET /api/site/settings ----
 //
@@ -49,6 +90,20 @@ export function handleSiteSettings(request, env) {
     // so this exposes nothing new. It lets the console's ring card show the
     // real state without a second request.
     webring: configuredNode(),
+    // Podcast submission readiness for the console's feed card — WHICH keys are
+    // filled in, never WHAT is in them.
+    //
+    // ⚠️ BOOLEANS ONLY. This endpoint is public and unauthenticated, so the
+    // owner email, the funding URL and the copyright line must never travel
+    // here — the whole point of the card is to say "you still need
+    // podcast.owner.email", which needs no value at all. podcastReadiness()
+    // enforces the shape; keep it that way.
+    //
+    // `listenPage` rides along because it is the one blocker you cannot see by
+    // reading the feed: every item's <link> and <guid> is /listen/?a=<slug>, so
+    // pages.listen:false 404s every episode in every subscriber's app while the
+    // feed itself keeps serving happily.
+    podcast: podcastReadiness(siteConfig.podcast, pages.listen !== false),
   }, 200);
 }
 
@@ -92,14 +147,31 @@ export async function handleManifest(request, env) {
   const url = new URL(request.url);
   let data;
   try {
-    const res = await env.ASSETS.fetch(new Request(`${url.origin}/data/archive.json`));
-    if (!res.ok) throw new Error('Fetch not ok');
-    data = await res.json();
+    // Through loadDataJson, like every other data reader: it shares the
+    // deploy-scoped edge cache (§2.4) instead of re-reading the asset bundle on
+    // every crawler hit, AND it carries the status through, which is what makes
+    // the split below possible.
+    data = await loadDataJson(url.origin, env, 'data/archive.json');
   } catch (err) {
-    return new Response('Internal Server Error', {
-      status: 500,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-    });
+    // Same split as the Atom and podcast feeds: a MISSING archive.json is not
+    // an outage, it is how an un-seeded fork ships — os-extract omits it
+    // (DATA_OMITTED) so the bundled samples render. An empty manifest is that
+    // instance's truth. This used to answer 500 for it, and /sitemap.xml
+    // advertises this page, so every brand-new fork was handing crawlers a
+    // server error until its owner published a first archive entry. Invisible
+    // on a seeded instance, which is why it survived (2026-08-23).
+    //
+    // Anything else IS a transient read failure and keeps the 500 — an empty
+    // manifest served under a real outage would tell the Wayback Machine this
+    // archive is empty, and that snapshot is the thing we cannot take back.
+    if (err.status !== 404) {
+      console.error('[manifest]', err.message);
+      return new Response('Internal Server Error', {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    }
+    data = [];
   }
 
   if (!Array.isArray(data)) {
@@ -122,7 +194,7 @@ export async function handleManifest(request, env) {
        width="480" alt="${escapeHtml(entry.title)}" loading="lazy">
   <h2>${escapeHtml(entry.title)}</h2>
   <p class="sub">${escapeHtml(entry.sub)}</p>
-  <p class="meta">${escapeHtml(entry.location)} · ${localDay(entry.added_at)}</p>${hashHtml}
+  <p class="meta">${escapeHtml(entry.location)} · ${localDay(entry.added_at, siteConfig.timezone)}</p>${hashHtml}
 </article>`;
   }).join('\n');
 
@@ -177,10 +249,60 @@ export async function handleSitemap(request, env) {
   if (!pageDisabled('/listen')) {
     try {
       const audio = await loadDataJson(HOST, env, 'data/audio.json');
-      if (Array.isArray(audio) && audio.length) {
+      // `t.filename` excludes retired tombstones — reserved addresses with no
+      // media. A registry holding only those has nothing to play, so /listen is
+      // still the empty page this gate exists to keep out of the sitemap.
+      if (Array.isArray(audio) && audio.some((t) => t && t.filename)) {
         xml += `\n  <url><loc>${HOST}/listen</loc></url>`;
       }
+      // /podcast.xml on the same terms, and off the same read — the registry is
+      // already in hand, so this costs nothing. Gated on an actual EPISODE
+      // rather than on any track: the feed serves either way, but listing a
+      // channel with no items invites a crawler to fetch an empty show, and a
+      // podcast client that sees zero items can drop the subscription.
+      if (Array.isArray(audio) && audio.some((t) => t && t.episode && t.filename && t.slug)) {
+        xml += `\n  <url><loc>${HOST}/podcast.xml</loc></url>`;
+      }
+      // Saved sets, on the same terms: a set is a page-worth destination with
+      // its own address, so it is listed — but only once it PLAYS something.
+      // An empty set, or one whose tracks have all been retired, is the same
+      // thin content the /listen gate above exists to keep out, and a retired
+      // set is an address reservation with nothing behind it at all.
+      const sets = await loadDataJson(HOST, env, 'data/audio-sets.json');
+      if (Array.isArray(sets) && Array.isArray(audio)) {
+        const live = new Set(
+          audio.filter((t) => t && t.slug && t.filename && !t.retired).map((t) => t.slug)
+        );
+        for (const s of sets) {
+          if (!s || !s.slug || s.retired) continue;
+          if (!((s.tracks) || []).some((slug) => live.has(slug))) continue;
+          xml += `\n  <url><loc>${HOST}/listen/?set=${encodeURIComponent(s.slug)}</loc></url>`;
+        }
+      }
     } catch { /* no registry, no listing */ }
+  }
+  // Composed cards, each at its own permanent address (chunk 6). Listed on the
+  // same terms as everything above — a card earns its line by being something
+  // the engine would actually render. `composedPick`'s rule in one place it
+  // cannot import (this is the Worker, that is a classic browser script), so
+  // it is deliberately the WEAKER half of it: a retired tombstone is excluded,
+  // and a card with neither a picture nor a word is a draft, not a page. What
+  // it does not try to re-derive is the audio kind's "does anything play" —
+  // that needs the player's resolver, and a card wrongly listed is thin
+  // content while a card wrongly omitted is a lost address.
+  if (!pageDisabled('/card')) {
+    try {
+      const cards = await loadDataJson(HOST, env, 'data/cards.json');
+      for (const c of (Array.isArray(cards) ? cards : [])) {
+        if (!c || !c.id || c.retired) continue;
+        const hasSomething = c.media
+          || String(c.title || '').trim()
+          || String(c.tease || '').trim()
+          || c.set;
+        if (!hasSomething) continue;
+        xml += `\n  <url><loc>${HOST}/card/${encodeURIComponent(c.id)}</loc></url>`;
+      }
+    } catch { /* no cards, no listing */ }
   }
   xml += '\n</urlset>';
 
@@ -364,13 +486,21 @@ export async function handlePodcastFeed(request, env) {
     .sort((a, b) => String(b.added_at || '').localeCompare(String(a.added_at || '')))
     .slice(0, PODCAST_MAX_ENTRIES);
 
-  const artwork = siteConfig.podcast && siteConfig.podcast.image;
-  const artworkUrl = artwork
-    ? (/^https?:/i.test(artwork) ? artwork : `${origin}${artwork.startsWith('/') ? '' : '/'}${artwork}`)
-    : null;
-  const title = (siteConfig.podcast && siteConfig.podcast.title) || siteConfig.name;
-  const description = (siteConfig.podcast && siteConfig.podcast.description)
-    || siteConfig.tagline || '';
+  // One home for the channel's submission-gating fields (src/shared/podcast.js),
+  // so this document and the console's readiness card cannot disagree about
+  // what is still missing. Every tier-2 builder returns '' when unset — an
+  // unconfigured fork renders fewer lines, never a placeholder.
+  const p = configuredPodcast();
+
+  const artworkUrl = artworkHref(p, origin);
+  // The show's own title/description when it has them, the site's otherwise —
+  // "this show is just the site" is a complete and common answer.
+  const title = p.title || siteConfig.name;
+  const description = p.description || siteConfig.tagline || '';
+  // Channel-level explicit is the show's own rating and every item inherits it.
+  // Apple treats a missing item value as the channel's anyway, but stating it
+  // per item is what keeps a re-hosted single episode honest.
+  const explicit = p.explicit ? 'true' : 'false';
 
   const items = episodes.map((t) => {
     const link = `${origin}/listen/?a=${encodeURIComponent(t.slug)}`;
@@ -385,23 +515,46 @@ export async function handlePodcastFeed(request, env) {
       <enclosure url="${escapeHtml(url)}" length="${Number(t.size) || 0}" type="${escapeHtml(audioMime(t))}"/>${dur ? `
       <itunes:duration>${dur}</itunes:duration>` : ''}
       <itunes:title>${escapeHtml(t.title || t.slug)}</itunes:title>
-      <itunes:explicit>false</itunes:explicit>
+      <itunes:explicit>${explicit}</itunes:explicit>
     </item>`;
   }).join('\n');
 
+  // ⚠️ THE NEWEST EPISODE'S pubDate, NEVER `new Date()`. A body that changes on
+  // every request defeats the one-hour cache above and every conditional GET a
+  // podcast client makes — and it is not true: nothing was built. With no
+  // episodes there is no build date to state, so the tag is omitted rather
+  // than invented.
+  const lastBuild = episodes.length ? rssDate(episodes[0].added_at) : '';
+
+  // The podcast: namespace is declared ONLY when one of its tags is emitted.
+  // An unused namespace declaration on every fork's feed is noise a validator
+  // is entitled to complain about.
+  const nsTags = podcastNamespaceTags(p);
+  const nsAttr = nsTags.length ? ` xmlns:podcast="${PODCAST_NS}"` : '';
+
+  const channelLines = [
+    `    <title>${escapeHtml(title)}</title>`,
+    `    <link>${origin}/listen</link>`,
+    `    <description>${escapeHtml(description)}</description>`,
+    `    <language>${escapeHtml(p.language)}</language>`,
+    `    <generator>${escapeHtml(generatorName())}</generator>`,
+    lastBuild ? `    <lastBuildDate>${lastBuild}</lastBuildDate>` : '',
+    p.copyright ? `    <copyright>${escapeHtml(p.copyright)}</copyright>` : '',
+    `    <atom:link href="${origin}/podcast.xml" rel="self" type="application/rss+xml"/>`,
+    `    <itunes:author>${escapeHtml(siteConfig.name)}</itunes:author>`,
+    `    <itunes:summary>${escapeHtml(description)}</itunes:summary>`,
+    `    <itunes:type>${escapeHtml(p.type)}</itunes:type>`,
+    `    <itunes:explicit>${explicit}</itunes:explicit>`,
+    categoryTag(p),
+    ownerTag(p),
+    artworkUrl ? `    <itunes:image href="${escapeHtml(artworkUrl)}"/>` : '',
+    ...nsTags,
+  ].filter(Boolean).join('\n');
+
   const xml = `<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom"${nsAttr}>
   <channel>
-    <title>${escapeHtml(title)}</title>
-    <link>${origin}/listen</link>
-    <description>${escapeHtml(description)}</description>
-    <language>en</language>
-    <atom:link href="${origin}/podcast.xml" rel="self" type="application/rss+xml"/>
-    <itunes:author>${escapeHtml(siteConfig.name)}</itunes:author>
-    <itunes:summary>${escapeHtml(description)}</itunes:summary>
-    <itunes:explicit>false</itunes:explicit>${artworkUrl ? `
-    <itunes:image href="${escapeHtml(artworkUrl)}"/>` : ''}
-${items}
+${[channelLines, items].filter(Boolean).join('\n')}
   </channel>
 </rss>`;
 
@@ -431,8 +584,8 @@ ${items}
 export function _featuredRawFrames(arr, limit = 4) {
   const entries = Array.isArray(arr) ? arr : [];
   const numbered = [...entries].sort((a, b) => {
-    const d = localDay(a.captured_at || a.published_at)
-      .localeCompare(localDay(b.captured_at || b.published_at));
+    const d = localDay(a.captured_at || a.published_at, siteConfig.timezone)
+      .localeCompare(localDay(b.captured_at || b.published_at, siteConfig.timezone));
     return d !== 0 ? d : (a.filename || '').localeCompare(b.filename || '');
   });
   const numById = new Map();
@@ -449,6 +602,12 @@ export function _featuredRawFrames(arr, limit = 4) {
       focus: e.focus || '',
       cardFocus: e.cardFocus || '',
       captured_at: e.captured_at || e.published_at || '',
+      // The homepage card descriptor, so a featured frame's chosen layout
+      // survives the trip the way its crop already does. Conditional, so a frame
+      // that never chose one adds nothing to the payload — and mirrored exactly
+      // by _stagedFeaturedRaw() in js/console/cards.js, which the parity test in
+      // tests/cards-view.test.js runs against this function on one fixture.
+      ...(e.card ? { card: e.card } : {}),
     }));
 }
 
@@ -458,12 +617,29 @@ export function _featuredRawFrames(arr, limit = 4) {
 // to render one strip thumbnail + frame/day counts. This returns a ~120-byte
 // precomputed summary instead (plus any featured RAW frames for the homepage —
 // see _featuredRawFrames). buffer.json is read through the edge cache
-// (loadDataJson), so the heavy parse happens at most once per cache TTL.
+// (loadDataJson), whose key is scoped by the deploy, so a publish is reflected
+// here as soon as its build lands.
+//
+// SIXTY seconds, not 300. This header is the OTHER staleness layer, and it is
+// the one that outlives a deploy in the author's own browser: the edge fix
+// above makes the origin answer correctly the moment a build lands, but a
+// `max-age=300` response already sitting in a tab keeps the old answer
+// regardless. That is why the 2026-08-23 report only reproduced in normal
+// windows — a fresh private window has nothing cached, so it was reading past
+// this layer to the stale edge behind it. Fixing one without the other would
+// have left the author waiting while a stranger saw the change immediately.
+//
+// stale-while-revalidate keeps the cost honest: a repeat visitor still renders
+// instantly from cache while the refresh happens behind them, so origin hits
+// are bounded by revalidation rather than hard misses — the same trade
+// `_headers` already makes for /data/*.json. Staleness caps at 60s.
+const BUFFER_SUMMARY_CACHE = 'public, max-age=60, stale-while-revalidate=300';
+
 export async function handleBufferSummary(request, env) {
   const url = new URL(request.url);
   const empty = (extra = {}) =>
     new Response(JSON.stringify({ frames: 0, ...extra }), {
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300', ...CORS_HEADERS },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': BUFFER_SUMMARY_CACHE, ...CORS_HEADERS },
     });
   try {
     const data = await loadDataJson(url.origin, env, 'data/buffer.json');
@@ -473,8 +649,8 @@ export async function handleBufferSummary(request, env) {
     // Newest by captured_at — unshift() order can't be trusted when backlogged
     // photos with old EXIF dates are uploaded later (mirrors the client logic).
     const latest = arr.reduce((a, b) => ((a.captured_at || '') > (b.captured_at || '') ? a : b));
-    const days = new Set(arr.map((b) => localDay(b.captured_at || b.published_at))).size;
-    const lastDate = localDay(latest.captured_at || latest.published_at).slice(5).replace('-', '.');
+    const days = new Set(arr.map((b) => localDay(b.captured_at || b.published_at, siteConfig.timezone))).size;
+    const lastDate = localDay(latest.captured_at || latest.published_at, siteConfig.timezone).slice(5).replace('-', '.');
 
     return new Response(JSON.stringify({
       frames: arr.length,
@@ -483,7 +659,7 @@ export async function handleBufferSummary(request, env) {
       latest: { filename: latest.filename, focus: latest.focus || '' },
       featured: _featuredRawFrames(arr),
     }), {
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300', ...CORS_HEADERS },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': BUFFER_SUMMARY_CACHE, ...CORS_HEADERS },
     });
   } catch (err) {
     console.error('[buffer-summary]', err.message);

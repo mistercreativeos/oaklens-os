@@ -25,6 +25,1940 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-10-07, later (two false alarms in the health check, and a frame's size)
+
+**Nothing to do.** Two things made `scripts/doctor.sh` report a problem on a
+healthy site, and one tile on the console was the wrong size:
+
+- Once your site had published field notes of its own, `npm test` (which the
+  doctor runs) failed three tests that were checking the original site's
+  posts and photo counts, not yours. They now skip in a fork, the same way the
+  other original-site checks already did, and a new test
+  (`tests/instance-content-guard.test.js`) keeps it that way. The check that
+  every one of your posts renders cleanly still runs.
+- In a git worktree (where AI helpers like Claude Code often work), the doctor
+  said "This folder isn't a git project", and `setup.sh` skipped saving your
+  settings, because there `.git` is a file rather than a folder. Both now
+  recognise it.
+- On the console's front page, a frame with no picture (or one whose picture
+  would not load) was drawn as a small tile beside the full-size ones. It is
+  now the same size. `css/field-console.css`.
+
+## 2026-10-07 (Field Console 1.0)
+
+**Nothing to do.** The console is stamped **v1.0.0**: the first official
+version, shipping with this week's launch. Its window is now named once, by
+its app manifest ("Field Console"; "Console" on a home screen), and the tab
+title is that name alone, with no wordmark and no version in the title bar.
+The version lives in `<meta name="console-version">` and Settings → Build
+reads it there. The Publish header lost its early-build lines. If you had the
+console installed as an app, the next open picks up the new name.
+`dev/field-console.html`, `dev/manifest.webmanifest`, `src/edge/chrome.js`
+(a `plain` title mode), `js/console/chrome.js`.
+
+## 2026-10-07 (help marks the controls themselves)
+
+**Nothing to do.** Pressing `?` in the Field Console now lights the controls
+you can ask about in place, instead of drawing frames and rods over them. It
+scrolls at full speed on a phone (the old overlay halved the frame rate while
+open), and picking a control still opens the same card. `js/console/help.js`,
+`css/field-console.css`.
+
+## 2026-10-07 (every key in the console is the same key; the modals are rounder glass)
+
+**Nothing to do.** The Field Console's controls that still wore the old
+chrome (filter pills, the Pulse lanes, segments, chips, a modal's close cap,
+the bench's filters) now wear the one floating-key recipe the top row and the
+main buttons already had. Modals and sheets are rounder, with a lit rim and
+their toolbars on the glass. The asset library builds its thumbnail grid a
+page at a time, so opening it on a large library no longer drops a frame.
+`css/field-console.css`, `js/console/asset-library.js`, the service worker's
+cache name.
+
+; the console's groundwork for quick drafts)
+
+**Recommended, not required: run your database migrations.** A new one,
+`migrations/0003_draft_kind.sql`, adds a `kind` column to your cloud drafts
+(`note` or `spark`, the coming quick draft on the console's front page). If
+your repo is connected to Cloudflare, `npm run deploy` runs it. If you deploy
+by hand with `npx wrangler deploy`, run `npm run db:migrate` once. Skipping it
+breaks nothing: drafts keep working on the old columns, and a quick draft
+syncs as an ordinary draft until you migrate.
+
+Also in this merge, nothing to do: the console's views can hand each other
+state on arrival (a promoted Buffer frame fills the Archive's form without
+guessing at timing), one clipboard helper, one frame numbering checked
+against the live site's, and a dependency-free QR encoder (`js/qr.js`).
+
+---
+
+## 2026-10-06 (the console's front page: text that knows whether it glows)
+
+**Nothing to do on merge.**
+
+- **On the console's front page, every piece of text now has a kind, and the
+  kind decides whether it glows.** A number the site measured glows brightest.
+  Anything you can tap glows softly and brightens under your finger or
+  pointer. A line reporting what your site is doing right now glows faintly.
+  Labels and explanations stay flat. In the light theme nothing glows.
+- **When you send a pulse,** or a publish from this device goes live, a pulse
+  of light runs through the top of the page, word by word.
+- **Smaller changes:** the two green status dots are now the same small
+  square light as the one in the top bar. The count beside "Waiting on you"
+  is gone, because the list is right under it. On a touch screen, the "room
+  for about … photos" sentence under storage is hidden, and screen readers
+  still hear it.
+- **The front page loads at once.** It used to fill in over 10 seconds to
+  more than a minute after you opened it or signed in. Now it shows what it
+  last knew straight away and updates each part the moment the answer
+  arrives.
+- **On a computer or a tablet the front page no longer scrolls.** It fits the
+  screen. A list too long for the space shows what fits and says how many
+  more. Phones still scroll.
+- **If you changed the console's styles:** the old `--br-glow` setting and
+  `.br-glow` class are gone. To make your own text on that page glow, give it
+  `data-text="stat"`, `"act"`, `"live"` or `"info"`, and the console's own
+  rules light it.
+
+## 2026-10-05, later still (scrolling the Buffer)
+
+**Nothing to do on merge.**
+
+- **Scrolling a long list costs the light less.** When a part of the page
+  the browser had been skipping (the Buffer's days) scrolls into range, the
+  console now draws only that part's light instead of redrawing all of it.
+  The light looks exactly the same.
+
+## 2026-10-05, later (Archive and Wall arrive lighter)
+
+**Nothing to do on merge.**
+
+- **Archive and Wall no longer rebuild themselves every time you open
+  them.** The console used to throw away and redraw every card each visit,
+  even when nothing had changed. It now redraws only when something you'd see
+  is different (an edit, a new frame, an upload finishing, a share image
+  landing). Opening Wall takes about a third less work on a phone; Archive a
+  little less. Nothing looks different.
+
+## 2026-10-05, after midnight (the light engine, lighter)
+
+**Nothing to do on merge.**
+
+- **The console's light costs less to run.** While a light is moving (a
+  surface arriving, a drop zone waking, a commit in flight), the engine used
+  to re-read every light's colour, shape and position settings on every
+  frame. It now reads them once and re-reads only what is actually moving.
+  At phone speed that is about 65–70% fewer style reads on an arrival, and
+  scrolling the Archive costs the light about a quarter less. Nothing looks
+  different.
+- **Publish's ignition fades again.** While a commit is in flight, the
+  Publish button and the top-row keys warm up over a second and a half and
+  cool down over two and a half seconds, as designed. Since the floating-key
+  update on 2026-10-04 they had been snapping on and off. With reduced motion on, they still
+  switch at once.
+
+## 2026-10-05, late night (windows, drop zones, focal point)
+
+**Nothing to do on merge.**
+
+- **Every pop-up window looks the same:** frosted glass with a soft glow
+  rising from its bottom edge, like the Field Notes insert drawer and the
+  More menu. Settings, the libraries, login and the focal point window used
+  to be flat and dark.
+- **Drop zones glow softly at rest** instead of reading as black holes, at
+  the same low level as the panels around them, and they still light up
+  when you arrive or drag a file over them.
+- **The focal point window's buttons are laid out cleanly:** the sharing
+  buttons in one even row, then Center and Set Focal Point, all the same
+  height, on phone, tablet and desktop.
+
+---
+
+## 2026-10-05, night (the top row glows with the room)
+
+**Nothing to do on merge.**
+
+- **A screen's glow no longer dims and recovers around its own ignition.**
+  When a drop zone or a row of cards lit up on arrival, the console's
+  brightness adjustment reacted to it and slowly dimmed, then brightened,
+  the whole screen. It now holds still until the ignition is over.
+- **Lighting stays fast after many screen switches.** The console measured
+  its own light in a way that made Chrome move the light off the graphics
+  chip, which could make animations sluggish after a few taps. It now
+  measures a small copy instead.
+
+- **On phones and tablets, the top row no longer ends in a hard line.**
+  The glow of the content beneath it rises softly into the top row and
+  fades to black at the top of the screen. It follows what is under it,
+  so it is brighter over lit panels, and it costs effectively nothing.
+  Desktop and the light theme are unchanged.
+
+---
+
+## 2026-10-05, evening (iPad header, smoother arrivals)
+
+**Nothing to do on merge.**
+
+- **The iPad shows no surface header.** The big title band at the top of
+  each screen is gone on tablets; the bottom bar already says where you
+  are. Phones keep their one-line stats, and desktops keep the header.
+  Bench keeps its refresh and Clear Done buttons in a slim row.
+- **Bright screens no longer sag after you arrive.** Switching to a screen
+  like the Archive used to light it up fully and then dim it over a couple
+  of seconds. It now arrives at its settled brightness in one movement.
+
+---
+
+## 2026-10-05, later (screen transitions restored)
+
+**Nothing to do on merge.**
+
+- **Screen transitions are back to the smooth dissolve.** This morning's
+  change made the old screen linger over the new one, and delayed the drop
+  zone's glow. Both are fixed.
+- **The tap pulse still never stutters.** The button lights the moment you
+  touch it, and the wave starts as the new screen begins to appear, so the
+  two never fight.
+- **Archive is lighter to touch on phones.** Lighting does less layout work
+  per tap than before today's changes.
+
+---
+
+## 2026-10-05 (the bottom bar, smoother)
+
+**Nothing to do on merge.**
+
+- **The tap pulse no longer stutters on slower phones.** Switching screens
+  used to freeze the page for a moment, and the pulse froze with it. The
+  old screen now fades out over the new one, and nothing ever stops
+  drawing.
+- **No dark lines when you press a bottom-bar button.** The button's own
+  light and the pulse are the feedback now.
+- **Fixed: switching from far down a long screen to a short one** could
+  leave you scrolled past the end of the new screen, looking at empty
+  space. You now land at the end of its content.
+
+---
+
+## 2026-10-04, late (the console's bottom bar)
+
+**Nothing to do on merge.**
+
+- **The bottom bar on phones and tablets holds still when you switch
+  screens.** It used to dim and come back during the crossfade. It is now a
+  solid, softly lit bar instead of see-through glass, and it stays exactly
+  as it is while the screen above it changes.
+- **Quieter at rest, with no line along the top.** The content above fades
+  into the bar, and each button has its own soft light that sits a little
+  brighter than the bar around it.
+- **A tap sends a small pulse of light** from the button out to both ends
+  of the bar. It is off in the light theme and if your device asks for
+  reduced motion.
+- **You can tap a second button while the screen is still changing.**
+  Taps during the crossfade used to be ignored.
+
+---
+
+## 2026-10-04, night (Publish comes first)
+
+**Nothing to do on merge.**
+
+- **The Publish page leads with the Publish button.** It sits right under
+  the counts, above Remote Sync, and on a wide screen it is one bar across
+  the page.
+- **The button just says Publish**, and the "Publish to GitHub" heading over
+  it is gone. One short line says what happens: saved to GitHub, live in
+  about a minute. If your repo isn't connected to Cloudflare yet, the line
+  says you still need to deploy and points at setup.md.
+- **Clear Staged is still there**, as a smaller button at the end of the bar,
+  so it no longer competes with Publish.
+- **The confirm box says "Publish these changes?"** instead of promising
+  "live in ~30s".
+
+## 2026-10-05, evening (RAW Lens, and the Publish rail wakes)
+
+**Nothing to do on merge.**
+
+- **RAW Lens has the console's look**: no grey bars or outlines, the same
+  buttons as everywhere else, the selected options lit, and the room lit
+  softly from below.
+- **The Publish page's stat cards light up in a wave when you arrive**, each
+  one playing its own hover for a moment, left to right, then settling. It
+  runs once per visit and is off if your device asks for reduced motion.
+- **A button's lower edge now brightens under your finger or pointer**, as
+  it was meant to.
+
+## 2026-10-05, later (the pickers open again)
+
+**Nothing to do on merge** — but if you merged the 2026-10-04 "late night"
+entry, merge this one: it fixes a mistake in it.
+
+- **The picture, video and audio pickers open again**, along with Focal
+  Point and Card Crop. A missing closing tag in the Settings window had
+  swallowed them, so they opened invisibly.
+
+## 2026-10-05 (the drop-zone outline, for real)
+
+**Nothing to do on merge.**
+
+- **The red outline around a glowing drop zone is gone.** Last night's fix
+  was written but lost out to a more general rule further down the
+  stylesheet; that rule now leaves drop zones alone. The faint glow that
+  breathes inside a drop zone on first load also no longer ends in a hard
+  edge.
+
+## 2026-10-04, late night (the phone, second look)
+
+**Nothing to do on merge.**
+
+- **The page no longer shifts after a drop zone's glow fades.** A rule
+  written for the glow was also overriding the drop zone's size while it
+  was lit, so every page grew by a few dozen pixels at the glow and shrank
+  back after it. Fixed; the glow rule now touches only its timing.
+- **The first-load light sequence no longer freezes** while the buffer
+  builds. The buffer now builds only what is near the screen and adds the
+  rest as you scroll toward it (instead of all 700-odd frames in the
+  background on arrival), and the light redraws the page's layer every
+  third frame of the sequence instead of every frame.
+- **No red outline flashes around a drop zone** while it glows.
+- **The Pulse button at the top lights up while the Pulse page is open**,
+  like the `?` button does for help.
+- **Settings is quieter.** The Display section is gone; the Build section
+  shows just "console v…" and opens on a tap to show the rest.
+- **The bottom bar's light is turned down a touch.**
+
+## 2026-10-04, night (the phone, seen live)
+
+**Nothing to do on merge.**
+
+- **On a phone, a page has no big title and no glass bar pinned over it.**
+  The buttons along the bottom say where you are; the page's stats sit as
+  one quiet line under the top row. (An iPad keeps the large title.)
+- **Switching pages is a crossfade, not a cut.** One page dissolves into the
+  next; nothing goes black in between. (Browsers without the feature get the
+  plain switch.)
+- **The bottom bar is tinted glass with light behind it**, lit from below
+  like the rest of the room, so it reads as part of the interface rather
+  than a strip floating over it.
+- **The field-notes icon is a drawn glyph** that takes the accent colour,
+  not an emoji.
+- **The settings light is dimmer.**
+- **Pills and chips have no outline.**
+- **A drop zone's glow no longer stutters** at the start of its cool-down.
+
+## 2026-10-04, later still (glass, with no strokes)
+
+**Nothing to do on merge.**
+
+- **The outlines are gone.** Panels, cards, the drop zones, the sidebar and
+  the pop-ups no longer have a line drawn around them, and the thin lines
+  under each page's title and between the sidebar's sections are gone too.
+  What says "glass" now is the edge of the glass itself: a little light
+  caught along the bottom of every panel and a faint highlight along the top,
+  like a screen protector seen from the side. Buttons are the same: a dark
+  key set into the glass with a lit lower edge, no stroke.
+- **Light fades up and down more gently.** The drop zones used to jump a
+  little when you pointed at them and then fade, and the glow switched off
+  abruptly when you left (a bug). Both are smooth now, and the same two
+  curves are used everywhere light moves slowly.
+- **Switching between pages no longer makes your eyes adjust.** The console
+  measures how bright each page's light is and brings the bright ones down
+  toward the quiet ones; a darker page fades up gently after a bright one.
+  One setting controls it (`--light-adapt` in the stylesheet; 0 turns it
+  off).
+- **The texture in the background is finer** and no longer sits under the
+  words on buttons, so text is easier to read on a sharp screen.
+
+## 2026-10-04, late (fast on a phone)
+
+**Nothing to do on merge.**
+
+- **The console is much faster on phones.** The buffer loads small images
+  only as you scroll to them, instead of every full-size frame at once, and it
+  appears straight away even with hundreds of frames.
+- **Notifications no longer slow things down**, and pointing at or tapping a
+  card only redraws the light around that card.
+- **Light stays on the things that make it.** It no longer shows up before a
+  page has appeared, sits a few pixels off, or scrolls away from a header.
+- **On a phone, the light behind the content is softer**, about half what it
+  is on a computer. It is set in one place in the stylesheet ("THE PHONE'S
+  LIGHT") if you want it brighter or dimmer.
+- **The field notes bar matches the rest of the console's buttons.**
+
+## 2026-10-04, night (real light behind every button)
+
+**Nothing to do on merge.**
+
+- **Every button now has the same light behind it as the buttons along the
+  top**, glowing through the background's texture and spilling a little
+  underneath, so they look set into the glass rather than drawn on. The light
+  rises when you point at a button.
+
+## 2026-10-04, evening (keys set into the glass)
+
+**Nothing to do on merge.**
+
+- **Buttons sit into the surface** instead of bulging out of it, like the
+  buttons along the top.
+- **The Publish button at the top and the floating Link button in the
+  buffer** now match every other button.
+- **The counts beside each surface in the sidebar glow** instead of sitting
+  in a dark box.
+- **The settings light** in the top bar and the sidebar is now the same small
+  square LED as the system light.
+
+## 2026-10-04, later (one light per panel, floating buttons)
+
+**Nothing to do on merge.**
+
+- **A form is one lit panel now.** Its fields are dark wells inside it
+  instead of each glowing on its own, and clicking into a field brightens the
+  whole panel. The archive's photo details got a panel of their own.
+- **Every button looks like the ones along the top**: a crisp lit edge, a
+  bright label and a soft light behind it that rises when you point at it.
+  The main action on a screen (Stage to Archive, Publish to GitHub) glows
+  brighter than the rest.
+- **Pointing at a sidebar item lights it softly and immediately**, without a
+  hard-edged block or a delay.
+- **The collapse button at the top left matches the buttons beside it.**
+
+## 2026-10-04 (smooth scrolling, sharper controls)
+
+**Nothing to do on merge.**
+
+- **The archive scrolls smoothly again**, on computers, tablets and phones.
+  Its thumbnails load a smaller image that is still sharp at their size, and
+  only as they scroll into view.
+- **The console's light now moves with the page** instead of catching up
+  behind it, and scrolling no longer has to redraw it.
+- **Pointing at a button, a tab or a list row lights it warmly** instead of
+  turning it grey.
+- **The buttons along the top are crisper.**
+
+## 2026-10-03 (light behind the glass)
+
+**Nothing to do on merge.**
+
+- **Panels, cards and form fields now have a soft light behind them**, coming
+  up through their glass from below, so the console reads as lit from within
+  rather than outlined.
+- **Edges are brightest along the bottom**, where the light comes from.
+- **The selected tab in a row of tabs lights up** as a small lit key.
+- **Corners are slightly rounded** on panels and cards, and a little on
+  buttons and fields.
+- **No more bar across the top.** The status, the lamp and the buttons float
+  on their own, and the navigation on the left is a rounded panel of its own
+  instead of a column divided off by a line.
+
+## 2026-10-02, later (every outline in the console gives off light)
+
+**Nothing to do on merge.**
+
+- **The grey outlines are gone.** Panels, cards, form fields, buttons and the
+  lines inside lists now glow faintly in your accent colour, each at its own
+  level: the big workspaces a little, thumbnails and track cards less,
+  form fields least.
+- **Thumbnails and cards light up when you point at them**, and form fields
+  brighten when you click into them, then settle back slowly.
+- Colours that mean something (selected, live, an error, a pending change)
+  are unchanged.
+
+## 2026-10-02 (the console's light reaches the drop zones and the pop-ups)
+
+**Nothing to do on merge.**
+
+- **The drop zones light up when you point at them**, the same glow you used to
+  see only while dragging a file over. On a phone or tablet, where there is no
+  pointer, they light up gently each time you switch to a page that has one.
+- **The empty cover slot in the writing view is a drop zone like the others**,
+  instead of a grey dashed box.
+- **The small buttons on a buffer photo glow from inside** when you point at
+  them, rather than filling solid red.
+- **Pop-ups and sheets give off light**: their edges glow, brightest along the
+  top, and a soft light falls on the textured background around them.
+
+## 2026-10-01 (steady lines while you scroll)
+
+**Nothing to do on merge.**
+
+- **Fixed: the console's red lines no longer flicker when you scroll on a phone
+  or tablet.** The soft light under each horizontal line was drawn at a quarter
+  of the screen's sharpness, so it pulsed brighter and dimmer as the line
+  moved. Now that layer draws only the soft glow, and the line stays as crisp
+  and steady as it looks when the page is still.
+
+## 2026-09-29 (the one-click install, tested end to end)
+
+**Nothing to do on merge.**
+
+- **The Deploy to Cloudflare button now asks for your console password.** On a
+  real run the button installed everything cleanly but never asked for a
+  password, so the console turned every login away without saying why. A new
+  file, `.dev.vars.example`, lists `AUTH_PASSWORD` with the value left empty,
+  and that's what the button reads to know what to ask. **Already installed
+  with the button and can't log in?** Your site is fine; it just has no
+  password yet. Set one under **Settings → Runtime variables and secrets**
+  ([setup.md](setup.md#right-after-set-your-password-if-you-werent-asked)).
+
+- **The README leads with the button**, and setup.md's one-click section now
+  starts with **Before you click**: the three things to have ready, R2 first,
+  because the button can't switch it on for you. It then goes through the setup
+  screen field by field and lists what's left after the first deploy.
+
+- **New: [CUSTOMIZE.md](CUSTOMIZE.md), for changing your site yourself or with
+  an AI.** It names the file for each common change (tagline, menu, theme,
+  About text and so on) and sorts changes into three kinds: **Safe** (carries
+  through updates), **Watch** (may need redoing after an update) and **Yours
+  to maintain** (not promised to survive the next version). AI helpers are
+  told to say which kind a change is and ask before anything that isn't Safe,
+  and to note those changes in a `MY-CHANGES.md` of your own, so update day
+  is a checklist. `AGENTS.md` and `CLAUDE.md` now point there first.
+
+## 2026-09-25 (the console's light behaves like light)
+
+**Nothing to do on merge.**
+
+- **Fixed: ↓ Sync from GitHub now always pulls everything.** If the console
+  had already synced when it opened, pressing the button found nothing new on
+  GitHub, skipped the pull, and listed only your drafts, so it looked like it
+  synced one category. A press now re-pulls every category, and the readout
+  lists all of them either way. It also means **Clear Imported** followed by
+  **Sync from GitHub** brings everything back, which it quietly didn't before.
+  Anything you have changed but not yet published is kept, as always.
+
+- **Later the same day: the light moved under the glass.** The soft pools of
+  light now sit *beneath* the console rather than on top of it, and the top
+  bar, sidebar, drop zones, publish panel and toasts became slightly frosted
+  glass that lets it through. Nothing changes when nothing is lit. When
+  something is, it glows from inside the surface instead of being painted
+  over it. The drop zones lost the light bar and became the event themselves:
+  drag files over one and the whole bay glows softly under its glass with a
+  lit rim. Where you are (the current view, tab or filter) carries a low,
+  steady light on its label, and a success or error toast lights its corner.
+- **Later still: the long rules are seams of light.** The lines that divide
+  a screen are now lit from the left edge and fade as they cross, with a
+  faint glow, the way an edge-lit panel does; button outlines stay quiet with
+  only a whisper of your accent. The current screen's row in the sidebar
+  rests in a soft pool of light. And a toast's light now leaves with the
+  toast instead of lingering behind it.
+
+- **New: the glow around a lit control now warms up and cools down instead of
+  switching on.** The soft pool of light the Publish button throws onto the
+  bar while work is waiting used to appear in one frame while the button itself
+  faded up over a second and a half. Both now heat on the same curve, and when
+  the work is published the pool lingers a moment and cools rather than
+  vanishing. It costs frames only while something is changing; a still console
+  costs none.
+- **New: the drop zones are recessed bays with a light along the top edge.**
+  Cold at rest, it warms under the pointer and ignites while you are dragging
+  files over it — the console telling you it has seen them — and the light
+  falls into the bay. The dashed outline is gone.
+- **New: every button acknowledges the release.** Press one and its label
+  flashes with the console's light and settles as you let go. No animation
+  library, no JavaScript — two lines of CSS timing. Off in Daylight, where a
+  glow behind text would look like a print smudge.
+- **Fixed on the way:** the soft pool no longer bands on OLED screens (a fine
+  dither is baked in), and it is a little cooler and greyer at its far edge
+  than at the rim, which is what light on a dark panel actually does and what
+  makes the lit thing read as sitting in front of it.
+- If you have customised the console's CSS: the attribute for "a commit is in
+  flight" was renamed from `data-armed` to `data-heat` (`"hot"` while in
+  flight, `""` while cooling). Nothing in the engine writes the old name.
+
+## 2026-09-24 (the console stops redrawing itself while work is waiting)
+
+**Nothing to do on merge.**
+
+- **Fixed: the glow around the Publish button was repainting sixty times a
+  second the whole time anything was waiting to publish.** It was meant to
+  redraw only when something moved, and it looked that way, but a browser
+  quirk kept re-triggering it. On a phone or tablet that is battery and warmth
+  spent on nothing. It now redraws only when something actually changes.
+- **Fixed: with `?` on, the marks now keep up with a screen that finishes
+  drawing after you press it.** The Bench, Publish and Cards screens fill in a
+  moment after they open, and a sync can redraw the Publish tiles; the marks
+  used to stay where things *were*, and the count in the corner said one thing
+  while the screen showed another.
+- **Fixed: nothing real can happen under the dim.** Dropping a file on the
+  console while `?` was on still added it (and a drop the console refused could
+  open the file in the tab instead), and holding a thumb on a frame still opened
+  its menu. Both are now inert until you turn help off.
+- **Fixed: on a phone, Publish now has an explanation.** The `?` only knew the
+  desktop button, which a phone never shows.
+- **Fixed: asking about a control half-hidden under the top bar now scrolls it
+  clear first** instead of explaining a sliver.
+- Two sentences of help copy reworded; the help card now announces its title
+  to a screen reader.
+
+  If your console is installed as an app, it picks this up on its next reload.
+
+## 2026-09-22 (help's light behaves like light)
+
+**Nothing to do on merge.**
+
+- **Changed: with `?` on, the light under each marked control and around the
+  `?` itself is redrawn to behave like real light.** The line under each
+  button used to sit in a black groove wider than the button, which bit into
+  its outline and looked unfinished. It's now a line of light tucked under the
+  button, the button's own width, dissolving at both ends, with a faint glow
+  around it. That glow gets brighter when you point at the control and
+  ignites fully when you pick it. The `?` used to wear an oval of red haze
+  that a window edge could cut off. Now light comes off its outline in soft
+  layers, with a faint pool on the panel beneath it. DAYLIGHT keeps its flat,
+  unlit look.
+
+  If your console is installed as an app, it picks this up on its next reload.
+
+## 2026-09-22 (the console stops moving your scroll)
+
+**Nothing to do on merge.**
+
+- **Fixed: scrolling in the console no longer pulls you somewhere you didn't
+  stop.** The Buffer and Archive snapped to the nearest row of thumbnails when
+  you stopped scrolling. On a big screen "nearest" reached a long way, so
+  scrolling up to the drop zone paused for a second or two and then yanked
+  you back down to the photos. On a phone it made flicks feel sticky. The
+  snapping is gone, and the page stays exactly where you leave it.
+- **Fixed: on phones and tablets, the view title no longer makes the page
+  stutter near the top.** The title shrinks when you scroll, and it used to
+  shrink by changing its own size. That pushed the page around under your
+  finger and, in some browsers, set off a back-and-forth loop. It now shrinks
+  without moving anything below it.
+
+  If your console is installed as an app, it picks this up on its next reload.
+
+## 2026-09-22 (help marks hold still on a phone)
+
+**Nothing to do on merge.**
+
+- **Fixed: with `?` on, scrolling on a phone or tablet no longer drags the help
+  marks behind their buttons.** A finger scrolls the page faster than the marks
+  could follow, so they trailed their controls and caught up in jumps. Now,
+  while a finger is scrolling, the marks step aside and the screen stays evenly
+  dimmed; the moment the page comes to rest they fade back in, exactly on their
+  controls. They vanish at once rather than fading out, so even a hard flick
+  leaves nothing behind, and the top bar's marks stay lit throughout because
+  the top bar never moves. On a computer nothing changes — the marks follow the
+  page as they always did.
+
+  If your console is installed as an app, it picks this up on its next reload.
+
+## 2026-09-21 (the help marks are filaments now)
+
+**Nothing to do on merge.**
+
+- **Changed: press `?` in the console and the marks on the controls you can ask
+  about are now thin glass rods along each control's edge, instead of corner
+  brackets.** Rest a pointer on one and it warms; pick one and it lights up over
+  a second and a half while the explanation unfolds out of it; go back and it
+  cools. On a phone the explanation still rises as a sheet. Nothing about what
+  the help says has changed, and nothing lights up until you pick something.
+
+  **Why.** Brackets are a drawing; a rod in a groove is a thing to press, which
+  matters most on a tablet, where this help exists. The rod is built from the
+  console's own light rules — the same warm-up and cool-down the publish button
+  uses, the same shadow ladder, no extra colours — so it follows your preset and
+  both themes.
+
+  Reduced-motion settings keep every state and skip the ramps. If your console
+  is installed as an app, it picks the new stylesheet up on its next reload.
+
+- **Fixed: there is now only one login screen.** The console used to have two —
+  the real login page, and a small password box it drew over itself after you
+  logged out or opened it in a new tab. Now every one of those takes you to the
+  same login page. This is deliberate: you should never get used to typing your
+  password into whatever box happens to appear. Anything you had staged but not
+  published is still there when you sign back in.
+
+- **Changed: the login page matches the console.** The console's password
+  screen used to be a flat red line over a flat red button. It is now the same
+  panel the console is: a thin light rail across the top that stays dark until
+  you start typing and lights while it is checking your password, with the
+  light spilling down the panel beneath it, and a proper backlit ENTER key that
+  travels when you press it. It follows your site's colours — a blue site gets
+  a blue rail — and in light mode it is ink on paper instead. Nothing about
+  logging in changed.
+
+- **Changed: the sidebar shows where you are with a small lit bead.** Each view
+  in the left panel sits on a recessed track with a dark bead; the view you are
+  on has a lit one. Nothing else in the sidebar lights, and nothing moves on
+  its own.
+
+## 2026-09-20 (the card fits on a phone again)
+
+**Nothing to do on merge.**
+
+- **Fixed: on a phone, the card in the Cards view sat on top of the page around
+  it.** Looking at one homepage card in the console on a narrow screen, the card
+  spilled out of its well and overlapped the row of slot buttons above it and
+  the SLOT DETAILS panel below. Every kind of card did it; the plain-coloured
+  ones (a Pulse tile) made it obvious, where a photograph still looked roughly
+  like part of the page.
+
+  **Why.** On a phone the card's well is allowed to grow to whatever the card
+  needs — but the browser was also being told to measure that well *without
+  looking at what is inside it*, which is correct on a desktop, where the well
+  has a fixed size. The two instructions together left the well with no height
+  at all, so the card was drawn outside it. The console now drops the second
+  instruction at the width where the first one stops being true.
+
+---
+
+## 2026-09-20 (the Barrel is gone from the console)
+
+**Nothing to do on merge.** One optional bit of tidying, below.
+
+- **Removed: the Barrel.** The console had a surface called Barrel — a
+  changelog timeline you could add dated entries to, and which also filled
+  itself in whenever you published a field note or archived a frame. It has
+  been removed: the sidebar item, the view, and the `data/barrel.json` file it
+  wrote to.
+
+  **Why.** The homepage stopped showing it a while ago — the recent-work grid
+  replaced it — and nothing else ever picked it up. So every note you published
+  wrote a row into a file that no page read. It was the only room in the
+  console that did nothing, and on a fresh install it was the first thing a new
+  owner found that led nowhere.
+
+  **What you lose.** Nothing anyone could see. If you never used the Barrel,
+  you will not notice. If you did, its entries were not on your site either —
+  they are still in your git history, and `git log` will hand them back.
+
+  **Optional tidying.** If you have a `data/barrel.json` in your repo, nothing
+  writes to it or reads it any more. You can delete it, or leave it; either is
+  fine and neither affects your site.
+
+  Publishing, syncing and the Site-in-a-ZIP export all stop carrying that file.
+  Everything else about them is unchanged.
+
+---
+
+## 2026-09-20 (a tighter policy on `/dev`, and a commit feed you can switch on)
+
+**Nothing to do on merge**, unless you have put your own page at `/dev` — see
+the second item.
+
+- **New: a commit feed at `/api/devfeed`, off unless you ask for it.** If you
+  want a page of your own that shows what you have been building, this gives
+  you the data: a 52-week activity grid and a short list of recent commit
+  subjects, drawn from GitHub and cached at the edge. With nothing configured
+  the endpoint answers 404 and never calls GitHub, so merging this changes
+  nothing.
+
+  To switch it on, add a `devFeed` block to `site.config.js` —
+  [`site.config.example.js`](site.config.example.js) has the shape. It takes
+  **two** lists, and the difference between them matters:
+
+  - `grid` — repos whose commit **counts** feed the squares. The response never
+    says which repos they were, so a **private** repo is safe here. Usually you
+    want the one where you actually work, or the grid shows a fraction of your
+    year.
+  - `log` — repos whose commit **messages** get quoted on the page. Those are
+    content: list only repos that are already public.
+
+  Reading a private repo needs your existing `GITHUB_TOKEN` to have access to
+  it. Public repos need no token at all.
+
+  **The feed remembers its answer between deploys.** Building it means walking
+  GitHub, which can take several seconds, so it is built at most every half
+  hour, warmed once a day by the site's existing daily job, and kept in your
+  KV namespace — the same one your subscribers live in, under a key called
+  `__devfeed`. Internal keys like that one are already filtered out of your
+  subscriber export, so it will not show up in your list. Nothing for you to
+  set up; if you never switch the feed on, nothing is ever written.
+
+  Visitors never wait for GitHub: whatever was stored last is served
+  immediately, and a new copy is fetched behind the response.
+
+- **The strict security policy now covers everything under `/dev/` except the
+  console itself.** Previously any page under `/dev/` was handed the console's
+  relaxed policy — inline scripts allowed, plus a third-party CDN
+  pre-authorised. That was fine while `/dev` *was* the console; it is a hole if
+  you put an ordinary page there. Now only `/dev/field-console`,
+  `/dev/field-console.html` and `/dev/console-gate.html` get the relaxed
+  policy, and the console is unaffected.
+
+  ⚠️ **If you have added your own page under `/dev/`, check it after merging.**
+  Any inline `<script>` block or `onclick=`/`onerror=` attribute on it will now
+  be blocked, exactly as it would be on any other page of your site. The fix is
+  the same one the rest of the site uses: move the code into a file under `js/`
+  and load it with `<script src="…">`.
+
+- **Fixed: a page title containing an HTML entity came out mangled.** A title
+  written `<title data-site-title>Tom &amp; Jerry</title>` was served as
+  `Tom &amp;amp; Jerry`, so the browser tab showed the raw entity. Titles now
+  decode before the site name is joined on. If you were working around this by
+  avoiding entities in titles, you no longer need to.
+
+---
+
+## 2026-09-19 (the footer stays put, and Publish fits on one screen)
+
+**Nothing to do on merge.** Two layout fixes, both visible the moment you load.
+
+- **Your homepage footer now stays at the bottom of the window, like it does on
+  every other page.** It used to scroll away with the rest of the page — which
+  made sense back when the homepage was one screen tall, and stopped making
+  sense when the recent-work grid was added underneath the hero. Your site's
+  one constant strip — your name, your city, the archive manifest — is on
+  screen wherever a visitor has scrolled to.
+
+- **The console's Publish screen fits in one window.** All of it — the counters,
+  Remote Sync, Publish to GitHub, Site-in-a-ZIP, the legacy export and the reset
+  — now sits side by side in two columns instead of one long scroll, on any
+  screen wide enough to hold them. And the row of counters across the top is one
+  line again: it had been laid out for seven of them and there are nine, so Cards
+  and Library were wrapping onto a second row beside a lot of empty space. It is
+  built to stay one line however many surfaces the console grows.
+
+- **The four zones under the counters now look like one thing.** Remote Sync,
+  Publish to GitHub, Site-in-a-ZIP and the reset box share a panel, a heading
+  size and a left edge, instead of two centred boxes, a dashed one and a rule.
+
+- **One button is red now, not three.** Publish to GitHub keeps the full
+  treatment because it is the one you press; Clear Staged and Export Site sit
+  quiet and light up when you point at them (or tab to them). Nothing moved and
+  nothing was removed — they just stopped competing with the main event.
+
+- **"Synced" tells you what came back in a readable shape.** It used to be one
+  long run-on line of `surface:count` pairs that wrapped wherever the panel
+  ended. It is a small aligned table now — name, dotted leader, number — so you
+  can find the one you care about without reading the whole thing.
+
+- **Help's outlines now tuck under the top bar.** With `?` on, an outline around
+  something taller than the screen used to be drawn right over the header —
+  across your site name and the buttons up there. It stops at the bar now and
+  slides under it as you scroll, the way the page itself does. Same for the
+  bottom bar on a tablet, and same for the spotlight when you pick something.
+
+---
+
+## 2026-09-19 (the console can explain itself now)
+
+**Nothing to do on merge.** A new `?` button in the console's top bar.
+
+- **Press `?` and the console tells you what everything does.** Every control on
+  the screen that has an explanation gets a dotted outline. Pick one and the rest
+  of the screen dims, that control stays lit, and a short note says what it does
+  in plain English — usually two sentences, plus a line for the thing that trips
+  people up. Pick another, or press `Esc` to leave.
+
+  It works the same with a finger as with a mouse, which is the point: the
+  console used to explain itself only through tooltips, and a tablet has nowhere
+  to hover. Forty explanations ship with it, covering the top bar and all twelve
+  screens.
+
+  While it's on, tapping a control explains it instead of pressing it — so you
+  can safely ask what **Publish** does without publishing anything, and nothing
+  under the dimmed part of the screen can be set off by a stray click. Help
+  stays open until you close it: press `?` again, press Done, or hit `Esc`.
+  Clicking the background doesn't drop you out of it.
+
+  It works with a keyboard too: Tab moves between the marked controls, Enter
+  opens one, Esc steps back.
+
+  **How it looks.** The rest of the console dims, and every control you can ask
+  about stays at full brightness with a thin frame and corner brackets around
+  it — quiet, so a screen full of them doesn't look like a screen full of
+  errors. The `?` button itself lights up in your site's colour while help is
+  on, the same way the publish button does when you have work waiting, so it's
+  obvious the mode is engaged. The one you pick is the only thing lit, with the
+  light spilling around it onto the dimmed console. In Daylight the light goes
+  and the control simply lifts off the page instead, because a glow on paper
+  looks like a smudge on the screen.
+
+- **The outlines hold still.** Picking something inside a long list used to
+  scroll the page underneath you, so coming back everything had moved. It
+  doesn't any more, and an outline now traces the edges of the control itself
+  rather than drawing a line along the edge of the window when something is too
+  tall to fit. The glow on the `?` is a real falloff now instead of a hard box.
+
+- **Your tracks explain themselves.** The audio shelf now covers what a track
+  carries and what each of the buttons beside it does — including the one people
+  ask about most, the difference between putting a track on your homepage and
+  adding it to the feed people follow. They appear with your first upload.
+
+- **A dead spot under the top bar is gone.** Your Publish button was quietly
+  about twice as tall as it looks, overhanging the bar it sits in — so a click
+  in a narrow strip just below the top-right corner of the page opened the
+  publish screen with nothing there to click. Nothing looked wrong, which is why
+  it lasted. The button is now exactly as big as it appears.
+
+---
+
+## 2026-09-18 (homepage cards: no more duplicates, and a card you're only trying out stays home)
+
+**Nothing to do on merge.** Two fixes to the homepage card studio.
+
+- **The same photograph can't appear twice on your homepage any more.** When you
+  take a card over, the card remembers *which piece of work* it came from — and
+  the homepage now uses that to keep the original from showing up again beside
+  it. It used to match on the picture's filename, which quietly failed in two
+  ordinary situations: if you swapped the card's picture (your library lists an
+  original upload right next to its own resized copy, so "the same photo" can be
+  a different file), or if you cleared the picture entirely. Either way you got
+  the same work twice.
+
+  If you swap a card's picture now, its record of where it came from follows the
+  new picture, or is dropped if the new one doesn't belong to anything.
+
+- **Pressing "Edit this card" on something you've already made a card from takes
+  you to that card**, instead of making a second one from the same work.
+
+- **⚠️ A card you've taken over but not touched is no longer published.** This is
+  the bigger one. Taking a slot over gives you a card that already has the
+  picture and the title, so it was ready to publish immediately — and because
+  publishing is all-or-nothing across your whole site, the next time you
+  published *anything*, that card went out with it. Once published, a card's
+  address is permanent, so the only way to get rid of it was to retire it: a
+  tombstone, forever.
+
+  Now it's held as a draft until you actually edit it. Your publish list shows it
+  as `(draft — edit it to publish)`, so nothing disappears quietly — it just
+  doesn't go live until you've made it yours. Edit anything about it (words,
+  crop, picture, link, layout, colour) and it publishes normally from then on.
+
+  Cards you start from scratch are unaffected — those were never the problem,
+  because an empty one doesn't render.
+
+---
+
+## 2026-09-18 (two kinds of share image, and a way to turn one off)
+
+**Nothing to do on merge.** New things in the focal-point window, for photos.
+
+- **Your share image can now be the photograph itself.** Until now a shared
+  photo always unfurled as the *card* — your picture in a tall box with its
+  title and your site name next to it. There is a second option now: **Plain**,
+  which is just the photograph, filling the whole preview, cropped to the point
+  you chose. Pick whichever suits the picture; it's per photo, so you can mix.
+
+  The choice is remembered against the image itself, so opening that photo again
+  later — on any device — shows you the one that's actually live rather than
+  guessing.
+
+- **The crop guide follows your choice.** The red rectangle on your photo shows
+  what the share image keeps, and the two styles keep different shapes — the
+  card a tall one, plain a wide one. It switches when you switch, so you're
+  always aiming at the real thing.
+
+- **You can turn a share image off.** There was no way to undo publishing one.
+  `✕ Remove` appears whenever there's one to remove, asks first, and puts the
+  link back to unfurling with the plain photograph. Publishing again puts it
+  straight back — that's the undo. Worth knowing: this happens immediately,
+  with no publish step, which is why it asks.
+
+- **Photos with a live share image are marked in your Archive.** The small `▣`
+  on the thumbnail — which the Buffer has had for a while — now shows in the
+  Archive too, so you can see at a glance which frames are stamped.
+
+---
+
+## 2026-09-18 (share images show up right away, and the preview tells the truth)
+
+**Nothing to do on merge.**
+
+When you stamp a share image for a photo, that picture is what people see when
+they paste your link into Messages, WhatsApp, Bluesky or a DM. Two things about
+that were quietly wrong.
+
+- **A share image you just made could stay invisible for five minutes.** The
+  site remembers whether a photo has a share image so it isn't checking
+  storage on every single link preview — sensible — but it remembered "this
+  one doesn't" for just as long as "this one does". So: make a share image,
+  paste the link straight away, and the preview could still show the plain
+  photograph instead of the card you made. That would fix itself in a few
+  minutes on your site — but the app that showed the preview has usually
+  **already saved** the wrong picture, and most of them keep it for days and
+  never look again. Now the site re-checks within about ten seconds. Remembering
+  that a share image *does* exist is unchanged, because being a few minutes
+  behind on a deletion costs nothing.
+
+  *If you've ever stamped a card, shared it immediately, and wondered why the
+  old picture kept showing — this was why, and it wasn't your doing.*
+
+- **The share-image preview now tells you whether it's actually live.** The
+  preview in the focal-point window drew the same card whether or not you had
+  ever published it, so there was no way to tell "this is what people see" from
+  "this is what you'd get if you pressed Publish". It now says which, right
+  under the preview. Publishing flips it immediately.
+
+- **Smaller things in the same window.** The instructions underneath now
+  describe the share image when you're looking at a share image (they only ever
+  talked about thumbnails). And the `Show guides` checkbox says what it does —
+  it was labelled in a way that read like a choice between two kinds of card,
+  when all it does is show or hide the two crop outlines on your photo.
+
+---
+
+## 2026-09-17 (a cleanup pass: clearer errors, safer notes)
+
+**Nothing to do on merge** — unless your repo has a file with your computer's
+home folder path in it, which the leak scan now flags. See the last entry below.
+
+A full read of the code looking for dead weight, comments that had stopped
+being true, and small things that were quietly wrong. Most of it you will never
+notice. These are the parts you might.
+
+- **Logging in tells you when the signing secret is missing.** If
+  `SESSION_SECRET` was never set (and there was no KV namespace to make one
+  in), the console used to accept your password, say it worked, and then fail
+  every single action afterwards with nothing on screen explaining why. It now
+  refuses the login and names the secret to set. If you have ever had a console
+  that logs in and then does nothing, this was probably why.
+- **"You haven't made a database yet" no longer looks like a crash.** Bench,
+  field-note drafts and Pulse all reported a hard error when no D1 database was
+  attached, which lit up the console's status lamp as though something had
+  broken. They now say the feature simply is not set up yet, the same way every
+  other optional feature does, and tell you the command to run.
+- **Field notes handle awkward text properly.** A caption with a double quote in
+  it — `![24" monitor](…)` — used to break the image tag. Links that try to run
+  code instead of going somewhere (`javascript:…`) now keep their words and lose
+  the link, rather than rendering as a live link. Your published pages were
+  never at risk here; the console's live preview was.
+- **A future page of yours cannot accidentally get the admin security policy.**
+  Any page whose address began with the letters "dev" — `/devlog`, `/developer`
+  — would have been treated as part of the admin console and given its looser
+  rules. It now has to actually be the console.
+- **Asking an API address the wrong way gets a real answer.** Sending the wrong
+  kind of request to a working address returned your site's 404 *page* — a page
+  for a human, handed to a program. It now answers properly and says which
+  request types that address accepts.
+- **Field notes render a touch faster on a cold visit,** because a malformed API
+  call no longer runs the whole page-rendering path before giving up.
+- **Tooling updated.** Wrangler and the test browser move to current versions.
+  Nothing in your config changes.
+
+⚠️ **The one thing that might newly fail:** the identity leak scan (which runs
+in your CI) now also looks for a local filesystem path — the `/Users/<you>/…`
+or `/home/<you>/…` kind — in any tracked file. These turn up in stray log files
+and pasted terminal output, and they tell the internet your account name and
+folder layout. (The examples here are written with angle brackets on purpose:
+spelled out properly they would trip the very check they describe, which is
+also why `scripts/os-leak-scan.sh` exempts itself.) If your build goes red on this after merging, the fix is to delete the
+file and add it to `.gitignore`; that is exactly what prompted the check.
+
+---
+
+## 2026-09-14 (the console feels like hardware)
+
+**Nothing to do on merge.** A craft pass on how the Field Console looks and
+responds. No settings, no new files to configure, and nothing moved.
+
+- **Buttons push back now.** Press anything and it travels about a pixel into
+  the panel with its shadow tightening, instead of just shrinking slightly. This
+  used to happen only on touchscreens — on a laptop with a mouse there was
+  almost no feedback at all. Now both behave the same.
+- **You can see where the keyboard is.** Tabbing through the console was nearly
+  invisible: there were three focus styles in the whole stylesheet. Every
+  control has a clear ring now.
+- **One light, so the depth is consistent.** Every edge highlight and drop
+  shadow in the console is now worked out from a single light source instead of
+  being drawn by hand, which is what makes a surface look considered rather than
+  assembled. Fewer effects, not more.
+- **Glow means something again.** Light is now reserved for things that are
+  actually happening — the status lamp, a running job, and publishing while it
+  commits. Things that were merely *selected* (which slot you're looking at,
+  which layout you picked) lost their glow, because "I clicked this" and "this
+  is live" should not look the same.
+- **Publishing tells you it's working.** While a publish commits, the publish
+  bar lights up. Before, the only sign was the button going grey, which reads
+  as broken rather than busy.
+- **Two badges stopped pulsing forever.** They ignored the reduced-motion
+  setting and competed with the status lamp for attention.
+- **The dark theme is properly black.** On an OLED phone the old near-black was
+  visibly lighter than the screen's own black, so the app looked like a
+  rectangle sitting on the device. Light mode is unchanged.
+- **Flicking the buffer and archive lands on a row** instead of halfway through
+  one. It only tidies the landing — it never grabs the scroll.
+- **A colour bug you may have been seeing:** in light mode, parts of the console
+  were drawing in the default red instead of your own brand colour. If you run
+  any preset other than `noir`, light mode now uses your colour everywhere.
+
+## 2026-09-13 (and the single-card view fits too)
+
+**Nothing to do on merge.** The other half of the entry below.
+
+- **The card canvas no longer scrolls, in any view.** Editing one card, or just
+  looking at one, the card now sizes itself to the space it has instead of
+  overflowing it. On a laptop this had been showing up as a thin scrollbar that
+  was always there — the card was about four pixels too tall for its own well.
+- **The card gets smaller, never squashed.** It scales by width, so the picture
+  keeps its exact shape at every size. On a tall screen you get the full-size
+  card as before; on a short one a slightly smaller one, correctly proportioned.
+- **A card that is all words is left at full width on purpose** — narrowing text
+  makes it taller, not shorter, so capping it would have made the problem worse.
+
+---
+
+## 2026-09-13 (the card grid fits your screen)
+
+**Nothing to do on merge.** A same-day follow-up to the entry below.
+
+- **THE GRID in the Cards studio no longer scrolls — the cards scale to fit.**
+  The row now takes whatever height the window has left and sizes the four cards
+  to it, instead of the cards deciding the height and the grid scrolling when
+  they did not fit. On a shorter laptop that means slightly smaller cards and
+  all four ✎ EDIT THIS CARD buttons where you can reach them.
+- **An iPad held sideways works now.** It was scrolling by about 90px, and had
+  been for a while. Held upright it still scrolls — two rows of cards need more
+  height than a tablet has, and shrinking them enough to fit would make them too
+  small to read, so they stay full size and you scroll one row.
+- **Two smaller fixes you may have seen.** A text card squeezed by a short row
+  used to print its opening lines straight over its own location and date; it
+  now trims cleanly instead. And a card with words on the picture sized its
+  title to the browser window rather than to the card, so on a narrow card the
+  last word ran off the edge of the photograph. Both only affected the studio —
+  your published homepage never did either.
+
+---
+
+## 2026-09-13 (your homepage row follows what you published, and a one-press reset)
+
+**Nothing to do on merge** — but one behaviour changes, so it is worth thirty
+seconds of your time.
+
+- **The automatic homepage row now follows publish order, full stop.** There
+  was a rule that quietly promoted a field note into the third card whenever it
+  would otherwise have landed in the fourth. On a young site that was helpful.
+  On a site with a few dozen frames it meant a photograph you published *this
+  week* could be pushed into the fourth card — the one only a tablet held
+  upright ever shows — to make room for a note from two months ago. That rule
+  is gone. Whatever you published most recently leads, every time.
+- **The row still mixes.** If your four newest items are all pictures, the
+  oldest of the four still steps aside for your newest note, so the grid of four
+  is never all one kind. What changed is that the note no longer *jumps the
+  queue*: it takes the place it earned by date. If your newest note is older
+  than your third-newest picture, a phone and a desktop will show three pictures
+  and the note will sit in the tablet card. That is the trade, and it is now
+  predictable — you can look at what you published and know what the homepage
+  will do.
+- **Fresh installs are unaffected.** A brand-new site still opens
+  picture · picture · note. The bundled sample frames and the sample note now
+  carry dates that interleave, so that row happens for the same reason every
+  other row does, rather than because of a special case in the code.
+- **New: `⌫ ALL SLOTS AUTOMATIC` in the Cards studio.** A danger-zone footer
+  that hands the whole homepage back to automatic in one press — for when you
+  have been composing cards for something, the something is over, and you want
+  the grid filling itself again. It only appears when you actually have composed
+  cards. It asks first and names every card by title; published cards keep their
+  `/card/<id>` address reserved exactly as `◼ RETIRE THIS CARD` does, one
+  `↩ UNDO RETIRE` puts them all back, and anything you never published waits in
+  the session trash. Nothing is live until you publish, as always.
+
+---
+
+## 2026-09-11 (words on a picture look like a plate, and audio from the composer)
+
+**Nothing to do on merge.** Four refinements from the owner's first day with
+the finished card studio.
+
+- **A card with words on the picture is all picture now.** The picture fills
+  the card to its floor instead of stopping at 4:5 and leaving a bare strip of
+  the card's ground underneath it next to a taller neighbour.
+- **The words on the picture are set like a museum label.** The title runs in
+  the display face, sentence case, and steps up as it gets shorter — a
+  two-word title is large on purpose — closing on a full stop in your site's
+  accent; the caption sits under a short accent rule. Nothing to configure:
+  the size comes from the title's length, the same way the words tile already
+  works. Share images draw the same plate.
+- **The composer's side panel stays where you scrolled it.** Pressing a chip
+  no longer sends the panel back to the top.
+- **♪ ADD AUDIO, right under the picture.** Any card you compose can become
+  the audio card from its own panel, and the track picker opens on the spot —
+  browse and pick up to six tracks without going to the Audio shelf. Your
+  picture and words are kept, so ✕ REMOVE AUDIO brings them straight back.
+
+---
+
+## 2026-09-12 (the stamped card is the card, in colour)
+
+**Nothing to do on merge.** Fixes from the first week of living with the card
+studio.
+
+- **Stamped share images carry the card's atmosphere.** A words card with a
+  palette, an audio card and a pulse card used to stamp as a flat grey tile;
+  they now paint the same ground the homepage draws — the hue, the veil, the
+  corner light — read off your site's own stylesheet at stamp time, in
+  whichever theme you are in. Re-stamp a card to pick it up.
+- **The little light beside a card's label is a part now, not a dot.** The
+  words tile's kicker dot (`.wk-dot`) is the same square LED the pulse card
+  wears, in the palette's colour on a palette card. Visible on every words
+  card on your homepage after you merge; nothing to configure.
+- **The composer shows the card at the homepage's proportions** — the picture
+  holds 4:5 and the footer is as tall as its words, instead of the footer
+  eating two thirds of the card.
+- **A staged card's address says so.** The CARD ADDRESS block wears STAGED
+  until you publish and LIVE after, and copying a staged link tells you it
+  works once you publish — because it does not before.
+- **Palette swatches are labelled buttons** with a real tap target on a phone.
+
+---
+
+## 2026-09-11 (a SHARE button on everything you make)
+
+**Nothing to do on merge.** The share images the last update could draw now have
+buttons that actually make them — and one more thing finished with them: the
+homepage card system is **done**.
+
+- **A SHARE block, wherever the thing is made.** On the focused card in the
+  Cards studio, on a card you compose, on every track and every set on the Audio
+  shelf, and in the field-note editor's ⋯ menu. Four things, always the same
+  four: **copy the link**, **stamp the share images**, **download NATIVE**
+  (the shape a feed post wants), **download STORY** (full-screen vertical).
+- **Stamping is what makes a pasted link show your card.** Press it once and all
+  three sizes go up together. Press it again after you change the card — until
+  you do, the old picture keeps showing, and the block says so.
+- **It tells you what it has.** "not stamped yet" or "stamped", read from your
+  own CDN rather than from a local flag, so it is still right after a reload and
+  still right on another device.
+- **It works on the LIVE grid too.** Sharing is the one thing that acts on what
+  is already published: it happens now and does not wait for a publish.
+- **Nothing is ever half-stamped.** If a picture fails to load while the images
+  are being drawn, nothing is uploaded at all — a permanent link is never left
+  pointing at half a card.
+- **Still your gesture, never automatic.** Publishing does not stamp anything by
+  itself. A stamp for every entry on every publish would be storage churn you
+  did not ask for.
+
+**And with it, the card program is complete.** Over nine updates the homepage
+card system went from "four tiles the site picked for you" to: cards you compose
+yourself, a second layout that puts your words on the picture, audio sets as a
+first-class thing, an address for every card, share images that *are* the card,
+and now the buttons that publish them. Everything stayed opt-in — a site that
+does nothing publishes exactly the bytes it always did.
+
+---
+
+## 2026-09-11 (your share image looks like your card)
+
+**Nothing to do on merge.** When you paste one of your links into a message,
+the little picture that appears is now **your card** — the same card your
+homepage shows, drawn at the size each app wants.
+
+- **Every kind gets one, not just photographs.** A field note that leads with
+  words instead of a picture had no share image at all before; now it gets its
+  own words tile. So do audio tracks, saved sets, and the cards you compose.
+- **It is the card, not a picture of a card.** Same crop, same palette, same
+  type, same chip, same band if you wrote on the picture — because it is drawn
+  from the same record your homepage draws from. Change the card, re-stamp, and
+  the preview changes with it.
+- **It wears YOUR colours.** The old share image had two reds baked into it, so
+  every fork's link previews came out in someone else's brand no matter which
+  preset they ran. The colours are now read from your own theme at the moment
+  the image is drawn.
+- **Three sizes.** The wide one for link previews, a tall one for a feed post,
+  and a full-height one for a story. Today the framing modal still publishes
+  only the wide one; the buttons for the other two arrive in the next update.
+- **Nothing you already stamped changes.** Your existing share images keep
+  serving at the same addresses until you re-stamp them.
+- **Publish waits for your photo.** Pressing publish the instant the window
+  opens used to be able to save a card with an empty space where the picture
+  goes. It waits now — and for your fonts too, so the first one you stamp is
+  set in your typefaces rather than a browser default.
+- **Reordering the tracks on your audio card sticks.** Picking the same tracks
+  in a different order used to do nothing at all.
+- **A card's page works on a preview server.** Opening it at
+  `/card/index.html?id=…` — how a staging host or a local preview spells it —
+  showed "no card here". It finds the card now.
+
+---
+
+## 2026-09-11 (every card has an address)
+
+**Nothing to do on merge.** Every card you compose now has a page of its own —
+a real link you can text, post or put in a newsletter.
+
+- **Its own address.** A card you build in the studio lives at
+  `yoursite.com/card/<id>` as well as on your homepage. The rail shows it, with
+  a **COPY** button, the moment the card exists.
+- **Once you publish it, it's permanent.** That address will never point at a
+  different card — the same promise a track's `/listen/?a=` link and a frame
+  number already make. So removing a published card **retires** it: the slot
+  goes back to filling itself, and the old link tells anyone who follows it
+  that the card is gone rather than quietly showing them something else.
+  `↩ UNDO RETIRE` in the Cards header puts it back, until you publish.
+- **A card you never published** still just goes to the trash, with
+  `↩ RESTORE` in the publish view, exactly as before — nothing was pointing at
+  it yet.
+- **It unfurls properly.** Paste a card link into a message and it shows your
+  own title and words, not the bare site.
+- Your card pages are listed in your sitemap and ride along in Export Site.
+
+Nothing about your existing cards changes: the homepage renders exactly the
+same, and a card still opens whatever it opened before when someone taps it.
+
+---
+
+## 2026-09-10 (the audio card, in the studio)
+
+**Nothing to do on merge.** The homepage's audio card can now be composed in the
+Cards studio like every other card — and taking it over no longer loses the
+player, which was the one reason the studio used to refuse.
+
+- **Take it over.** Console → CARDS → focus the audio card → `✎ EDIT THIS CARD`.
+  It keeps playing exactly what it was playing; the words are now yours.
+- **Choose what plays.** A new **WHAT THIS CARD PLAYS** block in the rail. Two
+  options, both always on screen, so picking the other one is the undo:
+  - **♪ The homepage tracks** — the tracks you've put on the card, the same list
+    the Audio shelf edits. `♪ CHOOSE TRACKS` opens your library with the current
+    ones already ticked, so you can add or drop without rebuilding it.
+  - **▤ A saved set** — borrow one of your sets. The card takes the set's name
+    and opens the set's own page, and reordering the set on the shelf reorders
+    the card. (Sets are the entry above this one.)
+- **Write on it.** A title and a line render under the waveform as a caption —
+  the same quiet grammar a photo card's caption uses. The card's own headline
+  stays the name of what's playing, so the two never say the same thing twice.
+  Leave both empty and there's no caption at all.
+- **The badge.** Leave it blank and an audio card says what it is (`Audio`,
+  `Audio // Multi-track`) instead of `Featured`.
+- **`♪ CHOOSE TRACKS` is on the plain audio card too**, so you can change the
+  homepage tracks from the studio without going to the shelf. There's still one
+  list — change it in either place and both agree.
+
+---
+
+## 2026-09-10 (make a set, give it an address)
+
+**Nothing to do on merge.** The Audio shelf can hold **sets** — a named, ordered
+list of tracks that lives at its own web address, so you can send someone *this*
+handful of tracks in *this* order with one link.
+
+- **Where to find it.** Console → AUDIO → a new **SETS** block above your
+  tracks. `+ NEW SET` names it, `+ ADD TRACK` picks from the shelf you already
+  have, `▲`/`▼` reorder, and `✕` takes a track out (with one `↩ UNDO` if that
+  was a mistake). A set holds up to six tracks — the same six the homepage
+  audio card can play.
+- **Every set has its own page.** `/listen/?set=<name>` plays it in your order,
+  and sharing that link unfurls with the set's name and how many tracks are in
+  it, the same way a single track's link already does. It shows up in your
+  sitemap once it actually has something to play.
+- **A set is a list, not a copy.** It points at tracks by their address, so
+  renaming a track doesn't break anything, and taking one off the shelf just
+  makes it quietly drop out of the set. Your tracks are never duplicated and
+  never deleted by anything you do to a set.
+- **Renaming never moves the address.** Once a set is published, its link is
+  permanent: deleting it leaves the address reserved rather than freeing it for
+  the next set to take, so nobody's old link ever quietly plays something else.
+  A set you haven't published yet just goes to the trash, and comes straight
+  back.
+- **Your podcast feed is untouched, in both directions.** Putting an episode in
+  a set changes nothing for your subscribers, and gathering tracks into a set is
+  never a way to publish them to a podcast app.
+- **Coming next:** the homepage audio card will be able to borrow a set, so what
+  plays on your front page and what lives at that link are the same thing.
+
+---
+
+## 2026-09-10 (words on a picture)
+
+**Nothing to do on merge.** Homepage cards learned a new look: **the words can
+sit on the picture** instead of under it.
+
+- **Where to find it.** Card Studio → a card with a picture → `CARD LAYOUT` →
+  *Words on the picture*. A new block appears underneath with three choices:
+  **where** the words sit (bottom, top or middle), **what is behind them**
+  (shaded, frosted, or bare picture), and **how heavy the frost** is. Every
+  option is a button, the standard one is always on screen, and pressing it puts
+  the card back — there is nothing to undo.
+- **You never pick the text colour.** When you choose a picture or re-crop one,
+  your site measures how bright it is at the top, the middle and the bottom, and
+  picks light or dark type for wherever your words land. If it can't measure a
+  picture — it's offline, it's still uploading — the card still works: light
+  type over a soft shade, which reads on anything.
+- **It works on the automatic cards too.** An archive photo or a starred frame
+  now offers the same *Words on the picture* option in the layout picker,
+  using the standard shading.
+- **Nothing about your existing cards changed.** A card that doesn't ask for the
+  new layout publishes exactly the bytes it did before.
+
+---
+
+## 2026-09-10 (the studio catches up with its cards)
+
+**Nothing to do on merge.** Three things in the Card Studio:
+
+- **The dressing chips are back** — *Automatic / Always the picture / Always
+  the words* — and *Always the words* now gives you the real field-note tile,
+  drop cap and blinking caret included. Under the hood each chip writes which
+  kind of card yours is; *Automatic* writes nothing and lets the site decide
+  from the shape, which is also how every card you dressed before this update
+  is read. A card you dressed earlier is quietly rewritten in the new shape the
+  next time you open the studio, and renders exactly as it did.
+- **What you type on is the card itself.** The composer used to draw its own
+  copy of the card; now it shows the very card the homepage will draw and lets
+  you type straight into its headline and its line. A picture card's headline
+  is still capped at 48 characters (it is a caption); a words card's headline
+  runs as long as a field note's title does.
+- **Edit a live card in one click.** On the LIVE side every slot offers
+  `✎ EDIT THE STAGED CARD`, which takes you to that same card on the STAGED
+  side with its controls open.
+
+One thing the studio will not do yet: take over the audio card. That arrives
+with the audio update; until then the button's place says so.
+
+---
+
+## 2026-09-10 (a composed card is one of your real cards)
+
+**Nothing to do on merge — your cards render the same.** Under the hood, a
+composed homepage card (one you built in the Card Studio) used to be its own
+fifth kind of card with its own renderer, a near-copy of the archive card and
+the field-note tile that had already started to drift. Now it is one of the
+real kinds — a picture card, a words card, an audio card — with your words and
+picture laid over it, drawn by the same code that draws every other card on
+the grid. Every record you have already published is read exactly as before.
+
+**One visible change, on purpose:** a composed *words* card is now the real
+field-note tile, drop cap and blinking caret included, instead of a slightly
+plainer copy of it. Picture cards are byte-for-byte what they were.
+
+**One control is resting for a session:** the Card Studio's *Automatic / Always
+the picture / Always the words* chips are hidden on composed cards until the
+next update, which teaches them the new shape. Cards you already dressed keep
+their dressing.
+
+---
+
+## 2026-09-08 (your site knows what day it is)
+
+**Your dates were being rendered in California.** The engine had one timezone
+written into its code — the author's — so no matter where you are, the dates the
+site printed came from Pacific time. If you publish in the evening (or the
+morning, if you are east of UTC), the archive's dates and your buffer's "days"
+count could be a day off from the date stamped on the picture itself.
+
+**Set yours:**
+
+```js
+// site.config.js
+timezone: 'Europe/Berlin',   // your IANA zone name
+```
+
+Any name from the tz database works — `Asia/Tokyo`, `America/New_York`,
+`Australia/Sydney`. Leave it out and you get **UTC**, which is neutral and
+predictable rather than someone else's hometown. A typo falls back to UTC too,
+rather than breaking the page.
+
+Not action-required — nothing breaks if you skip it — but it is a one-line edit
+that makes your dates yours.
+
+**Also in this release, nothing you need to do:**
+
+- **Cards: Cancel asks before it throws work away.** Taking over an automatic
+  card slot and then cropping the picture, or cutting its link with ✕ MAKE
+  FREE-FORM, counted as "nothing changed" — so Cancel discarded it silently. It
+  now asks first, and keeps the card if you say no.
+- **A field that did nothing stopped being published.** Composed cards carried
+  an `img` entry in the published data that nothing ever wrote or read. Removed.
+
+## 2026-09-07 (build your own homepage cards)
+
+**You can now make a card.** Open Cards and press **＋ COMPOSE A CARD**. You get
+a real card you can build:
+
+- **Pick its picture from anywhere on your site** — the archive, the buffer, your
+  wallpapers, a field note's hero, or anything you have uploaded and not used yet.
+  Or give it no picture at all.
+- **Write on the card itself.** The headline and the line underneath are typed
+  straight onto the card, at the size they will actually publish at.
+- **Crop it** to the tall 4:5 shape the homepage card uses.
+- **Choose how it is dressed** — Automatic, Always the picture, or Always the
+  words. Automatic is the right answer nearly always: it leads with the picture
+  when there is one and with your words when there is not.
+
+**The words belong to the card.** If you build a card from a field note and then
+rewrite its headline, your post is untouched — the card carries its own text.
+Clear it and the card falls back to the post's own title.
+
+**Your grid still fills itself.** Composed cards are an override, not a
+replacement: up to two of them, and `↩ RESET TO AUTOMATIC` hands the slot back.
+A site with no composed cards behaves exactly as it did before — byte for byte.
+
+**A live Pulse still leads.** Posting one never silently does nothing; your
+composed cards move down a slot while it is up and come back when it expires.
+
+**Nothing to do on merge.** A new `data/cards.json` ships empty. If you never
+compose a card, your published files are unchanged.
+
+---
+
+## 2026-09-07 (the Cards view becomes a place you compose, not just look)
+
+**Cards is now a studio.** Open it and you get a row of your four homepage
+slots along the top — tap one to focus it. **STUDIO** shows that card on its own
+with everything that acts on it beside it; **PANORAMA** shows the whole row at
+once. A **STAGED / LIVE** toggle switches between what your next publish will
+make and what is on your site right now, replacing the two side-by-side columns.
+
+Nothing about the preview got less honest in the move. Each slot still carries
+its `NEW` / `REPLACED` / `UNCHANGED` / `GONE` marker, and the header always tells
+you how many slots change on the next publish — including while you are looking
+at the live side, so a pending change can never hide behind the toggle.
+
+**New: you can choose a card's layout.** Focus a field note and the rail offers
+**Standard tile** or **Hero forward**. Until now that choice lived only in the
+Field Notes editor. Two things worth knowing:
+
+- **Pressing the standard option is the undo.** There is no separate undo
+  button, because the way back is the control you are already looking at.
+- **A layout your entry cannot wear is greyed, not hidden** — a note with no
+  picture cannot lead with one, and the rail says so instead of quietly dropping
+  the option.
+
+Right now field notes are the only kind with a second layout, so the picker
+appears there and nowhere else. It will show new layouts automatically as they
+are added — nothing for you to configure.
+
+**Under the hood**, a card's chosen layout now travels with buffer frames,
+archive photos and audio tracks on publish, the way it already did for posts. If
+you never choose a layout, your published files are byte-for-byte what they were
+before. Nothing to do on merge.
+
+**Also moved:** the "ready to re-feature" frames — the ones you already cropped
+for this card — are now a strip along the bottom that scrolls sideways instead of
+a wrapped block. It is a shelf of things to use again, so the two `↩` undo
+buttons stayed up beside the card they undo rather than being filed among them.
+
+---
+
+## 2026-09-07 (the podcast feed is in beta, and we'd like to hear from you)
+
+**No code changed here — this is a label.** `/podcast.xml` and the readiness
+card on the Audio shelf now say **BETA** out loud, because that is the honest
+state of them: the feed is valid RSS, the card names every field Apple wants,
+and exactly **one** short show has actually been through a directory submission
+— the author's, as a test. Everything else on the Audio shelf is not beta. The
+player, the waveforms, the per-track addresses and the tracklists inside posts
+have been live and unchanged for weeks.
+
+Nothing is switched off and nothing needs doing. Publish a show if you want one;
+the feed serves the same way it did yesterday.
+
+**What would help.** If you point a podcast app at your feed, or submit it to
+Apple, Spotify or Overcast, tell us how it went at
+<https://github.com/oaklensart/oaklens-os/issues>. A rejection message pasted in
+full is more useful than a careful bug report — the directories each fail in
+their own way, and one person's show cannot find all of it.
+
+The label comes off when enough real feeds have landed in enough real apps.
+
+---
+
+## 2026-09-02 (undo where there wasn't any, and a deleted track keeps its address)
+
+**Editing a track's title can now be undone.** ✎ EDIT asked you two questions
+and overwrote what was there, with nothing to click if you'd typed the wrong
+thing. The row now grows a **↩ UNDO EDIT** button that puts the old title and
+subtitle back. It disappears once you edit that track again or delete it, so it
+is never a button that would undo something other than what you just did.
+
+**Deleting a published track no longer frees up its web address.** This one was
+quiet and it mattered. A track's address — the `/listen/?a=name` in a share
+link, in every post that embeds it, and in the id every podcast app uses to
+recognise an episode — used to become available again the moment you deleted the
+track. Name a new track the same thing and it inherited that address: the link
+you'd shared started playing something else, and the new episode was invisible
+to everyone already subscribed, because their app had seen that id before.
+Nothing looked wrong anywhere.
+
+A published track is now **retired** instead: the shelf keeps a dimmed
+`// RETIRED` row showing the address it holds, the audio file is still deleted
+from the CDN on the next publish, and nothing new can ever take that address.
+Your site shows no trace of it. A track you never published still goes to the
+trash exactly as before — nothing was pointing at it yet. And **↩ UNDO RETIRE**
+brings it straight back until you publish, because up to that moment the file
+deletion has only been queued.
+
+**Your trash survives a refresh.** Delete something, reload the console, and it
+used to be as if you'd never deleted it — the ↩ RESTORE button was gone, the
+next sync could quietly bring the item back, and publishing could refuse to run
+when you'd deleted the last item on a page. All three are fixed. The trash is
+now saved the same way your pending file cleanups already were.
+
+---
+
+## 2026-09-01 (your podcast feed, ready for Apple — and findable)
+
+> ⚠️ **ACTION REQUIRED — only if you want your show in a podcast directory.**
+> Apple Podcasts refuses a feed missing any of **three** fields, and until now
+> your site had a config key for one of them. Add the other two to
+> `site.config.js` before you submit anywhere:
+>
+> ```js
+> podcast: {
+>   image: '/assets/podcast-cover.png',   // square, 1400×1400 or larger
+>   category: 'Arts',                     // one of Apple's fixed categories
+>   owner: { name: 'Your Name', email: 'show@example.com' },
+> },
+> ```
+>
+> `site.config.example.js` lists every category and every optional field. **Your
+> console now tells you which ones you are still missing** — Audio shelf, top of
+> the page — so you can check before you submit rather than after a rejection.
+> If you have no podcast, or you never submit it anywhere, nothing here needs
+> doing: your feed keeps serving exactly as before.
+
+**Your feed can now be accepted by a podcast directory.** It was always valid —
+it just quietly omitted things Apple treats as mandatory, and the only way to
+find that out was a rejection email days later. The feed now carries a category,
+an owner contact, a copyright line, a language, and whether the show is explicit
+or episodic — each one only when you have actually said so. Two optional extras
+came along: **`podcast.locked`** tells hosting platforms they may not import your
+show without asking you first (the whole reason to host it yourself, in one
+line), and **`podcast.funding`** puts a support link inside the listener's
+podcast app, next to the play button.
+
+Nothing is filled in for you. Your contact email is **never** reused as the
+show's owner address — a podcast feed gets republished by Apple, so that address
+becomes public the moment you submit, and that is your decision to make. The
+same goes for the copyright line: it is a legal claim, and the engine does not
+write one on your behalf.
+
+**Your console now shows you the feed.** The Audio shelf has a card at the top
+with the feed's address and a COPY button — the "where is my feed link" answer,
+which previously you had to already know. Under it: how many of your tracks are
+actually in the feed, and a checklist naming the exact setting still standing
+between you and a submission, with one sentence on what each one gets you. With
+nothing marked as an episode it says so plainly instead of showing you a list of
+problems with an empty show.
+
+**People can now find your feed.** Nothing on the site pointed at it before —
+not the pages, not the sitemap, not the export. Now: podcast apps and search
+engines discover it from any page on your site, it is listed in your sitemap
+once you have an episode, it travels in **Export Site**, and **/listen grows a
+Subscribe block** with the address and a copy button as soon as one of your
+tracks is marked as an episode. A site with tracks but no episodes shows none of
+this — demos are not a show.
+
+**One thing deliberately left alone:** the address each episode is identified by
+in your subscribers' apps. Changing it would make everyone who follows you
+re-download your entire back catalogue.
+
+---
+
+## 2026-08-31 (undo on the audio shelf, and four fixes to publishing)
+
+**Clearing your homepage audio card can now be undone.** It used to take up to
+six tracks off with no warning and no way back — the order they were in was
+simply gone. It now asks first, names the tracks, and leaves a **↩ RESTORE
+CARD** button that puts the card back exactly as it was, until you close the
+tab. The same button appears in the Cards view next to ↩ RE-PIN.
+
+**Fixed: deleting something could cancel a different pending change.** If an
+upload failed and you removed the failed row, the console quietly cancelled some
+*other* item's pending change instead — so something you meant to publish
+stopped being counted. Editing an item several times and then deleting it left
+the opposite problem: a change counter stuck above zero for something that no
+longer existed. Both now count correctly, and putting an item back out of the
+trash restores exactly what it cancelled.
+
+**Fixed: publishing could delete a file you had just re-uploaded.** Throw a file
+away, add a new one with the same name, and publish would save your site
+pointing at the new file and then delete it — with every step reporting success.
+Uploading a file now cancels any pending deletion for that name. The Audio shelf
+also stops you re-adding a track that is sitting in the trash, and points you at
+↩ RESTORE, which brings its details back too.
+
+**Fixed: removing a track you had published in the same session.** Audio (and
+your Friends list) were missing from a step that runs after publishing, which
+meant the console still thought those items were brand new. Three things went
+wrong because of it: deleting a track you had just published showed no pending
+change, so **Publish refused to run**; deleting your *only* track blocked the
+publish outright; and renaming a track you had just published silently moved its
+web address — breaking the link you had shared, every post that embedded it, and
+its entry for anyone subscribed to your podcast feed.
+
+**The Audio shelf looks like a list again.** It was being drawn into the photo
+grid's layout, so every track sat in a narrow column with its six buttons
+wrapped underneath, and most of the styling the page asked for did not exist at
+all. Tracks now stack cleanly and fold sensibly on a phone.
+
+Nothing for you to do — merge and publish once.
+
+---
+
+## 2026-08-27 (homepage pin fix)
+
+**Fixed: a starred frame could land in the card only a tablet shows.** Your
+homepage grid loads four cards but shows three — the fourth appears only on a
+tablet held upright. If you had a **pulse live** and a **starred frame** (or a
+featured track) at the same time, the pulse pushed your pin down into that
+fourth card, so you starred something and nothing changed on your desktop or
+phone homepage.
+
+Pins now fill the row **from the top**, in order: a live pulse takes card 1, your
+starred frame or featured track takes card 2, and your most recent work follows.
+With no pulse live, the pin moves up to card 1. Card 3 is never a pin, so there
+is always at least one genuinely recent thing on the page. Nothing for you to
+do — just merge.
+
+---
+
+## 2026-08-24 (dark-frame fix)
+
+**Fixed: retiring a frame now sticks after you publish.** When you retire a
+published frame to a **dark frame** (it keeps its slot and number, but its
+image is removed), that "retired" state used to be dropped the next time you
+published — the frame came back as a *live* cell pointing at a photo that no
+longer exists, so it rendered blank. Publish now keeps the dark-frame marker,
+so a retired frame stays retired. Nothing for you to do — just merge.
+
+---
+
+## 2026-08-24 (the Cards view)
+
+**New: a Cards view in your console that shows the homepage before you publish
+it.** Open **Cards** in the console sidebar. It shows your homepage's card grid
+twice, side by side: **what's on it right now**, and **what it will be after
+your next publish** — with the slots that change marked (`NEW`, `REPLACED`,
+`UNCHANGED`, `GONE`). No more "star something, publish, open the homepage, and
+only then find out." The pulse card shows up too, marked as already-live so you
+know it isn't waiting on a publish.
+
+It isn't a mock-up of the logic — it *is* the logic. The preview runs the exact
+code your public homepage uses to choose and order its cards, so what you see is
+what you'll get, down to which card lands in which slot.
+
+**New: star, crop and take a card down from the card itself.** The staged side
+is interactive. On a photo card: `★ UNSTAR` to pull it off the homepage, or
+`▯ CROP` to set the tall crop the card uses. On an audio card: take one track
+off, or clear the whole card. Every one of these does exactly what the same
+button does elsewhere in the console — it's the same action, now reachable from
+the card you're looking at instead of three views away.
+
+**New: one-tap undo, no thinking required.** Because your homepage shows exactly
+one starred photo, starring a new frame un-stars the old one automatically (this
+fixes a real snag where starring an *older* frame appeared to do nothing). If
+that wasn't what you meant, a **↩ RE-PIN** button names the frame that just
+stepped down — one tap puts it back, crop and all. And any frame you've featured
+before shows up on a small "ready to re-feature" row, so bringing it back is
+always one click.
+
+Nothing to do — merge and it's there. No new Cloudflare resources, no config, no
+change to how publishing works: the cards still go live through your normal
+publish, exactly as before.
+
+## 2026-08-24
+
+**Fixed: on a phone, the Pulse card no longer shrinks away while you type.** With
+the on-screen keyboard up, the card was the only part of the screen that could
+give up room — so it gave up all of it, and the line you were writing got squeezed
+out of the card entirely. Now, while the keyboard is up, the things you are not
+using step aside (the lane row, the starter suggestions, the colour dots) and the
+card keeps the space. They all come back the moment you put the keyboard away.
+
+**Changed: the glyph picker is one menu, and it holds everything.** It used to
+show only the twelve glyphs belonging to whichever lane you had open, so picking
+"Photography" quietly took the rest away. Now every discipline is in the same
+menu under its own heading — scroll through the lot — with the lane you are in
+marked at the top. The glyphs are bigger, and the menu closes on a tap outside or
+the Escape key.
+
+**Changed: add and remove glyphs freely, without wiping your card.** Tap a glyph
+to add it; tap it again to take it off. Every glyph on your card also shows as a
+little chip at the top of the menu with an ✕ — tap that to remove just that one.
+The menu stays open while you experiment, so you can try a few combinations
+against your line without it disappearing every time, and your writing is never
+touched. (Before, the only way to drop a glyph was RESET CARD, which cleared
+everything.)
+
+**New: any emoji you want, from your own keyboard.** There is a small field at
+the top of the glyph menu. Tap it, use your phone or laptop's own emoji key, and
+whatever you pick goes on the card. Nothing extra is downloaded to your site —
+it's your device's emoji picker, so it always has everything and it always
+matches what your readers' devices can draw. The curated glyphs stay for when you
+just want something quick. On a phone, when your keyboard's emoji panel opens, the
+menu steps aside so you can still see your card while you pick.
+
+Nothing to do — merge and it's there.
+
+**Changed: the Field Notes editor is rebuilt.** Writing a note used to happen in
+a box beside a live preview, which only really fitted on a laptop — on a phone or
+a tablet the buttons wrapped onto two and three rows, the row jumped every time
+your work auto-saved, and the writing area fought the on-screen keyboard.
+
+It is one page now. Your note sits in the middle of the screen the way a page
+sits on a desk: cover picture, title, a single line for the date and place, and
+the writing. Nothing scrolls except the page.
+
+What moved:
+
+- **Preview is a button, not a second column.** `◫ PREVIEW` slides the rendered
+  note in over your writing; close it and it goes away. `↗ REAL PAGE` inside it
+  still opens the true published page in a new tab.
+- **One list of notes** instead of two dropdowns — drafts and published in the
+  same list, and it always shows which one you have open.
+- **The insert tools are together.** FRAMES, DAYS, PICTURE, VIDEO, MUSIC and
+  AUDIO live on one floating bar at the bottom. On a phone or a tablet in
+  portrait they collapse into a single `⊕ INSERT` button that opens the same
+  drawer, and PREVIEW / SAVE / ▲ STAGE move down to your thumbs.
+- **The save indicator has its own reserved space**, so watching it can no longer
+  shove the buttons around.
+- **`⌘P`** toggles the preview. Everything else you knew still works: ⌘B, ⌘I,
+  ⌘K, ⌘↵ to stage, Esc to leave focus mode.
+- **Fewer controls, on purpose.** The `TITLE ▾` collapse is gone (the fields it
+  hid are one short line now, so there was nothing left to reclaim), and the
+  hide-the-bottom-nav toggle moved into the new `⋯` menu along with focus mode
+  and delete.
+
+Nothing about your posts changed — same Markdown, same files, same publish. This
+is the editor around them.
+
+**Nothing to do.** Your browser may hold the old console for one load; a refresh
+picks up the new one.
+
+---
+
+## 2026-08-23 (evening)
+
+**Fixed: a brand-new site no longer shows an error page to Google.** Your site
+has a plain-text listing of your archive at `/archive/manifest.html` — it's what
+search engines and the Internet Archive read. On a site that hadn't published
+any archive entries yet, that page returned a server error instead of just being
+empty, and your sitemap was pointing search engines straight at it. Now it
+renders an empty page until you have work in it, which is the truth. If a read
+genuinely fails it still reports an error, so an outage can't get mistaken for
+"this archive is empty" and archived that way. No action required.
+
+**Fixed: your changes now appear as soon as the deploy finishes.** Publishing
+saves to GitHub, Cloudflare rebuilds, and your site goes live — but for up to
+five minutes *after* that rebuild finished, the site could still hand visitors
+the previous version of your data. It was a cache that had no idea a new
+version had shipped. That's why a correct publish could look like it hadn't
+worked, and why opening a private window didn't help: the stale copy was
+sitting at Cloudflare, not in your browser.
+
+The cache now knows which deploy it belongs to, so a new build simply doesn't
+see the old copy. Same speed for repeat visitors, no more waiting for a timer
+to run out.
+
+**⚙️ Worth doing after you merge this one.** The fix uses one small setting in
+`wrangler.jsonc` — the file you always keep your own version of. Open yours and
+add these three lines near the top, alongside `"observability"`:
+
+```jsonc
+"version_metadata": {
+  "binding": "CF_VERSION_METADATA"
+},
+```
+
+Nothing breaks if you skip it — your site behaves exactly as it does today. You
+just don't get the improvement. New forks get it automatically.
+
+**Also: the homepage picks up a new starred frame within a minute.** The bit of
+your site that decides which photo is pinned to the homepage was telling
+browsers to hold onto their copy for five minutes. Now it's one minute, and
+repeat visitors still get an instant page while the fresh copy loads behind it.
+
+**New: you can ask your site which version it's running.** Visit
+`your-site.com/api/version` (or `curl` it from a phone) and it tells you which
+deploy it's currently serving and when that went live. Handy for the one
+question that used to have no answer: "has my publish actually landed yet, or
+am I still looking at an old copy?"
+
+## 2026-08-23 (later the same day)
+
+**Fixed: settings you set before a photo's first publish no longer get lost.**
+If you dropped a photo in, set its focal point or starred it, and published —
+those settings often didn't make it. You'd go back, set them again, publish a
+second time, and it would stick. Not you: a real bug, and this closes it.
+
+What was happening, in plain terms: publishing saves your work to GitHub, and
+the console used to immediately fetch it back a couple of seconds later to stay
+in step. But GitHub's "read" side runs a few seconds behind its "write" side, so
+that fetch could return the *older* version of your data — and the console
+trusted it over what was on your screen, quietly undoing the settings you'd just
+made. The counter still said you had changes, so publishing again worked.
+
+Three things changed. The console no longer re-fetches after publishing (it
+already knows what it just saved). When it does sync, it now asks GitHub for one
+exact version rather than "whatever main is right now", so it can't get a mix of
+new and old. And it now keeps track of *which specific items* you've edited, so
+a sync — or closing the tab — can't overwrite an edit you haven't published yet.
+**No action required.** If you had frames that lost their settings, they were
+never published with them; set them once more and this time they'll hold.
+
+**New: the publish page tells you what you're about to publish.** The summary
+cards along the top showed a count — "+3 ▲" — and that was all you got. Now tap
+any card with changes and it opens a list of exactly what changed: *f#241 — card
+crop*, *RAW card: f#242 ← f#241*, a post's title with *— hero layout*. Repeated
+tweaks to the same item collapse into one line with a ×3 rather than three
+lines.
+
+**Changed: the Publish button is now a light, not a counter.** The button in the
+top-right no longer carries a number — it's simply lit when you have unpublished
+work and unlit when you don't. The number hasn't gone anywhere: it's in the
+status text beside it ("17 PENDING"), on the Publish tab badge on iPad, and
+itemised on the publish page itself. As the console grows more kinds of changes,
+a single big number was becoming something you couldn't act on. No action
+required.
+
+## 2026-08-23
+
+**New: a field note can lead its homepage card with its picture.** Field notes
+have always rendered on the homepage as a typographic tile — kicker, title, a
+short tease. Now each note can instead lead with its own hero image: the
+picture fills the card the way an archive frame does, the title sits under it,
+and a small **Field Note** chip in the corner says what it is. No headline
+stamped across the photograph.
+
+It's per post and off by default, so every note you already have looks exactly
+as it did. To switch one on, open it in Field Notes and press **▢ HERO CARD**
+next to ◎ FOCAL on the hero slot — the button only appears once the note has a
+hero image. It applies on stage/update like the focal point does, and publishes
+with the post.
+
+Two things worth knowing: the card crops tall (4:5), so a hero framed for the
+wide post banner may want its own crop — ◎ FOCAL steers both. And if the
+picture ever goes missing, the card quietly goes back to being a text tile
+rather than showing a broken image. No action required.
+
+**Changed: starring a buffer frame for the homepage now un-stars the previous
+one.** The homepage shows exactly one RAW card, but the star used to just add a
+flag — star a second frame and both stayed starred, with the newest capture
+date winning silently. Starring an older frame looked like it did nothing.
+Now the star is exclusive: starring a frame steps the previous one down in the
+same click, and the toast names the frame that yielded. The displaced frame
+keeps its 4:5 card crop, so re-starring it later is one click. Data published
+by an older console (several starred frames) still renders fine — newest wins,
+and the flags heal the next time you star anything. No action required.
+
+**Internal: the homepage grid renders through a card engine now.** The four
+card builders (photo, text, audio, pulse) sit behind a small registry with a
+per-kind layout seam — groundwork for optional card layouts (a field note
+leading with its hero image is first up). With no layout chosen, the grid's
+markup is byte-for-byte identical to before — a test compares the new renderer
+against captured output from the old one — so nothing about your homepage
+changes until you choose something. No action required.
+
+## 2026-08-19
+
+**Fixed: the archive's Camera, Lens and Medium fields were somebody else's
+gear.** They were dropdowns with a fixed set of options — two camera bodies, two
+lens types, Digital or Film — which meant a frame you made on anything else
+could not be described without editing the HTML, and a brand-new site arrived
+listing equipment it had never seen.
+
+**They're write-in fields now, and they remember.** Type whatever fits your work
+— a camera, a scanner, a pen, "iPhone 15", "oil on linen". What you type comes
+back as a suggestion the next time, and the last gear you staged prefills the
+next frame, so a session of frames from one setup is typed once.
+
+- **Remember this gear** (the toggle under the fields) is on by default. Switch
+  it off for a borrowed camera you don't want in the list — the frame still
+  records it, your device just doesn't keep it.
+- **Forget saved** clears the suggestions on that device.
+- Suggestions live in your browser, not on your site: nothing to set up, nothing
+  published, and each device keeps its own list.
+
+**Any of the three can be left blank now.** A blank one simply drops out of the
+line under the photo instead of leaving a stray `|` behind it — on the frame
+card and in the lightbox alike.
+
+Nothing to do on your side. Your existing frames keep their gear exactly as it
+is, and it shows up as suggestions the first time you open the Archive view.
+
 ## 2026-08-14 (third change today)
 
 **Fixed: taking tracks off the homepage audio card left you with no way to
@@ -218,6 +2152,10 @@ fetched when someone presses play.
 > accept a feed without square cover art. Add a `podcast` block to
 > `site.config.js` (see `site.config.example.js` for the shape) pointing at a
 > square image, 1400×1400 or larger. Everywhere else works without it.
+>
+> **Correction, 2026-09-01:** cover art is not Apple's only requirement — a
+> category and an owner email are mandatory too, and there were no config keys
+> for them until that date's entry above. Follow that one instead.
 
 **Fixed: text-only posts shared as a broken image.** A field note with no hero
 photo was sending an empty image reference to social platforms, so the preview

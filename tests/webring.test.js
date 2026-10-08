@@ -149,7 +149,7 @@ describe('the console ring card', () => {
   });
 
   it('carries no inline handler on the card (strict-CSP posture)', () => {
-    const card = shell.match(/<div class="entry-form-card" id="ring-card">[\s\S]*?<\/div>\s*<div class="entry-form-card">/)[0];
+    const card = shell.match(/<div class="entry-form-card"[^>]*id="ring-card">[\s\S]*?<\/div>\s*<div class="entry-form-card"[^>]*>/)[0];
     expect(card).not.toMatch(/\son\w+=/);
   });
 
