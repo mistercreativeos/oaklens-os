@@ -37,7 +37,7 @@ for (const fn of [
   'renderTrash', 'refreshStageIndicators', 'renderBuffer', 'renderArchive',
   'renderFN', 'fnNewPost', 'renderWall', 'renderNetwork',
   'renderLibrary', 'renderAudio', 'showView', 'scheduleLibrarySync',
-  'updatePurgeR2Button', 'isVideoAsset',
+  'updatePurgeR2Button', 'isVideoAsset', 'startView',
 ]) globalThis[fn] = () => {};
 
 // A localStorage the module can actually write to. The rest of save()'s work

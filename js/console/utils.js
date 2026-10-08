@@ -123,3 +123,34 @@ export function findDuplicateByHash(hash) {
   }
   return null;
 }
+
+// ============== WRITE ONLY WHAT CHANGED (2026-10-05) ==============
+// A surface's render runs on every arrival (the router calls it inside the
+// switch), and Archive and Wall rebuilt their whole grid each time even when
+// nothing had changed: 20–26ms at phone speed, most of an arrival's own work,
+// while the screen is frozen for the switch. Measured on the real data, CPU 4×.
+//
+// So a container's HTML is written only when it differs from what THAT
+// element last received. The comparison is on the render's own output, so any
+// input that would change what is drawn (the data, an upload's state, the
+// share-image index, the CDN base) changes the string and the grid is
+// rebuilt; nothing has to be traced by hand. It is safe only for a container
+// whose children no other code adds, removes or reorders — the surface's
+// render is its one writer — which is why it is opted into per surface.
+// Runtime state on unchanged rows (a loaded image, drag listeners) survives,
+// which is the point. Returns true when it wrote.
+const _painted = new WeakMap();   // element → the HTML it was last given here
+export function paintHTML(el, html) {
+  if (!el) return false;
+  if (_painted.get(el) === html) return false;
+  el.innerHTML = html;
+  _painted.set(el, html);
+  return true;
+}
+// …and a text node the same way: an identical textContent write still
+// replaces the node, which the light engine hears as a document change.
+export function setText(el, text) {
+  if (!el) return;
+  const s = String(text);
+  if (el.textContent !== s) el.textContent = s;
+}

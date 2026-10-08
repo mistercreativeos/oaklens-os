@@ -20,7 +20,7 @@
 
 import { STATE, save, stageChange } from '../console-state.js';
 import { getToken, uploadFiles, deleteAssets, fetchOgCards } from '../console-api.js';
-import { toast, hideOverlay } from './chrome.js';
+import { toast, hideOverlay, uiZoom } from './chrome.js';
 import { CDN_BASE, cdnThumb, SITE_NAME, SITE_FILE_PREFIX } from './assets.js';
 import { paintCard, paintPlain, hasPicture, probeCardTokens, ensureShareFonts, loadCardImage,
   compositionOf, shareStem, shareKey, shareMarker, SHARE_RATIOS, CARD_WELL } from './card-paint.js';
@@ -277,8 +277,9 @@ export const FocalModal = (() => {
 
   function setFromPointer(e) {
     const r = imageRect(), box = $('focal-stage').getBoundingClientRect();
-    focus.x = clamp(((e.clientX - box.left) - r.x) / r.w * 100);
-    focus.y = clamp(((e.clientY - box.top) - r.y) / r.h * 100);
+    const z = uiZoom();   // the pointer is zoomed on a large screen (K74); the stage's size is not
+    focus.x = clamp(((e.clientX - box.left) / z - r.x) / r.w * 100);
+    focus.y = clamp(((e.clientY - box.top) / z - r.y) / r.h * 100);
     paint();
   }
 

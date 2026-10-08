@@ -1,13 +1,19 @@
 {
-  "name": "OAKLENS Field Console",
-  "short_name": "Field Console",
-  "description": "OAKLENS content management console",
+  "name": "Field Console",
+  "short_name": "Console",
+  "description": "The console you publish your site from.",
   "start_url": "/dev/field-console",
   "scope": "/dev/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#050505",
   "theme_color": "#050505",
+  "shortcuts": [
+    { "name": "Open the Bridge", "short_name": "Bridge", "url": "/dev/field-console?view=bridge" },
+    { "name": "Write a field note", "short_name": "Write", "url": "/dev/field-console?view=fn" },
+    { "name": "Post a pulse", "short_name": "Pulse", "url": "/dev/field-console?view=pulse" },
+    { "name": "Drop into the Buffer", "short_name": "Buffer", "url": "/dev/field-console?view=buffer" }
+  ],
   "icons": [
     { "src": "/dev/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]

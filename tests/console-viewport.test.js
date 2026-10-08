@@ -251,15 +251,10 @@ describe('the console can report the viewport it was handed', () => {
   // inset and a viewport shorter than its window produce an identical gap at
   // the bottom of the screen and want opposite fixes; these are the numbers
   // that tell them apart.
-  it('the Settings panel has somewhere to put it', () => {
-    expect(read('dev/field-console.html')).toContain('id="settings-display"');
-  });
-
-  it('opening Settings fills it, like the build stamp beside it', () => {
-    const session = read('js/console/session.js');
-    expect(session).toMatch(/import \{[^}]*renderViewportStamp[^}]*\} from '\.\/chrome\.js'/);
-    const open = session.match(/export function openSettings\(\) \{[\s\S]*?\n\}/)[0];
-    expect(open).toContain('renderViewportStamp()');
+  it('is a measure the chrome reads, not a panel (the Settings "Display" panel went in K50c)', () => {
+    expect(read('dev/field-console.html')).not.toContain('id="settings-display"');
+    expect(read('js/console/chrome.js')).not.toMatch(/export function renderViewportStamp/);
+    expect(read('js/console/chrome.js')).toMatch(/export function _viewportReadout/);
   });
 
   it('reads the safe-area insets back off a probe rather than assuming them', () => {
@@ -311,10 +306,12 @@ describe('the tablet pass — a wide, short screen spends width, not height', ()
   });
 
   it('the archive form pairs its fields instead of one per row', () => {
-    expect(tablet).toMatch(/\.compose-form \{[^}]*grid-template-columns: 1fr 1fr/);
+    // The fields live in one lit panel since K46 (.compose-fields), and the
+    // grid lives with them.
+    expect(tablet).toMatch(/\.compose-fields \{[^}]*grid-template-columns: 1fr 1fr/);
     // The rows that are already grids must still span, or the 3-up
     // camera/lens/medium row would be squeezed into half the form.
-    expect(tablet).toContain('.compose-form > .field-row');
+    expect(tablet).toContain('.compose-fields > .field-row');
     // .field's own margin plus the parent gap was double-spacing every row.
     expect(tablet).toMatch(/\.compose-form \.field \{ margin-bottom: 0/);
   });
@@ -442,7 +439,7 @@ describe('the publish queue is a settings surface, not a scroll', () => {
     // source order decides. Armed and unlit at the same time would read as
     // "this control is off" during the one moment it is busy.
     const unlit = bare.indexOf('.btn--unlit {');
-    const armed = bare.indexOf('[data-armed="on"]:not(.btn-primary)');
+    const armed = bare.indexOf('[data-heat="hot"]:not(.btn-primary, .dropzone, .fn-hero)');
     expect(unlit, 'no .btn--unlit rule').toBeGreaterThan(-1);
     expect(armed, 'the arm no longer recolours non-primaries').toBeGreaterThan(-1);
     expect(armed, 'unlit now outranks the arm — armed controls stay grey')
@@ -478,6 +475,33 @@ describe('the publish queue is a settings surface, not a scroll', () => {
     expect(html, 'the export card lost its name').toContain('publish-action publish-export');
     expect(bare, 'the layout is picking panels out by position again')
       .not.toMatch(/#view-publish\.active[^{]*\.publish-action:nth-/);
+  });
+
+  it('publish leads the queue: one button, one line, clear staged quiet', () => {
+    // Owner, 2026-10-04: the publish panel comes first and sync second; the
+    // "PUBLISH TO GITHUB" heading was the button's label said twice; the copy
+    // is the one thing worth knowing in that moment; CLEAR STAGED stays but
+    // stops competing with the button you came here to press.
+    const html = read('dev/field-console.html');
+    const view = html.slice(html.indexOf('id="view-publish"'),
+      html.indexOf('</section>', html.indexOf('id="view-publish"')));
+    const commitAt = view.indexOf('publish-action publish-commit');
+    const syncAt = view.indexOf('class="import-zone"');
+    expect(commitAt, 'the publish panel is gone').toBeGreaterThan(-1);
+    expect(syncAt, 'the sync panel is gone').toBeGreaterThan(-1);
+    expect(commitAt, 'REMOTE SYNC is back above PUBLISH').toBeLessThan(syncAt);
+
+    const commit = view.slice(commitAt, syncAt);
+    expect(commit, 'the publish panel grew its heading back').not.toMatch(/<h[1-6][\s>]/);
+    const btn = (id) => commit.match(new RegExp(`<button[^>]*id="${id}"[^>]*>([^<]*)<`)) ?? [];
+    expect(btn('gh-publish-btn')[1], 'the button says more than the verb').toBe('▲ Publish');
+    expect(btn('gh-clear-staged-btn')[0], 'CLEAR STAGED is full size again').toMatch(/btn-sm/);
+    // The publish IS the deploy where the repo is connected, and setup.md owns
+    // the how where it is not — no shell command on this panel either way.
+    expect(commit, 'a terminal command is back on the publish panel').not.toMatch(/wrangler/);
+
+    // On a wide screen it is a bar across both columns, not a column cell.
+    expect(bare).toMatch(/#view-publish\.active > \.publish-commit \{ grid-column: 1 \/ -1; \}/);
   });
 });
 
@@ -610,24 +634,14 @@ describe('a help mark folds under the bars, like the thing it marks', () => {
     expect(HELP_MOD._fieldFor(document.getElementById('target')).bottom).toBe(VH);
   });
 
-  it('the spotlight is cut from the same rect, so it folds too', () => {
-    // One place computes the box for both the mark and the scrim hole.
+  it('the spotlight is cut from that rect, so it folds too (K93: the marks are the controls, and fold on their own)', () => {
     // Un-dimming the topbar to show off a control in the scroller would light
-    // the wrong thing.
-    const marks = HELP_SRC.slice(HELP_SRC.indexOf('function _placeMarks'));
-    expect(marks, 'the marks stopped going through _visibleRect')
-      .toMatch(/_visibleRect\(el, PAD, field\)/);
+    // the wrong thing. Since K93 browse draws no mark of its own — the control
+    // IS the mark, and scrolls under the bars like everything else — so the
+    // hole is the one thing left that is measured.
     expect(HELP_SRC, 'card mode stopped going through _visibleRect')
       .toMatch(/const rect = _visibleRect\(_target\)/);
-  });
-
-  it('an edge is only drawn where the control really ends', () => {
-    // A hairline at the bar is the BAR's edge, not the thing's — the same
-    // argument the module already made about the window's edge.
-    const marks = HELP_SRC.slice(HELP_SRC.indexOf('function _placeMarks'));
-    for (const side of ['field.top', 'field.left', 'field.bottom', 'field.right']) {
-      expect(marks, `the ${side} edge test still measures the window`).toContain(side);
-    }
+    expect(HELP_SRC).not.toMatch(/function _placeMarks|function _placeMark\b/);
   });
 });
 

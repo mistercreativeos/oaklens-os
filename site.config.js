@@ -110,6 +110,9 @@ export default Object.freeze({
   //   memory card, no terminal, no extra storage account) is designed and
   //   waiting to be built — see docs/bench-decision.md. Leave this alone until
   //   then; switching it on just shows an empty tab.
+  //   startView — which screen the console opens to, if a device hasn't picked
+  //   its own in Settings → "Opens to". A writer might want 'fn', a musician
+  //   'audio'. Leave it out for the default.
   console: { bench: false },
   // BRANDED SHORT LINKS. `{ code: 'https://…' }` makes yoursite.com/<code>
   // a 302 to that URL — a link on your own domain that you can re-point

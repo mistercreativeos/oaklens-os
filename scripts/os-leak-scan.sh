@@ -205,10 +205,9 @@ done
 # NOT get edited per instance — it travels as-is.
 #
 # No per-file exemption for the known-benign hits, deliberately. Against THIS
-# repo it fires on the `/Users/you` placeholder in `js/page-preflight.js` and on
-# paths quoted inside `docs/maintenance/` — and BOTH are stripped at extraction
-# (os-extract.mjs EXCLUDEs the preflight module and the whole of docs/), so the
-# fork CI this gate actually guards never sees either. Adding them to
+# repo it fires on paths quoted inside `docs/maintenance/` — stripped at
+# extraction (os-extract.mjs EXCLUDEs the whole of docs/), so the
+# fork CI this gate actually guards never sees them. Adding them to
 # ALLOWLIST_FILES would exempt those files from EVERY identity check, which is
 # far too much given away to silence a handful of lines that cannot reach a fork.
 #

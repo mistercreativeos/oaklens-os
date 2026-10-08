@@ -1032,6 +1032,15 @@ const FEED_CHECKS = [
 // clean bill of health.
 let _feedReadiness = null;
 
+// For the Bridge: how many hard blockers stand between the episodes and a
+// listing. 0 with no episodes (an empty show is not a blocked one) and 0
+// before the settings have been read — the Bridge says nothing it cannot back.
+export function podcastBlockersOpen() {
+  const episodes = STATE.audio.filter((a) => a.episode && a.slug && a.filename).length;
+  if (!episodes || !_feedReadiness) return 0;
+  return FEED_CHECKS.filter((c) => c.blocking && _feedReadiness[c.flag] !== true).length;
+}
+
 export function applyPodcastPosture(readiness) {
   _feedReadiness = (readiness && typeof readiness === 'object') ? readiness : null;
   renderPodcastCard();
@@ -1069,7 +1078,7 @@ export function renderPodcastCard() {
   // so plainly beats a checklist of things to fix about a feed with nothing in
   // it. The ○ EPISODE button is named because that is the next gesture.
   if (!episodes) {
-    host.innerHTML = `<div class="aud-feed">${head}
+    host.innerHTML = `<div class="aud-feed" data-seam="box" data-backlit data-tier="panel">${head}
       <div class="aud-feed-note">No tracks are marked EPISODE yet, so the feed serves an empty show.
         ${total ? 'Press ○ EPISODE on any track below to put it in the feed.' : 'Drop a track above, then press ○ EPISODE on it.'}</div>
       ${BETA_NOTE}
@@ -1083,7 +1092,7 @@ export function renderPodcastCard() {
   // A failed settings read must not render as "everything is fine". Say what
   // is unknown and stop.
   if (!_feedReadiness) {
-    host.innerHTML = `<div class="aud-feed">${head}${count}
+    host.innerHTML = `<div class="aud-feed" data-seam="box" data-backlit data-tier="panel">${head}${count}
       <div class="aud-feed-note dim">// could not read this site's config — reload to check what a directory still needs</div>
       ${BETA_NOTE}
     </div>`;
@@ -1107,7 +1116,7 @@ export function renderPodcastCard() {
         ${blocked.length === 1 ? 'field is' : 'fields are'} missing. Edit site.config.js and deploy.</div>`
     : '<div class="aud-feed-verdict ok">Ready to submit — paste the address above into Apple Podcasts, Spotify or Overcast.</div>';
 
-  host.innerHTML = `<div class="aud-feed">${head}${count}${verdict}
+  host.innerHTML = `<div class="aud-feed" data-seam="box" data-backlit data-tier="panel">${head}${count}${verdict}
     <ul class="aud-feed-list">${rows}</ul>
     ${BETA_NOTE}
   </div>`;
@@ -1139,7 +1148,7 @@ export function renderAudioSets() {
     // retired track's: an address that is spoken for should be something you
     // can see, not a rule that surprises you when a name is refused.
     if (s.retired) {
-      return `<div class="aud-set aud-set-retired">
+      return `<div class="aud-set aud-set-retired" data-seam="box" data-backlit data-tier="card">
       <div class="aud-set-head">
         <div class="aud-set-main">
           <div class="aud-title">// RETIRED<span class="aud-badge retired">ADDRESS RESERVED</span></div>
@@ -1190,7 +1199,7 @@ export function renderAudioSets() {
       : '';
     const full = (s.tracks || []).length >= AUDIO_MAX_PLAYLIST;
 
-    return `<div class="aud-set">
+    return `<div class="aud-set" data-seam="box" data-backlit data-tier="card">
       <div class="aud-set-head">
         <div class="aud-set-main">
           <div class="aud-title">${escapeHTML(_setLabel(s))}</div>
@@ -1258,7 +1267,7 @@ export function renderAudio() {
 
   let playlistBanner = '';
   if (!featured.length && restorable) {
-    playlistBanner = `<div class="aud-playlist-banner">
+    playlistBanner = `<div class="aud-playlist-banner" data-seam="box" data-backlit data-tier="panel">
       <div class="aud-pl-info">
         <span class="aud-pl-tag">☆ NO HOMEPAGE CARD</span>
         <span class="aud-pl-names">Cleared ${restorable.length} track${restorable.length === 1 ? '' : 's'} — restorable until you leave this tab</span>
@@ -1266,7 +1275,7 @@ export function renderAudio() {
       <div class="aud-pl-actions">${restoreBtn}</div>
     </div>`;
   } else if (featured.length > 1) {
-    playlistBanner = `<div class="aud-playlist-banner">
+    playlistBanner = `<div class="aud-playlist-banner" data-seam="box" data-backlit data-tier="panel">
       <div class="aud-pl-info">
         <span class="aud-pl-tag">★ HOMEPAGE PLAYLIST</span>
         <span class="aud-pl-names">${featured.length} tracks pinned · ${escapeHTML(featured.map((t) => t.title || t.filename || 'Untitled').join(', '))}</span>
@@ -1276,7 +1285,7 @@ export function renderAudio() {
       </div>
     </div>`;
   } else if (featured.length === 1) {
-    playlistBanner = `<div class="aud-playlist-banner">
+    playlistBanner = `<div class="aud-playlist-banner" data-seam="box" data-backlit data-tier="panel">
       <div class="aud-pl-info">
         <span class="aud-pl-tag">★ HOMEPAGE CARD</span>
         <span class="aud-pl-names">Single track: "${escapeHTML(featured[0].title || featured[0].filename || 'Untitled')}"</span>
@@ -1298,7 +1307,7 @@ export function renderAudio() {
     // able to see that an address is spoken for; a reservation nothing shows is
     // a rule that surprises you later.
     if (a.retired) {
-      return `<div class="aud-row aud-row-retired">
+      return `<div class="aud-row aud-row-retired" data-seam="box" data-backlit data-tier="card">
       <div class="aud-main">
         <div class="aud-title">// RETIRED<span class="aud-badge retired">ADDRESS RESERVED</span></div>
         <div class="aud-meta">${escapeHTML(`/listen/?a=${a.slug}`)}${a.retired_at ? ` · ${escapeHTML(a.retired_at.slice(0, 10))}` : ''}</div>
@@ -1321,7 +1330,7 @@ export function renderAudio() {
       ? (featured.length > 1 ? `★ TRACK #${a.featured_order || ''}` : '★ ON CARD')
       : '☆ CARD';
 
-    return `<div class="aud-row ${state}">
+    return `<div class="aud-row ${state}" data-seam="box" data-backlit data-tier="card">
       <div class="aud-main">
         <div class="aud-title">${escapeHTML(a.title || a.filename || 'Untitled')}${badge}</div>
         <div class="aud-sub">${escapeHTML(a.sub || '')}</div>
@@ -1451,7 +1460,7 @@ export function renderAudioLibrary() {
     <button class="audio-lib-pill${_audioLibFilter === 'all' ? ' active' : ''}" onclick="_audioLibSetFilter('all')">ALL (${(STATE.audio || []).filter((a) => a.filename && a.slug).length})</button>
     <button class="audio-lib-pill${_audioLibFilter === 'card' ? ' active' : ''}" onclick="_audioLibSetFilter('card')">ON CARD</button>
     <button class="audio-lib-pill${_audioLibFilter === 'episodes' ? ' active' : ''}" onclick="_audioLibSetFilter('episodes')">EPISODES</button>
-    <input class="audio-lib-search" id="audio-lib-search" placeholder="search audio…"
+    <input class="audio-lib-search" data-tier="field" id="audio-lib-search" placeholder="search audio…"
       value="${escapeHTML(searchVal)}"
       oninput="_audioLibSearchDebounced()">
     <button class="audio-lib-sort" onclick="_audioLibToggleSort()">
@@ -1515,7 +1524,7 @@ export function renderAudioLibrary() {
     const isSel = selIdx >= 0;
     const isPlaying = _audioLibPlayingSlug === track.slug;
 
-    return `<div class="audio-lib-item${isSel ? ' selected' : ''}" data-slug="${escapeHTML(track.slug)}" onclick="_audioLibItemClick('${escapeAttrJS(track.slug)}')">
+    return `<div class="audio-lib-item${isSel ? ' selected' : ''}" data-tier="card" data-slug="${escapeHTML(track.slug)}" onclick="_audioLibItemClick('${escapeAttrJS(track.slug)}')">
       <div class="aud-lib-col-play">
         <button type="button" class="aud-lib-play-btn" onclick="event.stopPropagation(); _audioLibProbePlay('${escapeAttrJS(track.slug)}', '${escapeAttrJS(track.filename)}')">
           ${isPlaying ? '⏸' : '▶'}

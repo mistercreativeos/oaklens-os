@@ -1,0 +1,11 @@
+-- 0003 — a draft's KIND (K65, 2026-10-06).
+--
+-- The Bridge's spark (a two-line quick draft that saves privately and
+-- expands into the full Field Notes editor) is a draft of its own kind, so
+-- it can be listed under SPARKS in the editor and kept out of the Bridge's
+-- "waiting on you". Every existing draft is a note.
+--
+-- Safe to skip: src/api/drafts.js falls back to the columns before this one
+-- when `kind` is missing, so a fork that deployed without running migrations
+-- keeps its cloud drafts (sparks then sync as notes until it migrates).
+ALTER TABLE fn_drafts ADD COLUMN kind TEXT NOT NULL DEFAULT 'note';

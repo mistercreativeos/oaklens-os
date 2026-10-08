@@ -27,11 +27,12 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { plainUnits } from './helpers/units.js';
 
 const ROOT = join(import.meta.dirname, '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
-const css = read('css/field-console.css');
+const css = plainUnits(read('css/field-console.css'));
 const html = read('dev/field-console.html');
 const js = read('js/console/fn-editor.js');
 
@@ -200,7 +201,7 @@ describe('the shape: one layout, one band', () => {
     expect(view, 'the drawer is back inside the view, under the tab bar').not.toContain('id="fn-drawer"');
     expect(html, 'the drawer went missing entirely').toContain('id="fn-drawer"');
     // …so something has to shut it when you navigate away.
-    expect(read('js/console/init.js')).toMatch(/registerView\("fn",[\s\S]{0,400}onLeave: fnCloseDrawer/);
+    expect(read('js/console/init.js')).toMatch(/registerView\("fn",[\s\S]{0,400}onLeave: [^\n]*fnCloseDrawer\(\)/);
   });
 
   it('no FN layout rule survives outside the section', () => {
@@ -257,6 +258,34 @@ describe('the shape: one layout, one band', () => {
       .not.toMatch(/body\.fn-focus[^{]*\.fn-bar[^-][^{]*\{[^}]*display:\s*none/);
     expect(SECTION).toMatch(/body\.fn-focus \.fn-bar-actions \{[^}]*position:\s*absolute/);
     expect(SECTION).toMatch(/body\.fn-focus \.fn-dock \{ opacity/);
+  });
+
+  it('the writing is the whole surface under the rail: a Pencil target, not a band (K62)', () => {
+    // The owner, on the iPad mini: the layout "just isn't expanding to its
+    // full capacity". The canvas is a column, the manuscript fills it, and
+    // the writing fills the manuscript — no fraction of the screen height.
+    expect(rule('.fn-canvas')).toMatch(/display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*container-type:\s*inline-size/);
+    expect(rule('.fn-manuscript')).toMatch(/flex:\s*1 0 auto/);
+    const body = rule('.fn-body');
+    expect(body).toMatch(/flex:\s*1 0 auto/);
+    expect(SECTION, 'a vh floor on the writing is back').not.toMatch(/\.fn-body \{[^}]*min-height:\s*\d+vh/);
+    // Full width as a field, 760px as a measure: the bleed out, the padding in.
+    expect(body).toMatch(/--fn-bleed: max\(0px, \(100cqi - 100%\) \/ 2\)/);
+    expect(body).toMatch(/margin-inline: calc\(-1 \* var\(--fn-bleed\)\)/);
+    expect(body).toMatch(/padding: 4px var\(--fn-bleed\) 0/);
+  });
+
+  it('focus mode is only the writing: the cover goes, and the keys rest readable on touch (K62)', () => {
+    expect(SECTION).toMatch(/body\.fn-focus #fn-hero-slot \{ display: none; \}/);
+    const touch = SECTION.slice(SECTION.indexOf('@media (max-width: 1180px), (pointer: coarse)'));
+    expect(touch).toMatch(/body\.fn-focus #view-fn \.fn-bar-actions \{ opacity: 0\.\d+; \}/);
+  });
+
+  it('leaving the view leaves focus mode and lands a pending save (K62)', () => {
+    expect(js).toMatch(/export function fnExitFocus\(\)/);
+    expect(js).toMatch(/export function fnFlushSave\(\)/);
+    const init = read('js/console/init.js');
+    expect(init).toMatch(/registerView\("fn", \{[\s\S]*?onLeave: \(\) => \{ fnFlushSave\(\); fnCloseDrawer\(\); fnExitFocus\(\); \}/);
   });
 
   it('the draft marker is on the bar, not down the left edge', () => {

@@ -16,58 +16,48 @@
 
 import { SESSION_KEY, getToken, setToken, clearToken, _tokenSecondsLeft, isLoggedIn, login, logoutServer, fetchSiteSettings } from '../console-api.js';
 import { showToast, setSystemState } from '../console-telemetry.js';
-import { toast, hideOverlay, renderBuildStamp, renderViewportStamp } from './chrome.js';
+import { toast, hideOverlay, renderBuildStamp, escapeHTML, escapeAttrJS, refreshSurface, START_VIEW_KEY, resolveStartView, availableViews, siteStartView } from './chrome.js';
 import { _librarySyncFailed } from './sync.js';
 import { _hasNetFailedUploads } from './upload.js';
 import { syncFromServer, _resumeAfterReconnect, _syncPendingReconnect } from './publish.js';
 import { applyPodcastPosture } from './audio.js';
+import { unreadableCopies, downloadUnreadable, removeUnreadable } from '../console-state.js';
 
 // ============== SESSION AUTH (UI) ==============
 // Token storage, JWT parsing, and the /api/auth request live in
 // js/console-api.js (SESSION_KEY, getToken, setToken, clearToken, isLoggedIn,
 // _tokenSecondsLeft, login). This section owns the login modal + settings UI.
 
-// ---- ONE DOOR ------------------------------------------------------------
+// ---- ONE CARD --------------------------------------------------------------
 // A password box is a HABIT. An owner who learns to type their password into
 // whatever box appears is an owner who will type it into a box somebody else
-// drew. So this console has exactly one login page — the gate the worker
-// serves at /dev/field-console — and it never draws a second one over itself
-// when it can send you to the first.
+// drew. So there is one card to learn, and both doors wear it: the console's
+// own login modal, raised over the console, and the worker's gate at
+// /dev/field-console for a browser that has never signed in
+// (dev/console-gate.html, the same card).
 //
-// Both routes below retire the shell cookie and then reload: a cookie-less
-// request is what makes the worker answer with the gate rather than this
-// document. The reload is deliberately NOT delayed and is never preceded by
-// checkAuth(), because either one puts the console's own modal on screen for
-// the length of the wait — which is the exact habit this is here to avoid.
-//
-// The modal is the FALLBACK, and it is why it still exists: if the cookie
-// cannot be retired (offline, endpoint down) the shell is served again, and a
-// second bounce would loop forever. One attempt per tab, then the modal.
-const GATE_BOUNCE_KEY = 'oaklens_gate_bounce';
+// Until 2026-10-06 the gate had its own design and the console sent you to it
+// on log out and in every new tab — a reload away from the console you were
+// in. The owner's call: keep the card over the console. So log out stays
+// here, the card comes up over a console that now reads SIGNED OUT, and the
+// shell cookie is still retired, so a reload, or another browser, meets the
+// gate.
 
-function _bounceToGate() {
-  // ⚠️ Also the reason a `consoleShellPublic: true` instance spends one reload
-  // here before falling back to the modal: the console document is public
-  // there, so the reload serves it again. Self-limiting, once per tab, and the
-  // secure-by-default posture is the one worth optimising for.
-  try {
-    if (sessionStorage.getItem(GATE_BOUNCE_KEY)) return false;
-    sessionStorage.setItem(GATE_BOUNCE_KEY, '1');
-  } catch { return false; }   // private mode: no flag means no loop guard
-  logoutServer()
-    .catch(() => {})
-    .then(() => { try { location.reload(); } catch { /* not a browser */ } });
-  return true;
+// Repaint whatever is showing, so a surface that reads the session (the
+// Bridge's SIGNED OUT) changes with it.
+function _repaintShowing() {
+  const view = document.querySelector('.view.active')?.id.replace(/^view-/, '');
+  if (view) refreshSurface(view);
 }
 
 export function logout() {
   clearToken();
   closeSettings();
-  toast('Logged out', 'info');
-  // Straight to the gate. Staged work survives the reload — the console
-  // persists it to localStorage (js/console-state.js) — and the toast is
-  // beside the point: the login page appearing IS the confirmation.
-  if (!_bounceToGate()) checkAuth();
+  // Retire the shell cookie: from here a reload or a new browser meets the
+  // gate. Staged work stays — the console keeps it in localStorage.
+  logoutServer().catch(() => {});
+  checkAuth();
+  _repaintShowing();
 }
 
 export async function loginSubmit() {
@@ -86,7 +76,8 @@ export async function loginSubmit() {
     document.getElementById('login-password').value = '';
     checkAuth();
     _updateSettingsDots();
-    setTimeout(syncFromServer, 200);
+    _repaintShowing();
+    setTimeout(() => syncFromServer({ quiet: true }), 200);   // the lamp says it (K76)
   } catch (err) {
     const msg = err.status === 0 ? 'network error — try again' : (err.data?.error || 'invalid credentials');
     if (errEl) errEl.textContent = '✕ ' + msg;
@@ -102,11 +93,9 @@ export function checkAuth() {
   const loginModal = document.getElementById('login-modal');
   if (!loginModal) return;
   if (!isLoggedIn()) {
-    // No usable token. That happens on an expired one, and on every new TAB
-    // (the bearer lives in sessionStorage, which is per-tab, while the shell
-    // cookie is 30 days) — both of which used to raise the modal. Send them
-    // to the one door instead; the modal answers only when that cannot work.
-    if (_bounceToGate()) return;
+    // No usable token: after log out, on an expired one, and in every new
+    // TAB (the bearer lives in sessionStorage, which is per-tab, while the
+    // shell cookie is 30 days). The card comes up over the console (ONE CARD).
     loginModal.classList.remove('hidden');
     // Resolve the field NOW, not inside the timer. A deferred document lookup
     // outlives whatever tore the page down around it — in the suite that means
@@ -121,10 +110,60 @@ export function checkAuth() {
 
 export function openSettings() {
   _renderSettingsStatus();
+  _renderUnreadable();
+  _renderStartViewPicker();
   _renderSiteSettings();
   renderBuildStamp();   // async; the panel fills in a tick later
-  renderViewportStamp();
   document.getElementById('settings-modal').classList.remove('hidden', 'closing');
+}
+
+// ---- Opens to (this device) ----
+// The device half of the start view (chrome.js, START VIEW): one choice, kept
+// in localStorage, read at the next boot. "Site default" removes the key, so
+// the site's own console.startView (or the Buffer) decides again. Labels come
+// off the nav itself — the router knows no surface by name, and neither does
+// this list — in the nav's own order.
+function _viewLabel(name) {
+  const src = document.querySelector(`.nav-btn[data-view="${name}"], .sheet-item[data-view="${name}"], .tab-btn[data-view="${name}"]`);
+  if (!src) return name;
+  const c = src.cloneNode(true);
+  c.querySelectorAll('.nav-icon, .nav-count, .nav-stage-pip, .sheet-icon, .sheet-count, .tab-icon, .tab-count, .tab-badge, .settings-status-dot')
+    .forEach((n) => n.remove());
+  return c.textContent.replace(/\s+/g, ' ').trim() || name;
+}
+
+export function _renderStartViewPicker() {
+  const el = document.getElementById('settings-start-view');
+  if (!el) return;
+  let chosen = '';
+  try { chosen = localStorage.getItem(START_VIEW_KEY) || ''; } catch {}
+  const available = availableViews();
+  const ordered = [...new Set([...document.querySelectorAll('[data-view]')].map((b) => b.dataset.view))]
+    .filter((n) => available.includes(n));
+  const siteDefault = resolveStartView({ site: siteStartView(), available });
+  const options = [
+    ['', `Site default · ${_viewLabel(siteDefault)}`],
+    ...ordered.map((n) => [n, _viewLabel(n)]),
+    ['last', 'Last used'],
+  ];
+  _fold('settings-fold-start', (options.find(([value]) => value === chosen) || options[0])[1]);
+  el.innerHTML = options.map(([value, label]) =>
+    `<button type="button" class="focal-style-btn${value === chosen ? ' on' : ''}" role="radio"` +
+    ` aria-checked="${value === chosen}" data-start="${value}">${escapeHTML(label)}</button>`).join('');
+  el.onclick = (e) => {
+    const btn = e.target.closest('[data-start]');
+    if (!btn) return;
+    const value = btn.dataset.start;
+    try {
+      if (value) localStorage.setItem(START_VIEW_KEY, value);
+      else localStorage.removeItem(START_VIEW_KEY);
+    } catch {
+      showToast('// this browser is not keeping settings', { kind: 'error' });
+      return;
+    }
+    _renderStartViewPicker();
+    showToast(`✓ opens to ${value === 'last' ? 'the last surface used' : _viewLabel(value || siteDefault)}`, { kind: 'success' });
+  };
 }
 
 // ---- Site Settings card (starter template, read-only v1) ----
@@ -144,6 +183,7 @@ export async function _renderSiteSettings() {
       ` border:1px solid var(--line-2); border-radius:var(--r-1, 3px);` +
       ` color:${on ? 'var(--ink-2, var(--text))' : 'var(--ink-3, var(--text-faint))'};">` +
       `${label} ${on ? '·on' : '·off'}</span>`;
+    _fold('settings-fold-site', `${s.theme.preset} · ${s.theme.defaultMode}`);
     el.innerHTML =
       `<div>preset <span style="color:var(--accent-text, var(--accent));">${s.theme.preset}</span>` +
       ` · mode ${s.theme.defaultMode} · visitor toggle ${s.theme.toggle ? 'on' : 'off'}</div>` +
@@ -151,6 +191,7 @@ export async function _renderSiteSettings() {
       `<div style="margin-top:4px;">${chip('demo mode', s.demoMode)}${chip('git deploy', s.repoConnected)}</div>`;
   } catch {
     _siteSettings = null;
+    _fold('settings-fold-site', 'unavailable');
     el.innerHTML = '// unavailable — the worker answers /api/site/settings once deployed';
   }
 }
@@ -222,7 +263,7 @@ export async function applyInstancePosture() {
     // DOM read, not an upward import.
     hint.dataset.repoConnected = s.repoConnected ? '1' : '0';
     if (s.repoConnected) {
-      hint.textContent = 'Cloudflare rebuilds from the repo — live in about a minute. No ZIP, no terminal, no cleanup.';
+      hint.textContent = 'live in about a minute.';
     }
   }
   applyRingPosture(s.webring);
@@ -321,16 +362,48 @@ export function _renderSettingsStatus() {
   const el = document.getElementById('settings-status');
   if (!el) return;
   const ok = isLoggedIn();
+  _fold('settings-fold-session', ok ? 'active' : 'signed out');
   el.innerHTML =
     `<span style="color:${ok ? 'var(--green)' : 'var(--accent)'};">` +
     `${ok ? '✓' : '✕'} Session ${ok ? 'active' : 'not authenticated'}</span>`;
 }
 
+// Each folded section of Settings says its current value in its title, so
+// the sheet answers at a glance and opens only for a change (2026-10-06).
+function _fold(id, text) {
+  const el = document.getElementById(id);
+  if (el && el.textContent !== text) el.textContent = text;
+}
+
+// ---- Unreadable saved work (K68) ----
+// Shown only when this device kept a copy of a state it couldn't read
+// (console-state.js, UNREADABLE SAVED WORK). Download is the point of it;
+// removing a copy is the owner's call, asked twice.
+export function _renderUnreadable() {
+  const box = document.getElementById('settings-unreadable');
+  const list = document.getElementById('settings-unreadable-list');
+  if (!box || !list) return;
+  const copies = unreadableCopies();
+  box.hidden = !copies.length;
+  list.innerHTML = copies.map(({ key, at, bytes }) =>
+    `<div class="settings-unreadable-row"><span>${escapeHTML(at)} · ${Math.max(1, Math.round(bytes / 1024))} KB</span> ` +
+    `<button type="button" class="btn btn-ghost btn-sm" onclick="settingsUnreadable('download', '${escapeAttrJS(key)}')">⤓ Download</button>` +
+    (key ? ` <button type="button" class="btn btn-ghost btn-sm" onclick="settingsUnreadable('remove', '${escapeAttrJS(key)}')">Remove</button>` : '') +
+    `</div>`).join('');
+}
+export function settingsUnreadable(action, key) {
+  if (action === 'download') downloadUnreadable(key);
+  else if (action === 'remove' && confirm('Remove this copy from this device? Download it first if there is anything in it you want.')) removeUnreadable(key);
+  _renderUnreadable();
+}
+
+// The dots are the SMD part (K47): the stylesheet colours the LED from its
+// state, so the bezel, specular and glow all follow it.
 export function _updateSettingsDots() {
-  const color = isLoggedIn() ? 'var(--green)' : 'var(--accent)';
+  const state = isLoggedIn() ? 'ok' : 'off';
   ['settings-dot', 'sidebar-settings-dot', 'sheet-settings-dot'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.style.background = color;
+    if (el) el.dataset.state = state;
   });
 }
 

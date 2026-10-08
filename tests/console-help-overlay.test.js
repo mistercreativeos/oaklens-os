@@ -66,7 +66,7 @@ beforeEach(() => {
 
 afterEach(() => { help?.helpClose(); help = null; vi.resetModules(); });
 
-const marks = () => [...document.querySelectorAll('.help-mark')].map((m) => m.dataset.helpFor);
+const marks = () => [...document.querySelectorAll('.help-target')].map((m) => m.dataset.helpFor);
 const relayout = () => window.dispatchEvent(new Event('resize'));
 
 describe('the marks follow a render that finishes after help opens', () => {
@@ -94,12 +94,12 @@ describe('the marks follow a render that finishes after help opens', () => {
     expect(document.getElementById('summary-2').getAttribute('tabindex')).toBe('0');
   });
 
-  it('keeps the same mark nodes when nothing changed, so a rod can cool in place', async () => {
+  it('keeps the same marked set when nothing changed (K93: the mark is the control itself)', async () => {
     const help = await boot();
     help.helpToggle();
-    const before = [...document.querySelectorAll('.help-mark')];
+    const before = [...document.querySelectorAll('.help-target')];
     relayout();
-    expect([...document.querySelectorAll('.help-mark')]).toEqual(before);
+    expect([...document.querySelectorAll('.help-target')]).toEqual(before);
   });
 
   it('watches the view for the render, not just the window for a resize', async () => {

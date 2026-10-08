@@ -139,6 +139,11 @@ describe('<title> is composed at the edge', () => {
     expect(titleOf('prefix', ['FIELD CONSOLE v0.13.0'])).toBe(`${brand()} // FIELD CONSOLE v0.13.0`);
   });
 
+  it('leaves the console\'s own name alone (K97: the window is the app\'s)', () => {
+    expect(titleOf('plain', ['Field Console'])).toBe('Field Console');
+    expect(titleOf('plain', [''])).toBe(brand());
+  });
+
   it('replaces the whole title on the homepage', () => {
     expect(titleOf('brand', ['Photography'])).toBe(brand());
   });
@@ -247,7 +252,7 @@ describe('served markup carries no brand of its own', () => {
 
   it('the console shell ships them too', () => {
     const html = read('dev/field-console.html');
-    expect(html).toMatch(/<title data-site-title="prefix"/);
+    expect(html).toMatch(/<title data-site-title="plain">Field Console<\/title>/);   // K97: the app's own name, no wordmark
     expect(html).toContain('data-site-wordmark');
   });
 });

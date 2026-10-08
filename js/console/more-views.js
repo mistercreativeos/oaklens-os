@@ -21,7 +21,7 @@ import { getToken } from '../console-api.js';
 import { showToast, startProgress, updateProgress, endProgress, logEvent } from '../console-telemetry.js';
 import { toast, escapeHTML } from './chrome.js';
 import { generateVariants, cdnThumb, cdnVariant, isVideoAsset, SITE_FILE_PREFIX } from './assets.js';
-import { todayISO, uid, cleanFilename, readFileAsDataURL, computeHash, findDuplicateByHash } from './utils.js';
+import { todayISO, uid, cleanFilename, readFileAsDataURL, computeHash, findDuplicateByHash, paintHTML, setText } from './utils.js';
 import { scheduleLibrarySync } from './sync.js';
 import { _enqueueUpload } from './upload.js';
 
@@ -199,10 +199,14 @@ export function renderLibrary() {
     // key once uploaded, `Date.now()` is unique if we somehow render too early.
     // Never append to a local data: URL (the not-logged-in fallback) — that
     // would corrupt the base64 payload.
+    // A synced item (_imported) is on the CDN as surely as one uploaded here:
+    // it takes the stable key too. It used to take Date.now(), so every
+    // render was a new address and every Library image (~1.4 MB at 1024w)
+    // downloaded again, twice at boot alone (K69, the Bridge field probe).
     const raw = cdnThumb(item);
     const thumbSrc = raw.startsWith('data:')
       ? raw
-      : raw + '?v=' + (item._uploaded ? '1' : Date.now());
+      : raw + '?v=' + (item._uploaded || item._imported ? '1' : Date.now());
 
     // Mirror renderBuffer(): while uploading/errored, show a placeholder rather
     // than pointing <img> at a CDN object that doesn't exist yet. Otherwise the
@@ -214,11 +218,13 @@ export function renderLibrary() {
     } else if (item._uploadError) {
       thumbHtml = '<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:0.5rem;letter-spacing:1px;color:var(--accent);">✕ FAILED</div>';
     } else {
-      thumbHtml = `<div class="thumb"><img src="${thumbSrc}" alt="" onerror="this.style.display='none'"></div>`;
+      // Lazy: the Library is a hidden view at boot, and a hidden view's
+      // pictures are not worth a cold open's bandwidth (K69).
+      thumbHtml = `<div class="thumb"><img src="${thumbSrc}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'"></div>`;
     }
 
     return `
-    <div class="archive-card">
+    <div class="archive-card" data-seam="box" data-backlit data-tier="card">
       ${thumbHtml}
       <div class="info">
         <div class="title">${escapeHTML(item.filename)}</div>
@@ -439,21 +445,26 @@ export function wallRemove(id) {
 
 export function renderWall() {
   const missing = STATE.wallpapers.filter(w => !w.filename).length;
-  document.getElementById("wall-stats").textContent =
-    `${STATE.wallpapers.length} wallpapers` + (missing ? ` · ${missing} missing filename` : "");
+  setText(document.getElementById("wall-stats"),
+    `${STATE.wallpapers.length} wallpapers` + (missing ? ` · ${missing} missing filename` : ""));
   const list = document.getElementById("wall-list");
   if (!STATE.wallpapers.length) {
-    list.innerHTML = `<div class="empty">// WALL EMPTY</div>`;
+    paintHTML(list, `<div class="empty">// WALL EMPTY</div>`);
     return;
   }
-  list.innerHTML = STATE.wallpapers.map((w, i) => {
+  // Written only when it differs (utils.js paintHTML); the rows it keeps keep
+  // their drag wiring, so the wiring runs only on rows it just wrote. This
+  // render is the list's one writer: a drag reorders STATE and calls it.
+  const wrote = paintHTML(list, STATE.wallpapers.map((w, i) => {
     let thumbHtml;
     if (w._uploading) {
       thumbHtml = `<div class="list-thumb" style="display:flex;align-items:center;justify-content:center;font-size:0.5rem;letter-spacing:1px;color:var(--accent);">▲ UPLOADING</div>`;
     } else if (w._uploadError) {
       thumbHtml = `<div class="list-thumb" style="display:flex;align-items:center;justify-content:center;font-size:0.5rem;letter-spacing:1px;color:var(--accent);">✕ FAILED</div>`;
     } else {
-      thumbHtml = `<img class="list-thumb" src="${w.src || cdnThumb(w, 'wallpaper')}" alt=""${w.focus ? ` style="object-position:${w.focus}"` : ''} onerror="this.style.background='var(--bg-elev-2)'">`;
+      // Lazy (K69): the Wall is rendered at boot behind the start view, and
+      // its ~90 rows were 8 MB of a cold open nobody was looking at.
+      thumbHtml = `<img class="list-thumb" src="${w.src || cdnThumb(w, 'wallpaper')}" alt="" loading="lazy" decoding="async"${w.focus ? ` style="object-position:${w.focus}"` : ''} onerror="this.style.background='var(--bg-elev-2)'">`;
     }
     return `
     <div class="list-row${w._imported ? ' imported' : ''}" draggable="true" data-id="${w.id}" data-list="wallpapers" onclick="wallEdit('${w.id}')" style="cursor:pointer;">
@@ -473,8 +484,8 @@ export function renderWall() {
         <button class="icon-btn danger" onclick="event.stopPropagation(); wallRemove('${w.id}')">×</button>
       </div>
     </div>`;
-  }).join("");
-  wireListDrag("wall-list", "wallpapers");
+  }).join(""));
+  if (wrote) wireListDrag("wall-list", "wallpapers");
 }
 
 // ============== NETWORK · FRIENDS OF (About §004) ==============

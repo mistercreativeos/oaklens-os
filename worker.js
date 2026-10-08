@@ -30,6 +30,7 @@ import {
   handleAnalogsToken,
 } from './src/api/site-meta.js';
 import { handleDevFeed, warmDevFeed } from './src/api/devfeed.js';
+import { handleGetStorage, handleMeasureStorage, measureStorage } from './src/api/storage.js';
 
 // Re-exported for the public contract: tests/page-gate.test.js imports the page
 // helpers + _navLinksHtml, and tests/publish-guard.test.js imports the two pure
@@ -135,6 +136,10 @@ const EXACT_ROUTES = new Map([
   ['POST /api/pulse', (request, env) => handlePostPulse(request, env)],
   ['DELETE /api/pulse', (request, env) => handleDeletePulse(request, env)],
   ['GET /api/pulse/log', (request, env) => handlePulseLog(request, env)],
+  // How full storage is, for the console's Bridge. Measured daily by the cron
+  // below and kept in KV; POST re-measures, rate-limited (src/api/storage.js).
+  ['GET /api/storage', (request, env) => handleGetStorage(request, env)],
+  ['POST /api/storage', (request, env) => handleMeasureStorage(request, env)],
 ]);
 
 // Allowed methods per exact pathname, DERIVED from the table above rather than
@@ -189,6 +194,9 @@ export default {
     // Independent of the archive run — neither should be able to skip the
     // other — and silent when `devFeed` is unconfigured (it returns null).
     ctx.waitUntil(warmDevFeed(env));
+    // Measure storage once a day so the console's gauge never lists the
+    // bucket on open (src/api/storage.js). Independent of the two above.
+    ctx.waitUntil(measureStorage(env).catch(() => {}));
   },
 
   async fetch(request, env, ctx) {

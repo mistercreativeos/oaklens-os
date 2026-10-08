@@ -143,6 +143,9 @@ export function fnHeroSet(dataURL, filename) {
   // A class, not the shape of an inline style: the CSS switches the slot from
   // dashed dropzone to solid cover banner off this one fact.
   slot.classList.add("has-cover");
+  // …and a photograph is not glass: the empty slot is a bay whose rim is a
+  // seam (data-seam="box"); the cover is opaque and gives no light.
+  slot.removeAttribute("data-seam");
   document.getElementById("fn-hero-empty").style.display = "none";
   const thumb = document.getElementById("fn-hero-thumb");
   const base = encodeURIComponent((filename || '').replace(/\.[^.]+$/, ''));
@@ -170,6 +173,7 @@ export function fnHeroClear() {
   // opt-in that has nothing to act on.
   delete slot.dataset.cardLayout;
   slot.classList.remove("has-cover");
+  slot.setAttribute("data-seam", "box");
   document.getElementById("fn-hero-empty").style.display = "flex";
   document.getElementById("fn-hero-thumb").style.display = "none";
   document.getElementById("fn-hero-name").style.display = "none";
@@ -333,16 +337,13 @@ export function fnStage(explicitStatus = null) {
     // ENGINE block in js/recent-index.js.
     card: slot.dataset.cardLayout ? { layout: slot.dataset.cardLayout } : null,
     buffer_dates: fnCurrentBufferDates.length ? fnCurrentBufferDates.join(', ') : null,
-    added_at: todayISO(),
     status: finalStatus,
+    // Staged or saved from the full editor, it is a note, whatever it began
+    // as (a spark, K66).
+    kind: "note",
   };
-  // Preserve _imported flag so trash staging counts correctly
-  if (existingPost && existingPost._imported) post._imported = true;
-  if (existingPost && existingPost._cloud_updated) post._cloud_updated = existingPost._cloud_updated;
-
-  const idx = STATE.posts.findIndex(p => p.id === fnCurrentId);
-  if (idx >= 0) STATE.posts[idx] = post;
-  else STATE.posts.unshift(post);
+  // Over what is kept, so nothing the editor does not show is dropped.
+  _fnWritePost(fnCurrentId, post);
 
   if (finalStatus === "published") {
     // A draft graduating to published leaves the D1 drafts table — publish carries
@@ -552,14 +553,9 @@ function _fnRenderPreview() {
   // the live site uses (sort by day + filename, number 1..N), so the author
   // sees the working red link — or a loud not-found — while writing.
   if (bodyHtml.includes('class="frame-ref"')) {
-    const numToEntry = new Map();
-    [...STATE.buffer].sort((a, b) => {
-      const dayA = ymd(a.captured_at || a.published_at);
-      const dayB = ymd(b.captured_at || b.published_at);
-      const c = dayA.localeCompare(dayB);
-      if (c !== 0) return c;
-      return (a.filename || '').localeCompare(b.filename || '');
-    }).forEach((e, i) => numToEntry.set(i + 1, e));
+    // The one numbering (getBufferFrameNumbers), turned around: number → frame.
+    const byId = new Map(STATE.buffer.map((e) => [e.id, e]));
+    const numToEntry = new Map([...getBufferFrameNumbers()].map(([id, n]) => [n, byId.get(id)]));
     bodyHtml = bodyHtml.replace(/<a class="frame-ref" data-frame="(\d+)">([^<]*)<\/a>/g, (m, num, text) => {
       const entry = numToEntry.get(parseInt(num, 10));
       if (!entry) {
@@ -595,6 +591,12 @@ function _fnRenderPreview() {
   `;
 }
 
+/** A spark's name: its first words, on one line. */
+export function sparkLabel(body, max = 48) {
+  const line = String(body || '').replace(/\s+/g, ' ').trim();
+  return !line ? 'Empty spark' : line.length > max ? line.slice(0, max - 1).trimEnd() + '…' : line;
+}
+
 export function renderFN() {
   // The editor is ALWAYS live. Opening Field Notes used to give you a blinking
   // cursor in a box that refused to keep anything, because every save path
@@ -606,7 +608,10 @@ export function renderFN() {
   // keeps its job, which is starting a SECOND one.
   if (!fnCurrentId) fnNewPost();
 
-  const drafts    = STATE.posts.filter(p => p.status === "draft");
+  // Sparks (K66) are drafts of their own kind: the Bridge's quick drafts,
+  // kept in their own group until one is expanded into a note.
+  const sparks    = STATE.posts.filter(p => p.status === "draft" && p.kind === "spark");
+  const drafts    = STATE.posts.filter(p => p.status === "draft" && p.kind !== "spark");
   const published = STATE.posts.filter(p => !p.status || p.status === "published");
 
   // ONE picker, two <optgroup>s. Two side-by-side selects spent half the bar's
@@ -617,9 +622,12 @@ export function renderFN() {
     const row = (p, mark) => `<option value="${p.id}">${mark} ${p.date ? p.date + ' · ' : ''}`
       + `${p.fn_id ? escapeHTML(p.fn_id) + ' · ' : ''}${escapeHTML(p.title || 'Untitled')}</option>`;
     const group = (label, rows) => rows ? `<optgroup label="${label}">${rows}</optgroup>` : '';
-    const any = drafts.length + published.length;
+    // A spark has no title yet: it is named by its first words.
+    const spark = (p) => `<option value="${p.id}">✦ ${escapeHTML(sparkLabel(p.body))}</option>`;
+    const any = drafts.length + published.length + sparks.length;
     sel.innerHTML =
       `<option value="">${any ? '— open a note —' : '— no notes yet —'}</option>`
+      + group(`SPARKS (${sparks.length})`, sparks.map(spark).join(''))
       + group(`DRAFTS (${drafts.length})`, drafts.map(p => row(p, '◇')).join(''))
       + group(`PUBLISHED (${published.length})`, published.map(p => row(p, p._imported ? '⤓' : '●')).join(''));
     _fnSyncPicker();
@@ -781,8 +789,12 @@ export function fnAutoSave() {
   const existingPost = STATE.posts.find(p => p.id === fnCurrentId);
   const currentStatus = existingPost ? (existingPost.status || "published") : "draft";
 
-  const post = {
-    id: fnCurrentId,
+  // What the editor shows, written over what is kept (fnUpsertDraft), so a
+  // field the editor does not show (a spark's kind, _imported, the cloud
+  // watermark) is never dropped by an edit. Drafts are mirrored to D1 so they
+  // survive tab close / device switch; published posts flow to GitHub via
+  // Publish, so they don't go to the drafts table.
+  fnUpsertDraft(fnCurrentId, {
     fn_id,
     title: title || "Untitled",
     location: document.getElementById("fn-location").value.trim() || SITE_LOCATION,
@@ -793,23 +805,8 @@ export function fnAutoSave() {
     focus: (slot.dataset.focus && slot.dataset.focus !== '50% 50%') ? slot.dataset.focus : null,
     card: slot.dataset.cardLayout ? { layout: slot.dataset.cardLayout } : null,
     buffer_dates: fnCurrentBufferDates.length ? fnCurrentBufferDates.join(', ') : null,
-    added_at: todayISO(),
     status: currentStatus,
-  };
-  // Preserve _imported flag so trash staging counts correctly
-  if (existingPost && existingPost._imported) post._imported = true;
-  // Preserve the cloud-sync watermark so re-sync conflict checks stay accurate
-  if (existingPost && existingPost._cloud_updated) post._cloud_updated = existingPost._cloud_updated;
-
-  const idx = STATE.posts.findIndex(p => p.id === fnCurrentId);
-  if (idx >= 0) STATE.posts[idx] = post;
-  else STATE.posts.unshift(post);
-
-  save();
-
-  // Drafts are mirrored to D1 so they survive tab close / device switch. Published
-  // posts already flow to GitHub via Publish, so they don't go to the drafts table.
-  if (currentStatus === "draft") fnScheduleCloudDraft(fnCurrentId);
+  });
 
   setTimeout(() => {
     fnMarkClean();
@@ -823,7 +820,44 @@ export function fnAutoSave() {
 export function fnDebouncedSave() {
   fnMarkDirty();
   clearTimeout(fnAutoSaveTimer);
-  fnAutoSaveTimer = setTimeout(fnAutoSave, 1500);
+  fnAutoSaveTimer = setTimeout(() => { fnAutoSaveTimer = null; fnAutoSave(); }, 1500);
+}
+
+// A save still waiting out its debounce lands now: on leaving the view, the
+// words typed in the last second and a half are not left to a timer.
+export function fnFlushSave() {
+  if (!fnAutoSaveTimer) return;
+  clearTimeout(fnAutoSaveTimer);
+  fnAutoSaveTimer = null;
+  fnAutoSave();
+}
+
+// ============== THE DRAFT STORE (K65) ==============
+// One way a note is written to STATE, whoever writes it: the editor (from its
+// fields), the Bridge's spark, a dropped .md. `fields` are written OVER what
+// is kept, so a key the writer does not know about survives (the cloud
+// watermark, _imported, a spark's kind); fnAutoSave used to build a fresh
+// object and drop every key it did not list. A new note starts as a draft of
+// kind "note" at the site's place and today's date. Nothing here reads or
+// touches the editor's DOM, so writing one note never disturbs the note open
+// in the editor.
+function _fnWritePost(id, fields) {
+  const idx = STATE.posts.findIndex((p) => p.id === id);
+  const kept = idx >= 0 ? STATE.posts[idx]
+    : { fn_id: "", title: "Untitled", location: SITE_LOCATION, date: ymd(new Date()), body: "", status: "draft", kind: "note" };
+  const post = { ...kept, ...fields, id, added_at: todayISO() };
+  if (idx >= 0) STATE.posts[idx] = post;
+  else STATE.posts.unshift(post);
+  return post;
+}
+
+/** Write a note (merge over what is kept), save, and mirror a draft to D1. */
+export function fnUpsertDraft(id, fields = {}) {
+  if (!id) return null;
+  const post = _fnWritePost(id, fields);
+  save();
+  if ((post.status || "published") === "draft") fnScheduleCloudDraft(id);
+  return post;
 }
 
 // ============== CLOUD DRAFTS (D1-backed) ==============
@@ -877,6 +911,9 @@ export async function fnCloudPushDraft(id, { force = false } = {}) {
     body: post.body || '',
     hero_filename,
     buffer_dates: post.buffer_dates || null,
+    // A note or a spark (K65). The worker keeps the row's own when a console
+    // sends none, so an older cached console never demotes a spark.
+    kind: post.kind === 'spark' ? 'spark' : 'note',
     // The version this device last saw from the server. The worker applies the
     // write only while the row still matches it, so a device that has been
     // asleep with a stale copy can no longer overwrite newer work — it gets a
@@ -916,8 +953,9 @@ export async function fnCloudPushDraft(id, { force = false } = {}) {
 //    force-overwrite on our own initiative: losing a field note to a silent
 //    resolution is the whole failure this replaced.
 function _fnDraftConflict(id, sent, server) {
-  const same = server && ['fn_id', 'title', 'location', 'date', 'body', 'hero_filename', 'buffer_dates']
-    .every(k => (server[k] ?? '') === (sent[k] ?? ''));
+  const same = server && ['fn_id', 'title', 'location', 'date', 'body', 'hero_filename', 'buffer_dates', 'kind']
+    // (A D1 without 0003 answers no kind at all; that is not a difference.)
+    .every(k => (k === 'kind' && server.kind == null) || (server[k] ?? '') === (sent[k] ?? ''));
   const live = STATE.posts.find(p => p.id === id);
 
   if (same) {
@@ -1005,6 +1043,8 @@ export function mergeCloudDrafts(cloudDrafts) {
       buffer_dates: cd.buffer_dates || null,
       added_at: todayISO(),
       status: 'draft',
+      // A D1 that never ran 0003 sends no kind: a note, as every draft was.
+      kind: cd.kind === 'spark' ? 'spark' : 'note',
       _cloud_updated: cd.updated_at || 0,
     };
     if (idx === -1) {
@@ -1047,6 +1087,34 @@ export function mergeCloudDrafts(cloudDrafts) {
 export function fnToggleFocus() {
   document.body.classList.toggle("fn-focus");
   _fnAutoGrow();
+}
+
+// Arriving with a seed (the view seam, K65): `load` opens that note, `caret:
+// 'end'` puts the cursor after its last word, and `focus` raises the keyboard
+// (the seam swaps at once for a focus seed, so this runs inside the tap,
+// which is the only place iOS will). The canvas is the scroller, so it is
+// brought to the end once the writing has grown to its words.
+export function fnEnter(seed = {}) {
+  if (seed.load) fnLoadPost(seed.load);
+  if (!seed.focus && seed.caret !== "end") return;
+  const body = document.getElementById("fn-body");
+  if (!body) return;
+  if (seed.focus) body.focus({ preventScroll: true });
+  if (seed.caret === "end") {
+    const n = body.value.length;
+    body.setSelectionRange(n, n);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const canvas = document.getElementById("fn-canvas");
+      if (canvas) canvas.scrollTop = canvas.scrollHeight;
+    }));
+  }
+}
+
+// Leaving the view leaves focus mode. It is a class on <body>, so nothing
+// else would take it off: the topbar, sidebar and tab bar stayed hidden on
+// every other surface until you came back to FN// to turn it off (K62).
+export function fnExitFocus() {
+  if (document.body.classList.contains("fn-focus")) fnToggleFocus();
 }
 
 // -- The frontmatter no longer collapses, because there is nothing to reclaim --
@@ -1248,16 +1316,29 @@ export function fnSetupEnhancements() {
 
 // ============== PHASE 4: BUFFER DATES PICKER ==============
 
+// The console's one frame numbering (f#N): every Buffer entry, dark ones
+// included, by local day then filename, 1..N. The live site numbers the same
+// way twice (js/lighttable.js assignFrameNumbers; src/api/site-meta.js
+// _featuredRawFrames, in the site's time zone), and tests/frame-number-
+// parity.test.js holds all three to one answer. An undated entry is day ''
+// in all three (it was "NaN-NaN-NaN" here, which sorted it last, not first).
+//
+// Computed once per change to the Buffer (K69): the Bridge alone asked for it
+// three times a paint (the shelf, the send-out line, the preview), each a
+// sort of every frame with two date parses per comparison, ~4 ms at iPad
+// speed apiece. The key is what the numbering reads (id, day, filename), so
+// an edit in place moves it as surely as an added frame. The map is shared:
+// callers read it and never write it.
+let _frameNums = { key: null, map: new Map() };
 export function getBufferFrameNumbers() {
-  const sorted = [...STATE.buffer].sort((a, b) => {
-    const dayA = ymd(a.captured_at || a.published_at);
-    const dayB = ymd(b.captured_at || b.published_at);
-    const dayCmp = dayA.localeCompare(dayB);
-    if (dayCmp !== 0) return dayCmp;
-    return (a.filename || '').localeCompare(b.filename || '');
-  });
+  const key = STATE.buffer.map((e) => `${e.id}\u0001${e.captured_at || e.published_at || ''}\u0001${e.filename || ''}`).join('\u0002');
+  if (key === _frameNums.key) return _frameNums.map;
+  const day = (v) => (v ? ymd(v) : '');
+  const rows = STATE.buffer.map((e) => ({ e, d: day(e.captured_at || e.published_at), f: e.filename || '' }));
+  rows.sort((a, b) => a.d.localeCompare(b.d) || a.f.localeCompare(b.f));
   const map = new Map();
-  sorted.forEach((e, i) => map.set(e.id, i + 1));
+  rows.forEach((r, i) => map.set(r.e.id, i + 1));
+  _frameNums = { key, map };
   return map;
 }
 
@@ -1345,7 +1426,7 @@ export function fnRenderFrameBrowser() {
       const base = (e.filename || '').replace(/\.webp$/, '');
       const src = e.image || `${CDN_BASE}/archive/${encodeURIComponent(base)}-480w.webp`;
       const selected = fnSelectedFrameIds.has(e.id) ? ' fb-selected' : '';
-      return `<div class="fb-thumb${selected}" data-id="${e.id}"
+      return `<div class="fb-thumb${selected}" data-tier="card" data-id="${e.id}"
           onclick="fnToggleFrameSelect('${e.id}')"
           draggable="true" ondragstart="fnDragFrame('${e.id}', event)">
           <img src="${src}" alt="" onerror="this.style.display='none'">

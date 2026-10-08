@@ -1,7 +1,7 @@
 // OAKLENS // FIELD CONSOLE — the barrel.
 //
 // This file used to be the console: ~5,600 lines of every surface, modal and
-// handler. It is now the seam between the console's twenty-two modules and the
+// handler. It is now the seam between the console's twenty-eight modules and the
 // page that loads them, and holds no logic of its own.
 //
 // Two jobs:
@@ -40,6 +40,12 @@
 export * from './console/chrome.js';
 // the canvas bloom: light pooled onto the chassis around whatever is data-lit
 export * from './console/lighting.js';
+// the text classes' one moving part: the update's flare through the readouts
+export * from './console/text-light.js';
+// the dot-matrix readout: a line of type drawn as a vacuum-fluorescent tube
+export * from './console/matrix.js';
+// the split-flap board: a line that turns only the characters that changed
+export * from './console/flap.js';
 // "what does this do?" — the help overlay and every word it says
 export * from './console/help.js';
 // CDN URLs, WebP variant generation, the publish base-revision marker
@@ -64,6 +70,8 @@ export * from './console/card-paint.js';
 export * from './console/focal.js';
 // the share block: copy the link, stamp three ratios, download two
 export * from './console/share.js';
+// send it out: how a link unfurls, the post counted, the story card with a QR
+export * from './console/send-out.js';
 // the media picker + per-surface selection callbacks
 export * from './console/asset-library.js';
 // the audio shelf: one registry, waveform measured at attach, promote-to-card
@@ -78,5 +86,9 @@ export * from './console/session.js';
 export * from './console/bench.js';
 // the pulse composer: six starter packs, one POST, no publish
 export * from './console/pulse.js';
+// the Bridge: the console's front page — what is waiting, what is live, where you were
+export * from './console/bridge.js';
+// capture on the Bridge: the spark (a quick draft) and the frames to cite
+export * from './console/capture.js';
 // the composition root — wires every seam, boots on DOMContentLoaded
 export * from './console/init.js';

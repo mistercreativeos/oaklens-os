@@ -12,7 +12,7 @@
 //
 // Transitional coupling: functions here still call rendering globals that
 // js/console-ui.js defines (refreshStageIndicators, renderTrash, the render*
-// family incl. renderAudio, showView, fnNewPost, isVideoAsset,
+// family incl. renderAudio, showView, startView, fnNewPost, isVideoAsset,
 // scheduleLibrarySync, updatePurgeR2Button). Those resolve through the global
 // scope at call time.
 //
@@ -91,8 +91,91 @@ export function cancelPendingDeleteForKeys(keys) {
   return dropped;
 }
 
+// ============== UNREADABLE SAVED WORK ==============
+//
+// If the state this device kept can't be read, a copy of it is kept before
+// anything can save over it. Boot saves within seconds, and that save used
+// to write an empty state over the unreadable one: every unpublished edit,
+// unsynced spark and staged frame gone, with no copy and no word (measured
+// 2026-10-06, docs/maintenance/2026-10-06-bridge-field-probe.md).
+// The copy sits beside the state, under UNREADABLE_PREFIX + the time it was
+// found. Settings lists it with a download. It is the owner's to remove,
+// never the console's. When there's no room for a copy, nothing saves over
+// the original until the owner has downloaded it (_held).
+export const UNREADABLE_PREFIX = STORAGE_KEY + '.unreadable-';
+const STATE_SURFACES = ['buffer', 'archive', 'posts', 'wallpapers', 'friends', 'library', 'audio', 'audioSets', 'cards', 'stagedLog'];
+let _held = null;   // the unreadable state itself, while no copy could be kept
+
+/** The copies kept, newest first: [{ key, at, bytes }]. */
+export function unreadableCopies() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(UNREADABLE_PREFIX)) {
+        out.push({ key, at: key.slice(UNREADABLE_PREFIX.length), bytes: (localStorage.getItem(key) || '').length });
+      }
+    }
+  } catch {}
+  if (_held != null) out.push({ key: '', at: 'held (not yet copied)', bytes: _held.length });
+  return out.sort((a, b) => (a.at < b.at ? 1 : -1));
+}
+
+// Keep `raw` beside the state, once: a second boot that finds the same blob
+// unreadable again doesn't stack another copy. Returns the key, or null when
+// it couldn't be written (no room).
+function _keepUnreadable(raw) {
+  try {
+    for (const { key } of unreadableCopies()) if (key && localStorage.getItem(key) === raw) return key;
+    const key = UNREADABLE_PREFIX + new Date().toISOString();
+    localStorage.setItem(key, raw);
+    return key;
+  } catch { return null; }
+}
+
+function _unreadable(raw, why) {
+  const key = _keepUnreadable(raw);
+  if (!key) _held = raw;
+  console.error(`[load] saved state unreadable (${why}); ${key ? 'copy kept at ' + key : 'no room for a copy, saving held'}`);
+  latchError('state', key ? 'saved work unreadable — a copy is kept' : 'saved work unreadable — saving held');
+  showToast(key
+    ? `⚠ Saved work on this device couldn't be read (${why}). A copy is kept: Settings → Unreadable saved work. Nothing was written over it.`
+    : `⚠ Saved work on this device couldn't be read (${why}), and there is no room to keep a copy. Saving is held so nothing writes over it: download it from Settings → Unreadable saved work.`,
+  { kind: 'error', sticky: true, id: 'state-unreadable' });
+}
+
+/** Download a kept copy (or the held state). Downloading the held state lets saving resume. */
+export function downloadUnreadable(key = '') {
+  const raw = key ? localStorage.getItem(key) : _held;
+  if (raw == null) return false;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
+  a.download = `oaklens-unreadable-state-${(key ? key.slice(UNREADABLE_PREFIX.length) : new Date().toISOString()).replace(/[:.]/g, '-')}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  if (!key) {
+    _held = null;
+    showToast('✓ Downloaded. Saving resumes on this device.', { kind: 'success' });
+    save();
+  }
+  return true;
+}
+
+/** The owner removes a copy they no longer need (Settings asks first). */
+export function removeUnreadable(key) {
+  if (!key || !key.startsWith(UNREADABLE_PREFIX)) return false;
+  try { localStorage.removeItem(key); return true; } catch { return false; }
+}
+
 // ============== PERSISTENCE ==============
 export function save() {
+  // An unreadable state with no copy is the only one there is: nothing
+  // writes over it until it has been downloaded (downloadUnreadable).
+  // (The lamp and the toast said so when it was found; saying it again on
+  // every save would only fill the ledger.)
+  if (_held != null) return;
   try {
     // Strip base64 image blobs before saving — they eat localStorage
     const lean = JSON.parse(JSON.stringify(STATE));
@@ -163,6 +246,12 @@ export function save() {
       console.warn(`[save] localStorage: ${sizeKB}KB — approaching 5MB limit`);
       showToast(`⚠ Storage: ${sizeKB}KB / ~5000KB — consider clearing old buffer entries`, { kind: 'error' });
     }
+
+    // Say so. Every change to STATE ends here, so a view that reads across
+    // surfaces (the Bridge) can repaint when there is something new instead
+    // of polling for it. An event, not an import: this module sits under all
+    // of them and names none.
+    if (typeof document !== 'undefined') document.dispatchEvent(new Event('console-saved'));
   } catch (e) {
     console.error('[save] localStorage write failed:', e);
     latchError('storage', 'localStorage full — data NOT saved');
@@ -176,10 +265,26 @@ export function load() {
   // whose STATE key is absent or unreadable still has those to restore, and
   // silently skipping them is the failure this shape invites. Guard the block,
   // never the function.
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) Object.assign(STATE, JSON.parse(raw));
-  } catch(e){ console.warn("load failed", e); }
+  //
+  // What can be read is taken; what can't is kept aside first (UNREADABLE
+  // SAVED WORK, above), never just dropped for the next save to overwrite.
+  let raw = null;
+  try { raw = localStorage.getItem(STORAGE_KEY); } catch {}
+  if (raw) {
+    let saved = null, why = '';
+    try { saved = JSON.parse(raw); } catch { why = 'it is not valid JSON'; }
+    if (!why && (!saved || typeof saved !== 'object' || Array.isArray(saved))) { why = 'it is not a saved state'; saved = null; }
+    if (saved) {
+      const bad = STATE_SURFACES.filter((k) => k in saved && !Array.isArray(saved[k]));
+      if ('staged' in saved && (!saved.staged || typeof saved.staged !== 'object' || Array.isArray(saved.staged))) bad.push('staged');
+      if (bad.length) {
+        why = `${bad.join(', ')} unreadable`;
+        for (const k of bad) delete saved[k];   // the rest of it is good: keep that
+      }
+      Object.assign(STATE, saved);
+    }
+    if (why) _unreadable(raw, why);
+  }
   // States saved before the ledger existed have no stagedLog key (or a
   // corrupted one) — normalize so every reader can assume an array.
   if (!Array.isArray(STATE.stagedLog)) STATE.stagedLog = [];
@@ -739,6 +844,6 @@ export function resetConsole() {
   });
   refreshStageIndicators();
   renderTrash();
-  showView("buffer");
+  showView(startView());
   showToast("✓ console reset", { kind: 'success' });
 }

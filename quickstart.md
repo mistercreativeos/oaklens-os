@@ -39,7 +39,7 @@ This trips people up once and then never again:
 
 | You changed… | How it goes live |
 |---|---|
-| **Photos, posts, anything in the console** | Hit **▲ Publish to GitHub** in the console |
+| **Photos, posts, anything in the console** | Hit **▲ Publish** in the console |
 | **Settings — anything in `site.config.js`** | Save the file and `git push` |
 
 Both end the same way: GitHub tells Cloudflare, Cloudflare rebuilds, and your
@@ -468,7 +468,7 @@ every frame after it keeps the number it had.
 
 **What it does.** Sends everything above out into the world, all at once.
 
-**Do it.** Open **PUBLISH** and click **▲ Publish to GitHub**.
+**Do it.** Open **PUBLISH** and click **▲ Publish**.
 
 Everything staged goes as a single commit — photos, posts, archive entries,
 settings — all or nothing. There's no partial state to land in, and no order you

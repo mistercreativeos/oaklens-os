@@ -61,7 +61,7 @@ export async function renderBench() {
       let badgeClass = item.status === 'in-progress' ? 'in-progress' : (item.status === 'done' ? 'done' : 'queued');
       let isDone = item.status === 'done' ? 'status-done' : '';
       return `
-        <div class="bench-card ${isDone}" onclick="openBenchDetail('${item.id}')">
+        <div class="bench-card ${isDone}" data-seam="box" data-backlit data-tier="card" onclick="openBenchDetail('${item.id}')">
           <img class="bench-preview" src="${CDN_BASE}/${item.preview}" loading="lazy" onerror="this.style.display='none'">
           <div class="bench-filename">${escapeHTML(item.raw_filename || item.id.split('_').pop() + '.RW2')}</div>
           <div class="bench-date">${escapeHTML(item.session_date || item.id.split('_')[0])}</div>

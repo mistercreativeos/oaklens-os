@@ -8,7 +8,12 @@
 //
 // Table (see migrations/0001_console_tables.sql):
 //   fn_drafts(id PK, fn_id, title, location, date, body, hero_filename,
-//             buffer_dates, updated_at INTEGER epoch-ms, created_at)
+//             buffer_dates, updated_at INTEGER epoch-ms, created_at,
+//             kind TEXT 'note' | 'spark'   — 0003, K65)
+// `kind` is tolerated missing: a fork that deployed with a plain `wrangler
+// deploy` never ran 0003, and its drafts must keep working. Every statement
+// that names `kind` falls back to the columns before it on "no such column"
+// (isMissingColumnError), so there a spark syncs as a note until it migrates.
 // Hero is stored as a CDN filename only — never a base64 preview blob.
 //
 // CONCURRENCY (2026-08-06). The advertised use case — iPad ↔ laptop — is the
@@ -27,15 +32,22 @@
 import { verifyToken } from '../shared/auth.js';
 import { jsonRes, d1MissingRes, isMissingTableError, d1TablesMissingRes } from '../shared/http.js';
 
+/** A column this statement names is not in the table yet (migration 0003 not run). */
+export function isMissingColumnError(err) {
+  return /no such column|has no column named/i.test(String((err && err.message) || err || ''));
+}
+
 export async function handleGetDrafts(request, env) {
   if (!await verifyToken(request, env)) return jsonRes({ ok: false, error: 'unauthorized' }, 401);
   if (!env.DB) return d1MissingRes('FN cloud drafts');
+  const list = (cols) => env.DB.prepare(`SELECT ${cols} FROM fn_drafts ORDER BY updated_at DESC`).all();
   try {
-    const { results } = await env.DB.prepare(
-      `SELECT id, fn_id, title, location, date, body, hero_filename, buffer_dates, updated_at
-       FROM fn_drafts ORDER BY updated_at DESC`
-    ).all();
-    return jsonRes({ ok: true, drafts: results || [] }, 200);
+    let res;
+    try { res = await list(DRAFT_COLS_KIND); } catch (err) {
+      if (!isMissingColumnError(err)) throw err;
+      res = await list(DRAFT_COLS);
+    }
+    return jsonRes({ ok: true, drafts: res.results || [] }, 200);
   } catch (err) {
     // An unmigrated D1 (one-click install, migrations never ran) is a
     // deliberate 501, not a fault — the console must not red-latch on it.
@@ -46,6 +58,8 @@ export async function handleGetDrafts(request, env) {
 }
 
 const DRAFT_COLS = 'id, fn_id, title, location, date, body, hero_filename, buffer_dates, updated_at';
+const DRAFT_COLS_KIND = `${DRAFT_COLS}, kind`;
+const KINDS = new Set(['note', 'spark']);
 
 export async function handlePutDraft(request, env) {
   if (!await verifyToken(request, env)) return jsonRes({ ok: false, error: 'unauthorized' }, 401);
@@ -91,20 +105,34 @@ export async function handlePutDraft(request, env) {
   // DO UPDATE: when it fails the row is left alone and RETURNING yields nothing
   // — no error, no read-modify-write window, nothing to race. A brand-new id
   // still takes the INSERT path (there is no conflict to guard).
-  const guard = conditional ? ' WHERE fn_drafts.updated_at <= ?' : '';
-  const sql =
-    `INSERT INTO fn_drafts (${DRAFT_COLS})
-     VALUES (?,?,?,?,?,?,?,?,?)
+  //
+  // Numbered parameters: ?1–?9 the row, ?10 the base, ?11 the kind. The kind
+  // a console did not send (an older cached one) is NULL, which keeps the
+  // row's own on an update and starts a new row as a note, so a stale console
+  // never demotes a spark.
+  const kind = KINDS.has(d.kind) ? d.kind : null;
+  const guard = conditional ? ' WHERE fn_drafts.updated_at <= ?10' : '';
+  const statement = (withKind) =>
+    `INSERT INTO fn_drafts (${withKind ? DRAFT_COLS_KIND : DRAFT_COLS})
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9${withKind ? ",COALESCE(?11,'note')" : ''})
      ON CONFLICT(id) DO UPDATE SET
        fn_id=excluded.fn_id, title=excluded.title, location=excluded.location,
        date=excluded.date, body=excluded.body, hero_filename=excluded.hero_filename,
-       buffer_dates=excluded.buffer_dates,
+       buffer_dates=excluded.buffer_dates,${withKind ? '\n       kind=COALESCE(?11, fn_drafts.kind),' : ''}
        updated_at=MAX(excluded.updated_at, fn_drafts.updated_at + 1)${guard}
      RETURNING updated_at`;
 
   try {
-    const binds = conditional ? [...values, d.base_updated_at] : values;
-    const row = await env.DB.prepare(sql).bind(...binds).first();
+    const base = conditional ? d.base_updated_at : null;
+    let row;
+    try {
+      row = await env.DB.prepare(statement(true)).bind(...values, base, kind).first();
+    } catch (err) {
+      if (!isMissingColumnError(err)) throw err;
+      // No ?11 here, so no slot past the last parameter is bound (SQLite
+      // refuses an index beyond the statement's highest).
+      row = await env.DB.prepare(statement(false)).bind(...(conditional ? [...values, base] : values)).first();
+    }
     // The stamp the row actually got, which is NOT always the clock read above:
     // `MAX(…, stored + 1)` above forces it strictly forward.
     //
@@ -122,9 +150,12 @@ export async function handlePutDraft(request, env) {
 
     // Nothing written: the row moved since the client loaded it. Hand back the
     // server's copy so the console can show what it would have overwritten.
-    const current = await env.DB.prepare(
-      `SELECT ${DRAFT_COLS} FROM fn_drafts WHERE id = ?`
-    ).bind(String(d.id)).first();
+    const one = (cols) => env.DB.prepare(`SELECT ${cols} FROM fn_drafts WHERE id = ?`).bind(String(d.id)).first();
+    let current;
+    try { current = await one(DRAFT_COLS_KIND); } catch (err) {
+      if (!isMissingColumnError(err)) throw err;
+      current = await one(DRAFT_COLS);
+    }
     if (!current) {
       // No row and no write is not a conflict — it's a failed insert we should
       // not paper over as one.

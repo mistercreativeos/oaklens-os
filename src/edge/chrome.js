@@ -687,7 +687,23 @@ export function consoleFeatureOn(name, features = siteConfig.console) {
   return (features || {})[name] === true;
 }
 
+// The surface the console opens to when a device has not chosen its own
+// (Settings → "Opens to"). Not a feature switch — a name — so it is read
+// exact-shaped like the switches: a lowercase word, or the engine default.
+// The console checks it against the surfaces it actually has, so a name for a
+// gated or misspelt surface falls through to the Bridge rather than to nothing.
+//
+//   site.config.js -> console: { startView: 'fn' }
+export const CONSOLE_START_VIEW = 'bridge';
+export function consoleStartView(features = siteConfig.console) {
+  const v = (features || {}).startView;
+  return typeof v === 'string' && /^[a-z]+$/.test(v) ? v : CONSOLE_START_VIEW;
+}
+
 export function injectConsoleFeatures(rewriter, features = siteConfig.console) {
+  rewriter.on('meta[name="console-start-view"]', {
+    element(el) { el.setAttribute('content', consoleStartView(features)); },
+  });
   rewriter.on('[data-console-feature]', {
     element(el) {
       if (consoleFeatureOn(el.getAttribute('data-console-feature'), features)) {
@@ -710,6 +726,9 @@ export function injectConsoleFeatures(rewriter, features = siteConfig.console) {
 //   <title data-site-title>About</title>          -> "About — WORDMARK"
 //   <title data-site-title="prefix">CONSOLE</title> -> "WORDMARK // CONSOLE"
 //   <title data-site-title="brand">…</title>      -> "WORDMARK" (homepage)
+//   <title data-site-title="plain">Field Console</title> -> "Field Console"
+//     (K97: the console's window is the app's own, named once in its
+//     manifest; a wordmark in the title bar read as a second name)
 //   <x data-site-wordmark>            plain-text wordmark
 //   <x data-site-wordmark="accent">   wordmark with the accent half in .accent
 //   <x data-site-location>            "CITY, ST" from location.name/region
@@ -790,6 +809,7 @@ function _decodeEntities(s) {
 
 function _composeTitle(mode, page, brand) {
   if (!brand) return page;
+  if (mode === 'plain') return page || brand;
   if (mode === 'brand') return brand;
   if (mode === 'prefix') return page ? `${brand} // ${page}` : brand;
   return page ? `${page} — ${brand}` : brand;

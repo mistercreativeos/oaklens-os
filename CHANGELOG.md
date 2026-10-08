@@ -25,6 +25,449 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-10-07 (Field Console 1.0)
+
+**Nothing to do.** The console is stamped **v1.0.0**: the first official
+version, shipping with this week's launch. Its window is now named once, by
+its app manifest ("Field Console"; "Console" on a home screen), and the tab
+title is that name alone, with no wordmark and no version in the title bar.
+The version lives in `<meta name="console-version">` and Settings → Build
+reads it there. The Publish header lost its early-build lines. If you had the
+console installed as an app, the next open picks up the new name.
+`dev/field-console.html`, `dev/manifest.webmanifest`, `src/edge/chrome.js`
+(a `plain` title mode), `js/console/chrome.js`.
+
+## 2026-10-07 (help marks the controls themselves)
+
+**Nothing to do.** Pressing `?` in the Field Console now lights the controls
+you can ask about in place, instead of drawing frames and rods over them. It
+scrolls at full speed on a phone (the old overlay halved the frame rate while
+open), and picking a control still opens the same card. `js/console/help.js`,
+`css/field-console.css`.
+
+## 2026-10-07 (every key in the console is the same key; the modals are rounder glass)
+
+**Nothing to do.** The Field Console's controls that still wore the old
+chrome (filter pills, the Pulse lanes, segments, chips, a modal's close cap,
+the bench's filters) now wear the one floating-key recipe the top row and the
+main buttons already had. Modals and sheets are rounder, with a lit rim and
+their toolbars on the glass. The asset library builds its thumbnail grid a
+page at a time, so opening it on a large library no longer drops a frame.
+`css/field-console.css`, `js/console/asset-library.js`, the service worker's
+cache name.
+
+; the console's groundwork for quick drafts)
+
+**Recommended, not required: run your database migrations.** A new one,
+`migrations/0003_draft_kind.sql`, adds a `kind` column to your cloud drafts
+(`note` or `spark`, the coming quick draft on the console's front page). If
+your repo is connected to Cloudflare, `npm run deploy` runs it. If you deploy
+by hand with `npx wrangler deploy`, run `npm run db:migrate` once. Skipping it
+breaks nothing: drafts keep working on the old columns, and a quick draft
+syncs as an ordinary draft until you migrate.
+
+Also in this merge, nothing to do: the console's views can hand each other
+state on arrival (a promoted Buffer frame fills the Archive's form without
+guessing at timing), one clipboard helper, one frame numbering checked
+against the live site's, and a dependency-free QR encoder (`js/qr.js`).
+
+---
+
+## 2026-10-06 (the console's front page: text that knows whether it glows)
+
+**Nothing to do on merge.**
+
+- **On the console's front page, every piece of text now has a kind, and the
+  kind decides whether it glows.** A number the site measured glows brightest.
+  Anything you can tap glows softly and brightens under your finger or
+  pointer. A line reporting what your site is doing right now glows faintly.
+  Labels and explanations stay flat. In the light theme nothing glows.
+- **When you send a pulse,** or a publish from this device goes live, a pulse
+  of light runs through the top of the page, word by word.
+- **Smaller changes:** the two green status dots are now the same small
+  square light as the one in the top bar. The count beside "Waiting on you"
+  is gone, because the list is right under it. On a touch screen, the "room
+  for about … photos" sentence under storage is hidden, and screen readers
+  still hear it.
+- **The front page loads at once.** It used to fill in over 10 seconds to
+  more than a minute after you opened it or signed in. Now it shows what it
+  last knew straight away and updates each part the moment the answer
+  arrives.
+- **On a computer or a tablet the front page no longer scrolls.** It fits the
+  screen. A list too long for the space shows what fits and says how many
+  more. Phones still scroll.
+- **If you changed the console's styles:** the old `--br-glow` setting and
+  `.br-glow` class are gone. To make your own text on that page glow, give it
+  `data-text="stat"`, `"act"`, `"live"` or `"info"`, and the console's own
+  rules light it.
+
+## 2026-10-05, later still (scrolling the Buffer)
+
+**Nothing to do on merge.**
+
+- **Scrolling a long list costs the light less.** When a part of the page
+  the browser had been skipping (the Buffer's days) scrolls into range, the
+  console now draws only that part's light instead of redrawing all of it.
+  The light looks exactly the same.
+
+## 2026-10-05, later (Archive and Wall arrive lighter)
+
+**Nothing to do on merge.**
+
+- **Archive and Wall no longer rebuild themselves every time you open
+  them.** The console used to throw away and redraw every card each visit,
+  even when nothing had changed. It now redraws only when something you'd see
+  is different (an edit, a new frame, an upload finishing, a share image
+  landing). Opening Wall takes about a third less work on a phone; Archive a
+  little less. Nothing looks different.
+
+## 2026-10-05, after midnight (the light engine, lighter)
+
+**Nothing to do on merge.**
+
+- **The console's light costs less to run.** While a light is moving (a
+  surface arriving, a drop zone waking, a commit in flight), the engine used
+  to re-read every light's colour, shape and position settings on every
+  frame. It now reads them once and re-reads only what is actually moving.
+  At phone speed that is about 65–70% fewer style reads on an arrival, and
+  scrolling the Archive costs the light about a quarter less. Nothing looks
+  different.
+- **Publish's ignition fades again.** While a commit is in flight, the
+  Publish button and the top-row keys warm up over a second and a half and
+  cool down over two and a half seconds, as designed. Since the floating-key
+  update on 2026-10-04 they had been snapping on and off. With reduced motion on, they still
+  switch at once.
+
+## 2026-10-05, late night (windows, drop zones, focal point)
+
+**Nothing to do on merge.**
+
+- **Every pop-up window looks the same:** frosted glass with a soft glow
+  rising from its bottom edge, like the Field Notes insert drawer and the
+  More menu. Settings, the libraries, login and the focal point window used
+  to be flat and dark.
+- **Drop zones glow softly at rest** instead of reading as black holes, at
+  the same low level as the panels around them, and they still light up
+  when you arrive or drag a file over them.
+- **The focal point window's buttons are laid out cleanly:** the sharing
+  buttons in one even row, then Center and Set Focal Point, all the same
+  height, on phone, tablet and desktop.
+
+---
+
+## 2026-10-05, night (the top row glows with the room)
+
+**Nothing to do on merge.**
+
+- **A screen's glow no longer dims and recovers around its own ignition.**
+  When a drop zone or a row of cards lit up on arrival, the console's
+  brightness adjustment reacted to it and slowly dimmed, then brightened,
+  the whole screen. It now holds still until the ignition is over.
+- **Lighting stays fast after many screen switches.** The console measured
+  its own light in a way that made Chrome move the light off the graphics
+  chip, which could make animations sluggish after a few taps. It now
+  measures a small copy instead.
+
+- **On phones and tablets, the top row no longer ends in a hard line.**
+  The glow of the content beneath it rises softly into the top row and
+  fades to black at the top of the screen. It follows what is under it,
+  so it is brighter over lit panels, and it costs effectively nothing.
+  Desktop and the light theme are unchanged.
+
+---
+
+## 2026-10-05, evening (iPad header, smoother arrivals)
+
+**Nothing to do on merge.**
+
+- **The iPad shows no surface header.** The big title band at the top of
+  each screen is gone on tablets; the bottom bar already says where you
+  are. Phones keep their one-line stats, and desktops keep the header.
+  Bench keeps its refresh and Clear Done buttons in a slim row.
+- **Bright screens no longer sag after you arrive.** Switching to a screen
+  like the Archive used to light it up fully and then dim it over a couple
+  of seconds. It now arrives at its settled brightness in one movement.
+
+---
+
+## 2026-10-05, later (screen transitions restored)
+
+**Nothing to do on merge.**
+
+- **Screen transitions are back to the smooth dissolve.** This morning's
+  change made the old screen linger over the new one, and delayed the drop
+  zone's glow. Both are fixed.
+- **The tap pulse still never stutters.** The button lights the moment you
+  touch it, and the wave starts as the new screen begins to appear, so the
+  two never fight.
+- **Archive is lighter to touch on phones.** Lighting does less layout work
+  per tap than before today's changes.
+
+---
+
+## 2026-10-05 (the bottom bar, smoother)
+
+**Nothing to do on merge.**
+
+- **The tap pulse no longer stutters on slower phones.** Switching screens
+  used to freeze the page for a moment, and the pulse froze with it. The
+  old screen now fades out over the new one, and nothing ever stops
+  drawing.
+- **No dark lines when you press a bottom-bar button.** The button's own
+  light and the pulse are the feedback now.
+- **Fixed: switching from far down a long screen to a short one** could
+  leave you scrolled past the end of the new screen, looking at empty
+  space. You now land at the end of its content.
+
+---
+
+## 2026-10-04, late (the console's bottom bar)
+
+**Nothing to do on merge.**
+
+- **The bottom bar on phones and tablets holds still when you switch
+  screens.** It used to dim and come back during the crossfade. It is now a
+  solid, softly lit bar instead of see-through glass, and it stays exactly
+  as it is while the screen above it changes.
+- **Quieter at rest, with no line along the top.** The content above fades
+  into the bar, and each button has its own soft light that sits a little
+  brighter than the bar around it.
+- **A tap sends a small pulse of light** from the button out to both ends
+  of the bar. It is off in the light theme and if your device asks for
+  reduced motion.
+- **You can tap a second button while the screen is still changing.**
+  Taps during the crossfade used to be ignored.
+
+---
+
+## 2026-10-04, night (Publish comes first)
+
+**Nothing to do on merge.**
+
+- **The Publish page leads with the Publish button.** It sits right under
+  the counts, above Remote Sync, and on a wide screen it is one bar across
+  the page.
+- **The button just says Publish**, and the "Publish to GitHub" heading over
+  it is gone. One short line says what happens: saved to GitHub, live in
+  about a minute. If your repo isn't connected to Cloudflare yet, the line
+  says you still need to deploy and points at setup.md.
+- **Clear Staged is still there**, as a smaller button at the end of the bar,
+  so it no longer competes with Publish.
+- **The confirm box says "Publish these changes?"** instead of promising
+  "live in ~30s".
+
+## 2026-10-05, evening (RAW Lens, and the Publish rail wakes)
+
+**Nothing to do on merge.**
+
+- **RAW Lens has the console's look**: no grey bars or outlines, the same
+  buttons as everywhere else, the selected options lit, and the room lit
+  softly from below.
+- **The Publish page's stat cards light up in a wave when you arrive**, each
+  one playing its own hover for a moment, left to right, then settling. It
+  runs once per visit and is off if your device asks for reduced motion.
+- **A button's lower edge now brightens under your finger or pointer**, as
+  it was meant to.
+
+## 2026-10-05, later (the pickers open again)
+
+**Nothing to do on merge** — but if you merged the 2026-10-04 "late night"
+entry, merge this one: it fixes a mistake in it.
+
+- **The picture, video and audio pickers open again**, along with Focal
+  Point and Card Crop. A missing closing tag in the Settings window had
+  swallowed them, so they opened invisibly.
+
+## 2026-10-05 (the drop-zone outline, for real)
+
+**Nothing to do on merge.**
+
+- **The red outline around a glowing drop zone is gone.** Last night's fix
+  was written but lost out to a more general rule further down the
+  stylesheet; that rule now leaves drop zones alone. The faint glow that
+  breathes inside a drop zone on first load also no longer ends in a hard
+  edge.
+
+## 2026-10-04, late night (the phone, second look)
+
+**Nothing to do on merge.**
+
+- **The page no longer shifts after a drop zone's glow fades.** A rule
+  written for the glow was also overriding the drop zone's size while it
+  was lit, so every page grew by a few dozen pixels at the glow and shrank
+  back after it. Fixed; the glow rule now touches only its timing.
+- **The first-load light sequence no longer freezes** while the buffer
+  builds. The buffer now builds only what is near the screen and adds the
+  rest as you scroll toward it (instead of all 700-odd frames in the
+  background on arrival), and the light redraws the page's layer every
+  third frame of the sequence instead of every frame.
+- **No red outline flashes around a drop zone** while it glows.
+- **The Pulse button at the top lights up while the Pulse page is open**,
+  like the `?` button does for help.
+- **Settings is quieter.** The Display section is gone; the Build section
+  shows just "console v…" and opens on a tap to show the rest.
+- **The bottom bar's light is turned down a touch.**
+
+## 2026-10-04, night (the phone, seen live)
+
+**Nothing to do on merge.**
+
+- **On a phone, a page has no big title and no glass bar pinned over it.**
+  The buttons along the bottom say where you are; the page's stats sit as
+  one quiet line under the top row. (An iPad keeps the large title.)
+- **Switching pages is a crossfade, not a cut.** One page dissolves into the
+  next; nothing goes black in between. (Browsers without the feature get the
+  plain switch.)
+- **The bottom bar is tinted glass with light behind it**, lit from below
+  like the rest of the room, so it reads as part of the interface rather
+  than a strip floating over it.
+- **The field-notes icon is a drawn glyph** that takes the accent colour,
+  not an emoji.
+- **The settings light is dimmer.**
+- **Pills and chips have no outline.**
+- **A drop zone's glow no longer stutters** at the start of its cool-down.
+
+## 2026-10-04, later still (glass, with no strokes)
+
+**Nothing to do on merge.**
+
+- **The outlines are gone.** Panels, cards, the drop zones, the sidebar and
+  the pop-ups no longer have a line drawn around them, and the thin lines
+  under each page's title and between the sidebar's sections are gone too.
+  What says "glass" now is the edge of the glass itself: a little light
+  caught along the bottom of every panel and a faint highlight along the top,
+  like a screen protector seen from the side. Buttons are the same: a dark
+  key set into the glass with a lit lower edge, no stroke.
+- **Light fades up and down more gently.** The drop zones used to jump a
+  little when you pointed at them and then fade, and the glow switched off
+  abruptly when you left (a bug). Both are smooth now, and the same two
+  curves are used everywhere light moves slowly.
+- **Switching between pages no longer makes your eyes adjust.** The console
+  measures how bright each page's light is and brings the bright ones down
+  toward the quiet ones; a darker page fades up gently after a bright one.
+  One setting controls it (`--light-adapt` in the stylesheet; 0 turns it
+  off).
+- **The texture in the background is finer** and no longer sits under the
+  words on buttons, so text is easier to read on a sharp screen.
+
+## 2026-10-04, late (fast on a phone)
+
+**Nothing to do on merge.**
+
+- **The console is much faster on phones.** The buffer loads small images
+  only as you scroll to them, instead of every full-size frame at once, and it
+  appears straight away even with hundreds of frames.
+- **Notifications no longer slow things down**, and pointing at or tapping a
+  card only redraws the light around that card.
+- **Light stays on the things that make it.** It no longer shows up before a
+  page has appeared, sits a few pixels off, or scrolls away from a header.
+- **On a phone, the light behind the content is softer**, about half what it
+  is on a computer. It is set in one place in the stylesheet ("THE PHONE'S
+  LIGHT") if you want it brighter or dimmer.
+- **The field notes bar matches the rest of the console's buttons.**
+
+## 2026-10-04, night (real light behind every button)
+
+**Nothing to do on merge.**
+
+- **Every button now has the same light behind it as the buttons along the
+  top**, glowing through the background's texture and spilling a little
+  underneath, so they look set into the glass rather than drawn on. The light
+  rises when you point at a button.
+
+## 2026-10-04, evening (keys set into the glass)
+
+**Nothing to do on merge.**
+
+- **Buttons sit into the surface** instead of bulging out of it, like the
+  buttons along the top.
+- **The Publish button at the top and the floating Link button in the
+  buffer** now match every other button.
+- **The counts beside each surface in the sidebar glow** instead of sitting
+  in a dark box.
+- **The settings light** in the top bar and the sidebar is now the same small
+  square LED as the system light.
+
+## 2026-10-04, later (one light per panel, floating buttons)
+
+**Nothing to do on merge.**
+
+- **A form is one lit panel now.** Its fields are dark wells inside it
+  instead of each glowing on its own, and clicking into a field brightens the
+  whole panel. The archive's photo details got a panel of their own.
+- **Every button looks like the ones along the top**: a crisp lit edge, a
+  bright label and a soft light behind it that rises when you point at it.
+  The main action on a screen (Stage to Archive, Publish to GitHub) glows
+  brighter than the rest.
+- **Pointing at a sidebar item lights it softly and immediately**, without a
+  hard-edged block or a delay.
+- **The collapse button at the top left matches the buttons beside it.**
+
+## 2026-10-04 (smooth scrolling, sharper controls)
+
+**Nothing to do on merge.**
+
+- **The archive scrolls smoothly again**, on computers, tablets and phones.
+  Its thumbnails load a smaller image that is still sharp at their size, and
+  only as they scroll into view.
+- **The console's light now moves with the page** instead of catching up
+  behind it, and scrolling no longer has to redraw it.
+- **Pointing at a button, a tab or a list row lights it warmly** instead of
+  turning it grey.
+- **The buttons along the top are crisper.**
+
+## 2026-10-03 (light behind the glass)
+
+**Nothing to do on merge.**
+
+- **Panels, cards and form fields now have a soft light behind them**, coming
+  up through their glass from below, so the console reads as lit from within
+  rather than outlined.
+- **Edges are brightest along the bottom**, where the light comes from.
+- **The selected tab in a row of tabs lights up** as a small lit key.
+- **Corners are slightly rounded** on panels and cards, and a little on
+  buttons and fields.
+- **No more bar across the top.** The status, the lamp and the buttons float
+  on their own, and the navigation on the left is a rounded panel of its own
+  instead of a column divided off by a line.
+
+## 2026-10-02, later (every outline in the console gives off light)
+
+**Nothing to do on merge.**
+
+- **The grey outlines are gone.** Panels, cards, form fields, buttons and the
+  lines inside lists now glow faintly in your accent colour, each at its own
+  level: the big workspaces a little, thumbnails and track cards less,
+  form fields least.
+- **Thumbnails and cards light up when you point at them**, and form fields
+  brighten when you click into them, then settle back slowly.
+- Colours that mean something (selected, live, an error, a pending change)
+  are unchanged.
+
+## 2026-10-02 (the console's light reaches the drop zones and the pop-ups)
+
+**Nothing to do on merge.**
+
+- **The drop zones light up when you point at them**, the same glow you used to
+  see only while dragging a file over. On a phone or tablet, where there is no
+  pointer, they light up gently each time you switch to a page that has one.
+- **The empty cover slot in the writing view is a drop zone like the others**,
+  instead of a grey dashed box.
+- **The small buttons on a buffer photo glow from inside** when you point at
+  them, rather than filling solid red.
+- **Pop-ups and sheets give off light**: their edges glow, brightest along the
+  top, and a soft light falls on the textured background around them.
+
+## 2026-10-01 (steady lines while you scroll)
+
+**Nothing to do on merge.**
+
+- **Fixed: the console's red lines no longer flicker when you scroll on a phone
+  or tablet.** The soft light under each horizontal line was drawn at a quarter
+  of the screen's sharpness, so it pulsed brighter and dimmer as the line
+  moved. Now that layer draws only the soft glow, and the line stays as crisp
+  and steady as it looks when the page is still.
+
 ## 2026-09-29 (the one-click install, tested end to end)
 
 **Nothing to do on merge.**
@@ -51,6 +494,57 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
   told to say which kind a change is and ask before anything that isn't Safe,
   and to note those changes in a `MY-CHANGES.md` of your own, so update day
   is a checklist. `AGENTS.md` and `CLAUDE.md` now point there first.
+
+## 2026-09-25 (the console's light behaves like light)
+
+**Nothing to do on merge.**
+
+- **Fixed: ↓ Sync from GitHub now always pulls everything.** If the console
+  had already synced when it opened, pressing the button found nothing new on
+  GitHub, skipped the pull, and listed only your drafts, so it looked like it
+  synced one category. A press now re-pulls every category, and the readout
+  lists all of them either way. It also means **Clear Imported** followed by
+  **Sync from GitHub** brings everything back, which it quietly didn't before.
+  Anything you have changed but not yet published is kept, as always.
+
+- **Later the same day: the light moved under the glass.** The soft pools of
+  light now sit *beneath* the console rather than on top of it, and the top
+  bar, sidebar, drop zones, publish panel and toasts became slightly frosted
+  glass that lets it through. Nothing changes when nothing is lit. When
+  something is, it glows from inside the surface instead of being painted
+  over it. The drop zones lost the light bar and became the event themselves:
+  drag files over one and the whole bay glows softly under its glass with a
+  lit rim. Where you are (the current view, tab or filter) carries a low,
+  steady light on its label, and a success or error toast lights its corner.
+- **Later still: the long rules are seams of light.** The lines that divide
+  a screen are now lit from the left edge and fade as they cross, with a
+  faint glow, the way an edge-lit panel does; button outlines stay quiet with
+  only a whisper of your accent. The current screen's row in the sidebar
+  rests in a soft pool of light. And a toast's light now leaves with the
+  toast instead of lingering behind it.
+
+- **New: the glow around a lit control now warms up and cools down instead of
+  switching on.** The soft pool of light the Publish button throws onto the
+  bar while work is waiting used to appear in one frame while the button itself
+  faded up over a second and a half. Both now heat on the same curve, and when
+  the work is published the pool lingers a moment and cools rather than
+  vanishing. It costs frames only while something is changing; a still console
+  costs none.
+- **New: the drop zones are recessed bays with a light along the top edge.**
+  Cold at rest, it warms under the pointer and ignites while you are dragging
+  files over it — the console telling you it has seen them — and the light
+  falls into the bay. The dashed outline is gone.
+- **New: every button acknowledges the release.** Press one and its label
+  flashes with the console's light and settles as you let go. No animation
+  library, no JavaScript — two lines of CSS timing. Off in Daylight, where a
+  glow behind text would look like a print smudge.
+- **Fixed on the way:** the soft pool no longer bands on OLED screens (a fine
+  dither is baked in), and it is a little cooler and greyer at its far edge
+  than at the rim, which is what light on a dark panel actually does and what
+  makes the lit thing read as sitting in front of it.
+- If you have customised the console's CSS: the attribute for "a commit is in
+  flight" was renamed from `data-armed` to `data-heat` (`"hot"` while in
+  flight, `""` while cooling). Nothing in the engine writes the old name.
 
 ## 2026-09-24 (the console stops redrawing itself while work is waiting)
 

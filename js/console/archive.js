@@ -22,8 +22,8 @@
 import { STATE, save, stageChange, trashItem, _pendingR2Deletes } from '../console-state.js';
 import { getToken, uploadFilesWithRetry } from '../console-api.js';
 import { toast, escapeHTML } from './chrome.js';
-import { cdnThumb, generateVariants, _resizeToWebP, _hasOgCard } from './assets.js';
-import { cleanFilename, slugify, todayISO, uid, readFileAsDataURL, findDuplicateByHash } from './utils.js';
+import { cdnThumb, generateVariants, _resizeToWebP, _hasOgCard, SITE_LOCATION } from './assets.js';
+import { cleanFilename, slugify, todayISO, uid, readFileAsDataURL, findDuplicateByHash, paintHTML, setText } from './utils.js';
 
 // ============== GEAR MEMORY ==============
 // Camera / lens / medium were two hardcoded <option> lists — one photographer's
@@ -285,6 +285,29 @@ export let archiveEditId = null;
 export let archiveComposeFocus = '';   // focal point for the frame being composed/edited
 export let archiveComposeCardFocus = '';  // separate focal point for the tall 4:5 changelog card
 export function _setArchiveComposeFocus(f) { archiveComposeFocus = f; }
+
+// The archive's arrival with a seed (the view seam, K65): a Buffer frame
+// promoted into the compose form. It used to be filled from buffer.js on a
+// setTimeout(80), guessing when this view had rendered.
+export function archiveEnter(seed) {
+  const item = seed && seed.fromBuffer;
+  if (!item) return;
+  const view = document.getElementById("view-archive");
+  document.getElementById("archive-preview-wrap").innerHTML =
+    `<img src="${item.image || cdnThumb(item)}" alt="">`;
+  document.getElementById("archive-filename").textContent = cleanFilename(item.filename);
+  _setArchiveComposeFocus(item.focus || '');
+  _setArchiveComposeCardFocus(item.cardFocus || '');
+  const year = new Date(item.captured_at).getFullYear();
+  document.getElementById("arch-loc").value =
+    SITE_LOCATION ? `${SITE_LOCATION}, ${year}` : `${year}`;
+  // Stash on form for the stage handler
+  view.dataset.fromBuffer = item.id;
+  view.dataset.image = item.image || '';
+  view.dataset.filename = cleanFilename(item.filename);
+  delete view.dataset.uploadState;   // frame's asset is already confirmed
+  document.getElementById("arch-title").focus();
+}
 export function _setArchiveComposeCardFocus(f) { archiveComposeCardFocus = f; }
 
 export function archiveEdit(id) {
@@ -476,13 +499,16 @@ export function archiveRemove(id) {
 
 export function renderArchive() {
   const display = document.getElementById("archive-display");
-  document.getElementById("archive-count").textContent = STATE.archive.length;
-  document.getElementById("archive-stats").textContent = `${STATE.archive.length} curated frames`;
+  setText(document.getElementById("archive-count"), STATE.archive.length);
+  setText(document.getElementById("archive-stats"), `${STATE.archive.length} curated frames`);
   if (!STATE.archive.length) {
-    display.innerHTML = `<div class="empty">// ARCHIVE EMPTY · STAGE FRAMES ABOVE</div>`;
+    paintHTML(display, `<div class="empty">// ARCHIVE EMPTY · STAGE FRAMES ABOVE</div>`);
     return;
   }
-  display.innerHTML = STATE.archive.map(a => {
+  // Written only when it differs (utils.js paintHTML): an arrival with
+  // nothing changed keeps the grid, its loaded thumbnails and their light.
+  // This render is the grid's one writer.
+  paintHTML(display, STATE.archive.map(a => {
     // Mirror renderBuffer()/renderLibrary(): a frame with no CDN asset behind
     // it must SAY so — pointing <img> at the missing object would 404 quietly
     // and the card would just look empty instead of failed.
@@ -495,9 +521,9 @@ export function renderArchive() {
     const stamped = !a._uploadError && _hasOgCard(String(a.filename || '').replace(/\.[^.]+$/, ''));
     const thumb = a._uploadError
       ? `<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:0.5rem;letter-spacing:1px;color:var(--accent);">✕ FAILED</div>`
-      : `<div class="thumb">${stamped ? '<div class="ogc-badge" title="Live share image on R2">▣</div>' : ''}${(a.image || a.filename) ? `<img src="${cdnThumb(a)}" alt=""${a.focus ? ` style="object-position:${a.focus}"` : ''}>` : ''}</div>`;
+      : `<div class="thumb">${stamped ? '<div class="ogc-badge" title="Live share image on R2">▣</div>' : ''}${(a.image || a.filename) ? `<img src="${cdnThumb(a, 'archive', 480)}" alt="" loading="lazy" decoding="async"${a.focus ? ` style="object-position:${a.focus}"` : ''}>` : ''}</div>`;
     return `
-    <div class="archive-card${a._imported ? ' imported' : ''}" onclick="archiveEdit('${a.id}')" style="cursor:pointer;">
+    <div class="archive-card${a._imported ? ' imported' : ''}" data-seam="box" data-backlit data-tier="card" onclick="archiveEdit('${a.id}')" style="cursor:pointer;">
       ${thumb}
       <div class="info">
         <div class="title">${a.title}</div>
@@ -507,5 +533,5 @@ export function renderArchive() {
       </div>
       <button class="icon-btn danger" onclick="event.stopPropagation(); archiveRemove('${a.id}')" title="Remove">×</button>
     </div>`;
-  }).join("");
+  }).join(""));
 }

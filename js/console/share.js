@@ -32,7 +32,7 @@
 
 import { STATE } from '../console-state.js';
 import { getToken, uploadFiles } from '../console-api.js';
-import { toast, escapeHTML, escapeAttrJS, openSheet, closeSheet } from './chrome.js';
+import { toast, escapeHTML, escapeAttrJS, openSheet, closeSheet, copyText } from './chrome.js';
 import { SITE_FILE_PREFIX } from './assets.js';
 import { _addOgCard, _hasOgCard } from './buffer.js';
 import { fnCurrentId } from './fn-editor.js';
@@ -190,22 +190,8 @@ export function shareCopyLink(stem) {
   const t = _shareTargetAt(stem);
   if (!t) return;
   const url = /^https?:/i.test(t.url) ? t.url : location.origin + t.url;
-  // ⚠️ `navigator.clipboard` IS UNDEFINED OUTSIDE A SECURE CONTEXT, and the
-  // console is reachable from one that is not: a phone or an iPad opening it at
-  // `http://<LAN ip>:8787` while `wrangler dev` runs. Reading `.writeText` off
-  // undefined throws synchronously, before any `.then` exists to catch it — and
-  // from an inline on*= handler that is an unhandled TypeError, so the button
-  // does nothing and says nothing. Show the address instead; it is the whole
-  // point of the gesture and the owner can select it.
-  if (!navigator.clipboard || !navigator.clipboard.writeText) {
-    toast('Copy needs a secure connection — the address is ' + url, 'warning');
-    return;
-  }
-  const msg = t.staged ? '✓ link copied — it works once you publish' : '✓ link copied';
-  navigator.clipboard.writeText(url).then(
-    () => toast(msg, 'success'),
-    () => toast('Copy failed — the address is ' + url, 'warning'),
-  );
+  // copyText (chrome.js) carries the secure-context guard this used to.
+  copyText(url, { ok: t.staged ? '✓ link copied — it works once you publish' : '✓ link copied', what: 'the address' });
 }
 
 /** A canvas as a WebP blob. Rejects rather than resolving empty: an empty blob

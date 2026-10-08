@@ -26,6 +26,7 @@
 // New in chunk 7. See dev/console-module-plan.md.
 
 import { SITE_NAME, SITE_WORDMARK_STEM, SITE_WORDMARK_ACCENT } from './assets.js';
+import { qrMatrix } from '../qr.js';
 
 // ============== THE THREE RATIOS ==============
 //
@@ -99,6 +100,62 @@ export function shareKey(stem, ratio) {
 // the tree (2026-09-18); this is now the only one.
 export function shareMarker(stem) {
   return String(stem || '').replace(/^meta\//, '');
+}
+
+// ============== THE STORY WITH ITS WAY HOME (K67) ==============
+//
+// The story card from "Send it out" carries a QR back to the piece and the
+// site's own address under it. A story is watched with the app's own chrome
+// over it: the profile row across the top and the reply bar across the
+// bottom, about 250px of a 1080 × 1920 frame each. So everything here sits
+// inside the band between them, and a test holds it there. Pure, like
+// shareGeometry: the card on top, then a row of the QR on the left and the
+// wordmark and the address beside it. The stamped `-story` file and
+// shareGeometry('story') are untouched: this is only the download.
+export const STORY_SAFE = 250;
+export function storyQrGeometry(aspect = CARD_H) {
+  const { w: W, h: H } = SHARE_RATIOS.story;
+  const top = STORY_SAFE, bottom = H - STORY_SAFE;
+  const qr = 196, gap = 52;
+  const h = Math.min(Math.round((W - 2 * 96) * aspect), bottom - top - gap - qr);
+  const w = Math.round(h / aspect);
+  const x = Math.round((W - w) / 2);
+  const rowY = top + h + gap;
+  return {
+    W, H, ratio: 'story', safe: { top, bottom },
+    card: { x, y: top, w, h },
+    qr: { x, y: rowY, size: qr },
+    wordmark: { x: x + qr + 40, y: rowY + 62, align: 'left' },
+    address: { x: x + qr + 40, y: rowY + 128, w: x + w - (x + qr + 40) },
+  };
+}
+
+/** A QR code on a light tile with its quiet zone (four modules), so any
+ *  reader finds it on the dark ground. */
+function drawQr(ctx, at, text) {
+  const { size, modules } = qrMatrix(text);
+  const quiet = 4;
+  const cell = at.size / (size + quiet * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(at.x, at.y, at.size, at.size);
+  ctx.fillStyle = '#000000';
+  for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) {
+    if (modules[r][c]) ctx.fillRect(at.x + (c + quiet) * cell, at.y + (r + quiet) * cell, Math.ceil(cell), Math.ceil(cell));
+  }
+}
+
+// The address under the wordmark: the host and path a phone would type, in
+// the meta face, clipped to the room it has. Never a literal: it is the URL
+// the caller hands in, which is this site's own.
+function drawAddress(ctx, at, url, tokens, u) {
+  let shown = String(url || '').replace(/^https?:\/\//, '');
+  const size = u * 0.024;
+  setFont(ctx, tokens.meta, size, 400, size * 0.06);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = tokens.ink;
+  while (shown.length > 8 && ctx.measureText(shown).width > at.w) shown = shown.slice(0, -2) + '…';
+  ctx.fillText(shown, at.x, at.y);
 }
 
 // ============== GEOMETRY (pure) ==============
@@ -986,18 +1043,29 @@ function drawAudioCard(ctx, rect, comp, tokens) {
     y += u * TYPE.meta * 1.4;
   }
 
-  // ---- the waveform ----
+  // ---- the waveform, and the player's play mark before it ----
+  // K81 (the owner, on sending a track out: "a stylized play button that is a
+  // link to the audio's page"). No platform plays a linked track, so the card
+  // says what the page does: the site's own player draws a bare mark, no
+  // circle or pill, at the head of its waveform (js/audio-player.js .ap-play,
+  // its path is the one below), and so does the card. The link and the QR
+  // take you there.
   y += u * 0.045;
   const waveH = u * 0.30;
+  const mark = playMarkBox(x, y, waveH, u);
+  ctx.fillStyle = tokens.ink;
+  drawPlayMark(ctx, mark);
+  const wx = mark.x + mark.w + mark.gap;
+  const ww = x + w - wx;
   const peaks = peakValues(comp.tracks);
-  const bars = Math.max(24, Math.min(64, Math.round(w / (u * 0.022))));
-  const bw = w / bars;
+  const bars = Math.max(24, Math.min(64, Math.round(ww / (u * 0.022))));
+  const bw = ww / bars;
   ctx.fillStyle = tokens.brand;
   for (let i = 0; i < bars; i++) {
     const v = peaks.length ? peaks[Math.floor((i / bars) * peaks.length)] : 0.35;
     const h = Math.max(u * 0.008, waveH * Math.min(1, Math.max(0.04, v)));
     ctx.globalAlpha = 0.34 + 0.5 * Math.min(1, v);
-    ctx.fillRect(x + i * bw, y + (waveH - h) / 2, Math.max(1, bw * 0.55), h);
+    ctx.fillRect(wx + i * bw, y + (waveH - h) / 2, Math.max(1, bw * 0.55), h);
   }
   ctx.globalAlpha = 1;
   y += waveH + u * 0.05;
@@ -1036,6 +1104,24 @@ function drawAudioCard(ctx, rect, comp, tokens) {
     }
   }
 
+}
+
+// The play mark's box: the player's 13 × 15 glyph, scaled to the card and
+// centred on the waveform's middle, with the gap the player leaves after it.
+export function playMarkBox(x, y, waveH, u) {
+  const h = Math.min(waveH * 0.4, u * 0.085);
+  const w = h * (13 / 15);
+  return { x, y: y + (waveH - h) / 2, w, h, gap: u * 0.035 };
+}
+// js/audio-player.js's path, "M1 1.2 L13 8 L1 14.8 Z" in a 14 × 16 box.
+function drawPlayMark(ctx, b) {
+  const sx = b.w / 12, sy = b.h / 13.6;
+  ctx.beginPath();
+  ctx.moveTo(b.x, b.y);
+  ctx.lineTo(b.x + 12 * sx, b.y + 6.8 * sy);
+  ctx.lineTo(b.x, b.y + 13.6 * sy);
+  ctx.closePath();
+  ctx.fill();
 }
 
 // The pulse card. It has no share address of its own (nothing points at a state
@@ -1255,7 +1341,9 @@ export async function paintCard(item, ratio, opts = {}) {
   if (!SHARE_RATIOS[ratio]) throw new Error(`unknown share ratio: ${ratio}`);
   const comp = RI.cardComposition(item);
   if (opts.focus && comp.media) comp.media = { ...comp.media, focus: opts.focus };
-  const geo = shareGeometry(ratio, cardAspect(comp));
+  // A story with its way home (K67): `opts.qr` is the piece's address.
+  const withQr = ratio === 'story' && opts.qr;
+  const geo = withQr ? storyQrGeometry(cardAspect(comp)) : shareGeometry(ratio, cardAspect(comp));
   const tokens = opts.tokens || probeCardTokens(item, opts.tokenNode);
   // THE FACES AND THE PICTURE, TOGETHER. ensureShareFonts' own docstring said it
   // was folded in here "so every caller inherits it instead of remembering it"
@@ -1283,6 +1371,10 @@ export async function paintCard(item, ratio, opts = {}) {
   drawCardFace(ctx, geo.card, comp, tokens, img);
   if (geo.text) drawOgAside(ctx, geo.text, comp, tokens, geo.W);
   if (geo.wordmark) drawWordmark(ctx, geo.wordmark, tokens, geo.W);
+  if (withQr) {
+    drawQr(ctx, geo.qr, opts.qr);
+    drawAddress(ctx, geo.address, opts.qr, tokens, geo.W);
+  }
   return cv;
 }
 

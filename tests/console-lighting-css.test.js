@@ -108,12 +108,51 @@ describe('the canvas bloom is declared, gated and unblended', () => {
     expect(css).toMatch(/position:\s*fixed/);
     // Clicks must reach the control the light is coming from.
     expect(css).toMatch(/pointer-events:\s*none/);
-    // Over the tab bar (300) so the publish tab can pool; under the sheet
-    // overlay (460) and modals (500), because a sheet is a new plane and light
-    // from the plane behind it must not lie on top of it.
-    const z = Number(css.match(/z-index:\s*(\d+)/)[1]);
-    expect(z).toBeGreaterThan(300);
-    expect(z).toBeLessThan(460);
+    // UNDER THE GLASS (K40b): a negative z-index paints the light above the
+    // root ground and below every in-flow box, so frosted chrome transmits it
+    // and opaque cards cast their shape onto it. It used to sit at 310, over
+    // the console — light painted ON a surface, which is what a decal is.
+    const z = Number(css.match(/z-index:\s*(-?\d+)/)[1]);
+    expect(z).toBeLessThan(0);
+    // …which only works if <body> paints no ground of its own over it.
+    expect(RULES).toMatch(/\nhtml \{ background: var\(--bg\); \}/);
+    expect(RULES).not.toMatch(/\nhtml, body \{ background/);
+    expect(RULES, '.main must be clear so the ground is the light\'s').toMatch(/\.main \{[^}]*background:\s*transparent/);
+  });
+
+  it('frosts the chrome and the bays, and resolves to the same rest colour', () => {
+    // The glass the light is under. Each frost must match the opaque tier it
+    // replaces when nothing is lit beneath — a dark console is byte-identical
+    // at rest — and DAYLIGHT, with nothing beneath, is simply the paper tier.
+    const studio = CSS.slice(CSS.indexOf(':root {'), CSS.indexOf(':root[data-theme="light"]'));
+    const f1 = studio.match(/--frost-1:\s*rgba\((\d+), \d+, \d+, ([\d.]+)\)/);
+    expect(f1).toBeTruthy();
+    expect(Math.round(Number(f1[1]) * Number(f1[2]))).toBe(0x0c);
+    const f2 = studio.match(/--frost-2:\s*rgba\((\d+), \d+, \d+, ([\d.]+)\)/);
+    expect(Math.round(Number(f2[1]) * Number(f2[2]))).toBe(0x14);
+    const light = CSS.slice(CSS.indexOf(':root[data-theme="light"]'));
+    expect(light.slice(0, light.indexOf('}'))).toMatch(/--frost-1:\s*var\(--surface-1\)/);
+    // K44b: the topbar has NO glass at all (its controls float in the room),
+    // and the sidebar is a floating panel of glass with a light behind it —
+    // still the primary source: the brightest rim and a boosted haze.
+    expect(RULES).toMatch(/\n\.topbar \{[^}]*background: transparent/);
+    const side = RULES.match(/\n\.sidebar \{([^}]*)\}/)[1];
+    expect(side).toMatch(/background: var\(--glass-body, var\(--frost-0\)\)/);
+    expect(side).toMatch(/--seam-level: 1;/);
+    expect(side).toMatch(/--haze-boost: [\d.]+;/);
+    // K55: the bay is backlit glass like a panel, frost underneath.
+    expect(RULES).toMatch(/\n\.dropzone \{[^}]*background: var\(--glass-body, var\(--frost-0\)\)/);
+  });
+
+  it('a lit control is frost plus tint, and a heated panel drops the chip filter', () => {
+    // Both found on a screen, not in a test: a 10% tint over a transparent
+    // box let the pool drown the PUBLISH label and the toasts, and the
+    // ignition's drop-shadows on the bay's 900px silhouette were a wash.
+    const lit = RULES.match(/\n\[data-lit\] \{([^}]*)\}/)[1];
+    expect(lit).toMatch(/background:\s*linear-gradient\(var\(--lit-fill\), var\(--lit-fill\)\), var\(--frost-1\)/);
+    expect(lit).toMatch(/text-shadow:\s*var\(--lit-legend\)/);
+    expect(RULES).toMatch(/\.toast\[data-lit\] \{[^}]*var\(--frost-2\)/);
+    expect(RULES).toMatch(/\.dropzone\[data-heat\], \.dropzone\[data-heat="hot"\] \{ filter: none; \}/);
   });
 
   it('never blends — that is the iPad cliff, not a style choice', () => {

@@ -49,6 +49,19 @@ const PLAN = [
   // nothing about buffers, frames or publishing — and because nothing below
   // chrome exists for it to sit under.
   ['lighting', []],
+  // The text classes' one moving part (2026-10-06): the UPDATE, a flare that
+  // runs through a root's readouts in reading order. Like lighting it names
+  // no surface and imports nothing; what a text class LOOKS like is the
+  // stylesheet's (TYPE), so this is only the when.
+  ['text-light', []],
+  // The dot-matrix readout (2026-10-06), lifted out of the Bridge so a
+  // readout is a part, not a page. Imports chrome (escapeHTML) and nothing
+  // else.
+  ['matrix', []],
+  // The split-flap board (K64): a line of type that turns only what changed,
+  // the way a departure board does. A part like the matrix; imports chrome
+  // (escapeHTML) and text-light (the flare as a word lands).
+  ['flap', []],
   // Never lived in the monolith — it arrived whole, so its section list is
   // empty on purpose (dev/console-module-plan.md, the `lighting` precedent).
   ['help', []],
@@ -117,6 +130,10 @@ const PLAN = [
   // which build their own targets and hand them over, the same shape focal's
   // per-surface entry points have.
   ['share', []],
+  // Send it out (K67): the newest live piece, how its link unfurls, the post
+  // counted per platform, and the story card with a QR home. Above share
+  // (it builds share targets and stamps through it) and card-paint.
+  ['send-out', []],
   ['asset-library', ['ASSET LIBRARY']],
   // Above fn-editor because attaching a track from the editor inserts its
   // shortcode (fnInsertAtCursor) — same direction asset-library already runs.
@@ -134,6 +151,17 @@ const PLAN = [
   // The pulse composer. Sits high in the order because nothing else calls it:
   // it stages nothing, touches no publish counter, and its one job is a POST.
   ['pulse', ['PULSE']],
+  // The Bridge, the console's front page (docs/ideas/bridge.md). Written as a
+  // module, so no callgraph sections. It sits at the top because it only READS
+  // the surfaces below it — the stage ledger, the upload queue, the drafts,
+  // the homepage's own selection (cards), the pulse log — and hands drops to
+  // their owners' ingests. Nothing imports it but init.
+  ['bridge', []],
+  // Capture on the Bridge (K66): the spark, a quick draft that keeps itself
+  // privately and expands into the editor, and the shelf of frames to cite.
+  // Above the Bridge, and registers with it (registerBridgeRegion), the way a
+  // surface registers with the router.
+  ['capture', []],
   ['init', ['INIT']],
 ];
 

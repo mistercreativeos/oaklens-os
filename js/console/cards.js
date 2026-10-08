@@ -70,7 +70,7 @@
 import {
   STATE, save, stageChange, unstageChange, trashItem, ledgerRowFor, restoreStagedRow,
 } from '../console-state.js';
-import { escapeHTML, escapeAttrJS, registerView, showView, toast } from './chrome.js';
+import { escapeHTML, escapeAttrJS, registerView, showView, toast, copyText } from './chrome.js';
 import { cdnThumb, cdnVariant } from './assets.js';
 import { uid, todayISO } from './utils.js';
 import { openAssetLibrary } from './asset-library.js';
@@ -107,6 +107,7 @@ const UNTITLED = '— untitled —';
 const RAW_LIMIT = 4;
 
 // The five reads, in the order recent-index.js' own render() makes them.
+const LIVE_READ_MS = 10_000;
 const LIVE_SOURCES = [
   '/data/archive.json',
   '/data/posts.json',
@@ -264,11 +265,17 @@ export function _stagedInputs() {
 // revalidation is one round trip and a 304 when nothing moved, and the Worker's
 // own data cache is keyed by the deploy, so the answer is the deployed truth the
 // moment the build lands.
+// The Bridge reads the same live front page (js/console/bridge.js, "ON THE
+// FRONT PAGE") — one implementation of "what does the homepage say right now".
+export function cardsLiveInputs() { return _liveInputs(); }
+
 async function _liveInputs() {
   const failed = [];
   const results = await Promise.all(LIVE_SOURCES.map(async (path) => {
     try {
-      const res = await fetch(path, { cache: 'no-cache' });
+      // A deadline: a read that never answers used to hold the Bridge's
+      // live read open forever, so it never read again (K68, the field probe).
+      const res = await fetch(path, { cache: 'no-cache', signal: AbortSignal.timeout(LIVE_READ_MS) });
       if (!res.ok) {
         if (res.status !== 404) failed.push(path);
         return null;
@@ -2073,21 +2080,13 @@ export function cardsCopyAddress(id) {
   const path = (card && RI && RI.entryHref) ? RI.entryHref('composed', card) : '';
   if (!path) return;
   const url = location.origin + path;
-  // Same guard as shareCopyLink's, for the same reason and on the same screen:
-  // `navigator.clipboard` is undefined outside a secure context (an iPad on
-  // `http://<LAN ip>:8787` against `wrangler dev`), and reading `.writeText` off
-  // it throws before any `.then` can catch. Fixing one of these two buttons and
-  // not the other would be worse than fixing neither.
-  if (!navigator.clipboard || !navigator.clipboard.writeText) {
-    return toast('Copy needs a secure connection — the address is ' + url, 'warning');
-  }
-  // A staged card's address is reserved, not yet answering — say so on the
-  // gesture, because a pasted link that 404s is the one report this came from.
-  const msg = (card && !card._imported) ? '✓ card address copied — it works once you publish' : '✓ card address copied';
-  navigator.clipboard.writeText(url).then(
-    () => toast(msg, 'success'),
-    () => toast('Copy failed — the address is ' + url, 'warning'),
-  );
+  // copyText (chrome.js) carries the secure-context guard. A staged card's
+  // address is reserved, not yet answering — say so on the gesture, because
+  // a pasted link that 404s is the one report this came from.
+  copyText(url, {
+    ok: (card && !card._imported) ? '✓ card address copied — it works once you publish' : '✓ card address copied',
+    what: 'the address',
+  });
 }
 
 // ---- retiring a PUBLISHED card ----
@@ -2546,7 +2545,7 @@ function ribbonHtml(slots, marks, showMarks) {
 // that wants a badge asks for the tone rather than passing markup in.
 function controlBlock(title, body, opts) {
   const { note, aside, asideId, asideTone } = opts || {};
-  return `<section class="control-block">
+  return `<section class="control-block" data-seam="box" data-backlit data-tier="panel">
     <header class="control-block-head">${escapeHTML(title)}
       ${aside ? `<span class="control-block-aside"${asideId ? ` id="${escapeHTML(asideId)}"` : ''}${asideTone ? ` data-tone="${escapeHTML(asideTone)}"` : ''}>${escapeHTML(aside)}</span>` : ''}</header>
     ${body}
@@ -2700,7 +2699,7 @@ function audioBlockHtml(card) {
   }).join('');
 
   const action = source === 'set'
-    ? `<select class="composer-input" id="cards-set-pick"
+    ? `<select class="composer-input" data-tier="field" id="cards-set-pick"
          aria-label="The set this card plays"
          onchange="cardsPickSet(${q},this.value)">
          ${sets.map((set) => `<option value="${escapeHTML(set.slug)}"${set.slug === card.set ? ' selected' : ''}>
@@ -2826,7 +2825,7 @@ function gridCellHtml(slot, index, mark, actionable) {
          </div>
        </div>`
     : (actionable && slot ? takeoverHtml(slot, index, true) : '');
-  return `<article class="grid-cell${index === _slotIndex ? ' is-active' : ''}${isEditing ? ' is-editing' : ''}">
+  return `<article class="grid-cell${index === _slotIndex ? ' is-active' : ''}${isEditing ? ' is-editing' : ''}" data-seam="box" data-backlit data-tier="card">
     <header class="grid-cell-head">
       <button class="grid-cell-n" onclick="cardsSelectSlot(${index})"
         title="Focus this slot in the studio">SLOT ${String(index + 1).padStart(2, '0')}</button>
@@ -2973,7 +2972,7 @@ function composerRailHtml(card) {
   // (recent-index.js badgeOf). The copy has to say which, or it is a small lie.
   const isAudio = _composedIsAudio(card);
   const badgeFallback = isAudio ? 'Audio' : 'Featured';
-  const chip = controlBlock('CARD BADGE', `<input class="composer-input" type="text"
+  const chip = controlBlock('CARD BADGE', `<input class="composer-input" data-tier="field" type="text"
       value="${escapeHTML(card.label || '')}" placeholder="${escapeHTML(badgeFallback)}" maxlength="24"
       aria-label="The small label on the card"
       oninput="cardsSetText(${q},'label',this.value)">`, {
@@ -3354,7 +3353,7 @@ function _paint(host, live) {
 
   const studio = composing
     ? `<div class="cards-studio is-composing">
-         <div class="studio-stage" onclick="cardsHandleStageClick(event)"
+         <div class="studio-stage" data-seam="box" data-tier="panel" onclick="cardsHandleStageClick(event)"
            title="Click background or press Esc to exit edit mode">
            ${composerBar}
            ${composerCardHtml(composing)}
@@ -3363,7 +3362,7 @@ function _paint(host, live) {
          ${composerRailHtml(composing)}
        </div>`
     : `<div class="cards-studio">
-         <div class="studio-stage">
+         <div class="studio-stage" data-seam="box" data-tier="panel">
            ${realCardHtml(focused)}
            ${actionable && focused ? takeoverHtml(focused, _slotIndex, false) : ''}
            ${actionable ? undoChipsHtml() : ''}</div>

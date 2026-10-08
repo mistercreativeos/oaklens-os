@@ -114,6 +114,7 @@ beforeEach(() => {
   loginForTest();
   SURFACES.forEach((s) => { STATE[s] = []; });
   STATE.staged = Object.fromEntries(SURFACES.map((s) => [s, 0]));
+  STATE.stagedLog = [];
   sessionTrash.length = 0;
   _setLastImportedSha(null);
 });
@@ -163,6 +164,77 @@ describe('syncFromServer — the sha-gated import skip', () => {
     stubFetch(syncResponse('S1', { contentBySurface: { buffer: [{ id: 'f1', filename: 'x.webp' }] } }));
     await syncFromServer();
     expect(STATE.buffer).toHaveLength(1);
+  });
+});
+
+// 2026-09-25, owner report: "the automatic sync works, but the manual sync
+// button only syncs one category". The login sync had already imported main, so
+// a press hit the skip above and the readout listed only `drafts` (D1). And
+// after CLEAR IMPORTED the press restored nothing, because the marker still
+// vouched for a snapshot the console no longer held.
+describe('syncFromServer — the button always pulls, and always lists every surface', () => {
+  const heldFrame = { id: 'f1', filename: 'x.webp', _imported: true };
+  const mainBuffer = [{ id: 'f1', filename: 'x.webp' }, { id: 'f2', filename: 'y.webp' }];
+
+  it('an automatic up-to-date sync still lists every surface in the readout', async () => {
+    _setLastImportedSha('S1');
+    STATE.buffer = [heldFrame];
+    stubFetch(syncResponse('S1', { contentBySurface: { buffer: mainBuffer } }));
+
+    await syncFromServer();
+
+    const text = document.getElementById('sync-status').textContent;
+    expect(text).toMatch(/up to date/);
+    for (const s of SURFACES) expect(text, `${s} missing from the readout`).toContain(s);
+    expect(STATE.buffer, 'the automatic sync still skips the import').toHaveLength(1);
+  });
+
+  it('a forced sync (the button) re-imports even when main has not moved', async () => {
+    _setLastImportedSha('S1');
+    STATE.buffer = [heldFrame];
+    stubFetch(syncResponse('S1', { contentBySurface: { buffer: mainBuffer } }));
+
+    await syncFromServer({ force: true });
+
+    expect(STATE.buffer.map((e) => e.id).sort()).toEqual(['f1', 'f2']);
+    expect(document.getElementById('sync-status').textContent).toMatch(/synced/);
+  });
+
+  it('a forced sync keeps a ledger-dirty imported entry', async () => {
+    _setLastImportedSha('S1');
+    STATE.buffer = [{ ...heldFrame, focus: '30% 40%' }];
+    STATE.stagedLog = [{ surface: 'buffer', ids: ['f1'], label: 'f#1 — card crop', kind: 'edit', n: 1, ts: 1 }];
+    stubFetch(syncResponse('S1', { contentBySurface: { buffer: mainBuffer } }));
+
+    await syncFromServer({ force: true });
+
+    expect(STATE.buffer.find((e) => e.id === 'f1').focus).toBe('30% 40%');
+  });
+
+  it('an event object from a listener is not mistaken for a press', async () => {
+    _setLastImportedSha('S1');
+    STATE.buffer = [heldFrame];
+    stubFetch(syncResponse('S1', { contentBySurface: { buffer: mainBuffer } }));
+    await syncFromServer(new Event('focus'));
+    expect(STATE.buffer).toHaveLength(1);
+  });
+
+  it('CLEAR IMPORTED drops the marker, so the next sync — even automatic — refills', async () => {
+    const { clearImported } = await import('../js/console-ui.js');
+    _setLastImportedSha('S1');
+    STATE.buffer = [heldFrame];
+    clearImported();
+    expect(STATE.buffer).toHaveLength(0);
+    expect(_getLastImportedSha()).toBeNull();
+
+    stubFetch(syncResponse('S1', { contentBySurface: { buffer: mainBuffer } }));
+    await syncFromServer();
+    expect(STATE.buffer).toHaveLength(2);
+  });
+
+  it('the Sync from GitHub button forces', () => {
+    const html = readFileSync(join(process.cwd(), 'dev/field-console.html'), 'utf8');
+    expect(html).toMatch(/onclick="syncFromServer\(\{ force: true \}\)">↓ Sync from GitHub/);
   });
 });
 

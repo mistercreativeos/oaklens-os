@@ -505,6 +505,25 @@ export async function _pulsePost() {
   }
 }
 
+// The Bridge's one-line pulse (js/console/bridge.js): the same POST and the
+// same author's clock as the composer, with only a line — no glyphs, the
+// default state, no feet. Resolves true when it went live; the composer's own
+// card is untouched, so a half-made card waits where it was left.
+export async function pulsePostLine(text) {
+  const line = String(text || '').trim();
+  if (!line) { toast('A pulse needs a line', 'warn'); return false; }
+  try {
+    await postPulse({ text: line, glyphs: '', state: 'signal', footLeft: '', footRight: '', localTime: nowLocalTime() });
+    toast('Pulse is live — no publish needed', 'success');
+    logEvent('pulse', 'posted');
+    return true;
+  } catch (err) {
+    if (isNotConfigured(err)) toast('Pulse needs its database table — run the migrations (see setup.md)', 'warn');
+    else toast(`Could not post: ${err.message}`, 'error');
+    return false;
+  }
+}
+
 export async function _pulseRetire() {
   try {
     const res = await retirePulse();
@@ -555,7 +574,7 @@ function starterTilesHtml() {
   const pack = activePackDef();
   if (!pack) return '';
   return pack.pulses.map((m, i) => `
-    <button type="button" class="pulse-tile" onclick="_pulseApplyStarter('${escapeAttrJS(pack.key)}', ${i})">
+    <button type="button" class="pulse-tile" data-seam="box" data-backlit data-tier="card" onclick="_pulseApplyStarter('${escapeAttrJS(pack.key)}', ${i})">
       <span class="pulse-tile-glyph" aria-hidden="true">${escapeHTML(m.glyphs)}</span>
       <span class="pulse-tile-text">${escapeHTML(m.text)}</span>
     </button>`).join('');
@@ -614,7 +633,7 @@ function trayHtml() {
          from that keyboard can still be taken straight back off. -->
     <div class="pulse-tray-picked" id="pulse-tray-picked" hidden></div>
     <label class="pulse-sr" for="pulse-glyph-any">Any emoji from your keyboard</label>
-    <input class="pulse-input pulse-tray-any" id="pulse-glyph-any" type="text"
+    <input class="pulse-input pulse-tray-any" data-tier="field" id="pulse-glyph-any" type="text"
            inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false"
            placeholder="…or any emoji from your keyboard"
            oninput="_pulseSetGlyphAny(this.value)">
@@ -641,7 +660,7 @@ function logHtml() {
     return '<div class="pulse-rail-empty">No pulses yet. The first one you post lands here.</div>';
   }
   return logRows.map((r) => `
-    <button type="button" class="pulse-tile${r.live ? ' is-live' : ''}"
+    <button type="button" class="pulse-tile${r.live ? ' is-live' : ''}" data-seam="box" data-backlit data-tier="card"
             onclick="_pulseReuse('${escapeAttrJS(r.id)}')">
       <span class="pulse-tile-glyph" aria-hidden="true">${escapeHTML(r.glyphs || '·')}</span>
       <span class="pulse-tile-text">${escapeHTML(r.text || '')}</span>
@@ -674,7 +693,7 @@ export function renderPulse() {
       </nav>
 
       <div class="pulse-canvas">
-        <aside class="pulse-rail">
+        <aside class="pulse-rail" data-seam="box" data-backlit data-tier="panel">
           <div class="pulse-rail-head">
             <span>Recent</span><span class="pulse-rail-hint">Tap to reuse</span>
           </div>
@@ -713,7 +732,7 @@ export function renderPulse() {
                the handler and cannot get out of step with the panel. It sits a
                z-index BELOW the menu, so it darkens the stage without covering
                what it is there to dismiss. -->
-          <div class="pulse-tray" id="pulse-tray" role="dialog"
+          <div class="pulse-tray" data-tier="panel" id="pulse-tray" role="dialog"
                aria-label="Choose a glyph">${trayHtml()}</div>
           <div class="pulse-tray-scrim" id="pulse-tray-scrim" onclick="_pulseCloseTray()"></div>
           <div class="pulse-strip" id="pulse-strip">${starterChipsHtml()}</div>
@@ -739,15 +758,15 @@ export function renderPulse() {
           <details class="pulse-more">
             <summary>Footer — free text, both optional</summary>
             <div class="pulse-foot-row">
-              <input class="pulse-input" id="pulse-foot-left" value="${escapeHTML(draft.footLeft)}"
+              <input class="pulse-input" data-tier="field" id="pulse-foot-left" value="${escapeHTML(draft.footLeft)}"
                      oninput="_pulseSetField('footLeft', this.value)" placeholder="Footer left">
-              <input class="pulse-input" id="pulse-foot-right" value="${escapeHTML(draft.footRight)}"
+              <input class="pulse-input" data-tier="field" id="pulse-foot-right" value="${escapeHTML(draft.footRight)}"
                      oninput="_pulseSetField('footRight', this.value)" placeholder="Footer right">
             </div>
           </details>
         </section>
 
-        <aside class="pulse-rail">
+        <aside class="pulse-rail" data-seam="box" data-backlit data-tier="panel">
           <div class="pulse-rail-head">
             <span id="pulse-starters-head">${escapeHTML(pack ? `${pack.label} starters` : 'Starters')}</span>
             <span class="pulse-rail-hint">Tap to fill</span>

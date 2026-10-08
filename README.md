@@ -26,15 +26,15 @@ Whatever you make is what it's for. It began as one photographer's site and the
 image tools show it — but the writing surface, the audio layer and the feeds are
 first-class, not accessories, and nothing here assumes a camera.
 
-**New to this?** Follow the
-[interactive install guide](https://os.oaklens.art/install). It walks you
-through the whole setup one step at a time, says what each step is for before it
-tells you what to type, and remembers where you got to if you close the tab. It
-was written for people who don't do this for a living. Start there and you can
-ignore everything below.
+**New to this?** The [one-click install](https://os.oaklens.art/install) is
+three steps on one page: a free GitHub account, a free Cloudflare account with
+R2 switched on, and one link. There is nothing to type. It was written for
+people who don't do this for a living. Start there and you can ignore everything
+below.
 
-Prefer to read it all at once? [setup.md](setup.md) is the same ground in
-reference form, plus everything about operating the site once it's up.
+Prefer to read it all at once, or to install from a terminal?
+[setup.md](setup.md) is the same ground in reference form, plus everything about
+operating the site once it's up.
 
 ---
 
@@ -226,7 +226,7 @@ For the curious, or anyone deciding whether to trust it:
 
 | File | What's in it |
 |------|--------------|
-| [Install guide](https://os.oaklens.art/install) | The interactive walkthrough, one step at a time |
+| [One-click install](https://os.oaklens.art/install) | Three steps on one page: the two accounts, then the link |
 | [setup.md](setup.md) | Deploying and operating an instance: accounts, secrets, storage, the console |
 | [CUSTOMIZE.md](CUSTOMIZE.md) | What to change and where, which changes survive an update, and rules for an AI helping you |
 | [quickstart.md](quickstart.md) | Your first half hour after the install: the config switches and console moves, one at a time |

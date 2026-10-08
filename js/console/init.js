@@ -18,15 +18,15 @@
 
 import { STATE, load, restoreSidebar, restoreFnBar, resetConsole } from '../console-state.js';
 import { isLoggedIn } from '../console-api.js';
-import { registerView, registerLongPress, refreshStageIndicators, themeInit, wireDropzone, _wireSheetDrag, _initKeyboardInsets, _initViewportFrame, _initStickyHeaders, _initLongPress, closeActionSheet, closeMoreSheet } from './chrome.js';
+import { registerView, registerLongPress, refreshSurface, seatView, startView, refreshStageIndicators, themeInit, wireDropzone, _wireSheetDrag, _initKeyboardInsets, _initViewportFrame, _initStickyHeaders, _initLongPress, _initTabPulse, closeActionSheet, closeMoreSheet, igniteConsole, ignitionLevel, wakeBays, licenseFloats } from './chrome.js';
 import { lightingInit } from './lighting.js';
 import { _initHelp, helpIsOpen } from './help.js';
 import { updatePurgeR2Button, _registerLibraryUploadProbe } from './sync.js';
 import { _libraryUploadsPending } from './upload.js';
 import { renderWall, renderNetwork, renderLibrary, wallIngest, libraryIngest } from './more-views.js';
-import { renderArchive, archiveIngestPhoto, archiveUpdatePreview, restoreGearMemory, setGearRemember } from './archive.js';
+import { renderArchive, archiveEnter, archiveIngestPhoto, archiveUpdatePreview, restoreGearMemory, setGearRemember } from './archive.js';
 import { renderBuffer, bufferIngest, bufferPromote, bufferRemove, burstLinkMode, burstToggleFrame, enterBurstLinkMode, exitBurstLinkMode } from './buffer.js';
-import { renderFN, fnHeroIngest, fnHeroClear, fnSetupEnhancements, fnCloseDrawer, _registerFnShare } from './fn-editor.js';
+import { renderFN, fnHeroIngest, fnHeroClear, fnSetupEnhancements, fnCloseDrawer, fnExitFocus, fnFlushSave, fnEnter, _registerFnShare } from './fn-editor.js';
 import { FocalModal, bufferFocal, loadOgCards } from './focal.js';
 import { closeAssetLibrary } from './asset-library.js';
 import { registerShareRepaint, shareNote, shareCloseSheet } from './share.js';
@@ -36,6 +36,7 @@ import { _pulseCloseLog, _pulseCloseTray } from './pulse.js';
 import { renderPublish, syncFromServer } from './publish.js';
 import { checkAuth, closeSettings, _updateSettingsDots, _checkSessionExpiry, _initOfflineIndicator, applyInstancePosture, _wireRingJoin, maybeShowWelcome } from './session.js';
 import { renderBench } from './bench.js';
+import { bridgeWire } from './bridge.js';
 
 // ============== INIT ==============
 // Develop-in thumbnails (craft pass): grid images carry opacity:0 until
@@ -84,13 +85,16 @@ export function registerSurfaces() {
     // so navigating away backs out of it.
     onLeave: () => { if (burstLinkMode) exitBurstLinkMode(); },
   });
-  registerView("archive", renderArchive);
+  registerView("archive", { render: renderArchive, onEnter: archiveEnter });
   registerView("fn", {
     render: renderFN,
     // The insert drawer is a modal sheet and lives OUTSIDE the view (it has to
     // — .layout carries a z-index, so a sheet inside it renders under the tab
     // bar). Nothing hides it when you navigate away, so close it here.
-    onLeave: fnCloseDrawer,
+    // Leaving also leaves focus mode (a class on <body>) and lands a save
+    // still waiting on its debounce.
+    onLeave: () => { fnFlushSave(); fnCloseDrawer(); fnExitFocus(); },
+    onEnter: fnEnter,
   });
   registerView("wall",    renderWall);
   registerView("friends", renderNetwork);
@@ -123,7 +127,14 @@ export function init() {
   restoreSidebar();
   restoreFnBar();
   wireDevelopIn();
-  lightingInit();   // the bloom; finds its own emitters, inert where a 2D context cannot be had
+  lightingInit({ room: ignitionLevel });   // the bloom; finds its own emitters, inert where a 2D context cannot be had; the cold start's level is chrome's
+  // WHERE YOU START (chrome.js, START VIEW): the markup marks no surface
+  // active, so the first one is resolved and seated here, with its resting
+  // lamp (K40d) — before the cold start, which gives whatever is showing the
+  // full sequence. It is rendered with the others at the foot of init().
+  const start = startView();
+  seatView(start);
+  const coldStart = igniteConsole();  // the cold start (K41b): once per session, bounded, off under reduced motion
   _initHelp();      // the `?` key; the overlay itself builds on first use
   loadOgCards();   // mark frames that already have a live OG card (persists across reloads)
   refreshStageIndicators();
@@ -136,6 +147,12 @@ export function init() {
   wireDropzone("fn-hero-slot", "fn-hero-input", fnHeroIngest);
   wireDropzone("library-dropzone", "library-file-input", libraryIngest);
   wireDropzone("audio-dropzone", "audio-file-input", (files) => audioAddFiles(files));
+  // The Bridge is a drop target as a whole page, not a bay; it wires its own.
+  bridgeWire();
+  // The first view is seated, not routed, so its bays would never wake on a
+  // touch screen. The cold start lights them when it runs.
+  if (!coldStart) wakeBays(document.querySelector(".view.active"));
+  licenseFloats();
   document.getElementById("fn-hero-clear")?.addEventListener("click", e => {
     e.stopPropagation();
     fnHeroClear();
@@ -157,7 +174,10 @@ export function init() {
   applyInstancePosture();   // demo badge + truthful deploy copy; async, cosmetic
   maybeShowWelcome(STATE);  // first run only; no-ops on a site with any content
   if (isLoggedIn()) {
-    setTimeout(syncFromServer, 400);
+    // At once, with the Bridge's first reads (K76): the lamp goes amber once
+    // and turns green when the console is ready. (It waited 400ms, which
+    // showed a green it then took back.) Quiet: the lamp is the news.
+    setTimeout(() => syncFromServer({ quiet: true }), 0);
     _lastFocusSync = Date.now();
   } else {
     const el = document.getElementById('sync-status');
@@ -185,7 +205,7 @@ export function init() {
     const now = Date.now();
     if (now - _lastFocusSync < FOCUS_SYNC_MIN_GAP) return;
     _lastFocusSync = now;
-    syncFromServer();
+    syncFromServer({ quiet: true });
   }
   document.addEventListener('visibilitychange', _autoSyncOnFocus);
   window.addEventListener('focus', _autoSyncOnFocus);
@@ -202,6 +222,7 @@ export function init() {
   _initKeyboardInsets();
   _initStickyHeaders();
   _initLongPress();
+  _initTabPulse();
   setInterval(_checkSessionExpiry, 60_000);
 
   // All six are text inputs now — camera/lens/medium stopped being <select>s
@@ -228,6 +249,9 @@ export function init() {
   renderNetwork();
   renderLibrary();
   renderAudio();
+  // The surfaces above are drawn whether or not they are showing; any other
+  // start (cards, pulse, publish, bench) is drawn now that it is up.
+  if (!["buffer", "archive", "fn", "wall", "friends", "library", "audio"].includes(start)) refreshSurface(start);
 
   document.addEventListener("keydown", e => {
     if (e.altKey && e.key.toLowerCase() === "r") { e.preventDefault(); resetConsole(); }

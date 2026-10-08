@@ -27,7 +27,7 @@
 
 import { STATE, save, clearStage, totalStaged, stagedIdsFor, sessionTrash, trashItem, dropTrashForDeletedR2, _pendingR2Deletes, setPendingR2Deletes } from '../console-state.js';
 import { publishFiles, syncFiles, deleteAssets, fetchDrafts, isLoggedIn, isNotConfigured } from '../console-api.js';
-import { showToast, logEvent, startProgress, endProgress } from '../console-telemetry.js';
+import { showToast, logEvent, startProgress, endProgress, beginActivity } from '../console-telemetry.js';
 import { toast, refreshStageIndicators, escapeHTML, setCommitArmed } from './chrome.js';
 import { getSyncedSha, setSyncedSha } from './assets.js';
 import { ymd } from './utils.js';
@@ -678,6 +678,10 @@ export function clearImported() {
     const dirty = stagedIdsFor(surface);
     STATE[surface] = STATE[surface].filter(e => !e._imported || dirty.has(e.id));
   });
+  // What we held from main is gone, so the marker no longer vouches for
+  // anything — without this, the next automatic sync would see an unmoved main,
+  // skip the import, and leave every surface empty until main advanced.
+  _lastImportedSha = null;
   save();
   refreshStageIndicators();
   renderBuffer();
@@ -715,7 +719,7 @@ export function _resumeAfterReconnect() {
   // 3. A library index commit that failed while offline.
   if (_librarySyncFailed) scheduleLibrarySync();
   // 4. A login sync that couldn't run offline.
-  if (_syncPendingReconnect) { _syncPendingReconnect = false; syncFromServer(); }
+  if (_syncPendingReconnect) { _syncPendingReconnect = false; syncFromServer({ quiet: true }); }
 }
 
 // ---- Pre-publish confirmation ----
@@ -734,7 +738,10 @@ export function confirmPublish() {
     toast('Nothing staged to publish', 'info');
     return false;
   }
-  let msg = 'Publish to GitHub — live in ~30s?\n\n';
+  // Says what the button says. It used to promise "live in ~30s", which the
+  // panel's own line (about a minute) contradicted — and which is not true at
+  // all on a fork whose repo is not connected. The list below is the content.
+  let msg = 'Publish these changes?\n\n';
   msg += lines.length ? lines.join('\n') : '  · No data changes';
   if (r2Keys) msg += `\n  · R2 cleanup: ${r2Keys} object${r2Keys !== 1 ? 's' : ''} to delete`;
   return confirm(msg);
@@ -839,7 +846,36 @@ let _lastImportedSha = null;
 export function _setLastImportedSha(sha) { _lastImportedSha = sha; }
 export function _getLastImportedSha() { return _lastImportedSha; }
 
-export async function syncFromServer() {
+// `force` is the ↓ SYNC FROM GITHUB button, and only the button. The sha skip
+// below exists for the automatic syncs (login, tab focus, reconnect), which fire
+// without anyone asking and must never re-run the replace-by-remote pass for
+// nothing. A press is someone asking: it re-imports every surface even when main
+// hasn't moved. That used to be skipped too, so after the login sync the button
+// came back with a readout listing drafts alone — "it only syncs one category"
+// (2026-09-25) — and after CLEAR IMPORTED it restored nothing at all. A forced
+// pass is safe for the reasons the skip was not the load-bearing fix: reads are
+// pinned to headSha (no stale content under a fresh sha) and importIntoSurface
+// keeps every ledger-dirty entry.
+// The whole pull is one span on the lamp (K76): main's files, then the
+// drafts, then the rebuild. Between its two requests the lamp used to show a
+// green for a frame and take it back; now it turns green once, when the
+// console holds main. Its own channel, so ending it never clears an error
+// the sync's requests latched.
+export async function syncFromServer(opts) {
+  if (!isLoggedIn()) return _syncFromServer(opts);
+  const done = beginActivity('sync-run', 'SYNC ▼');
+  try { return await _syncFromServer(opts); } finally { done(); }
+}
+
+async function _syncFromServer(opts) {
+  const force = opts?.force === true;   // setTimeout/listeners pass nothing or an event
+  // A sync the console runs on its own (the cold start, a return to the app,
+  // a login, a reconnect) says nothing when it lands (K76, the owner: on a
+  // cold start "the synced from github main toast notification is heavily
+  // messing with the ignition sequence … the green status light contract will
+  // be more than enough"). The lamp says it, and Publish's readout. A sync you
+  // asked for, or one you are waiting on, still toasts; a failure always does.
+  const quiet = opts?.quiet === true;
   const statusEl = document.getElementById('sync-status');
   if (!isLoggedIn()) {
     if (statusEl) statusEl.textContent = '// Not logged in';
@@ -891,12 +927,20 @@ export async function syncFromServer() {
     // imported entries with the remote copy, so a redundant import is where
     // local edits used to get eaten (focus-sync after an edit, the old
     // post-publish re-sync).
-    const upToDate = !!data.headSha && data.headSha === _lastImportedSha;
+    const upToDate = !force && !!data.headSha && data.headSha === _lastImportedSha;
 
     const results = [];
-    if (!upToDate) {
+    if (upToDate) {
+      // Nothing to import, but the readout still lists every surface main
+      // answered for — a readout of drafts alone reads as a sync that only
+      // reached one category, when every other one is simply already held.
       for (const { file, surface } of surfaces) {
-        const entry = data.files[file];
+        const entry = data.files?.[file];
+        if (entry?.ok && Array.isArray(entry.content)) results.push([surface, String(entry.content.length)]);
+      }
+    } else {
+      for (const { file, surface } of surfaces) {
+        const entry = data.files?.[file];
         if (!entry || !entry.ok) {
           console.warn(`[sync] ${file}:`, entry?.error);
           continue;
@@ -952,14 +996,15 @@ export async function syncFromServer() {
       refreshStageIndicators();
       renderBuffer(); renderArchive(); renderFN();
       renderWall(); renderNetwork(); renderLibrary(); renderAudio(); renderPublish();
-      // An up-to-date sync that still lands here only merged drafts (D1) —
-      // say that, not "synced from main": no GitHub-backed surface moved.
+      // An up-to-date sync imported nothing from main (its surface counts are
+      // what main holds and this session already had; only drafts, from D1,
+      // can have merged) — so say "up to date", not "synced from main".
       const flat = results.map(([k, v]) => `${k}:${v}`).join(' · ');
       _renderSyncReadout(statusEl, upToDate
         ? `✓ up to date (${data.headSha.slice(0, 7)})`
         : `✓ synced ${new Date().toLocaleTimeString()}`, results);
       logEvent(`✓ sync · ${upToDate ? `up to date (${data.headSha.slice(0, 7)}) · ` : ''}${flat}`, 'info');
-      if (!upToDate) toast('✓ Synced from GitHub main', 'success');
+      if (!upToDate && !quiet) toast('✓ Synced from GitHub main', 'success');
       updatePurgeR2Button();
     } else if (upToDate) {
       const short = data.headSha.slice(0, 7);
@@ -981,6 +1026,12 @@ export async function syncFromServer() {
       logEvent('⊘ sync deferred — offline', 'info');
       return;
     }
+    if (err.portal) {
+      // The API layer has said it, once (a sign-in page answered); a second
+      // toast here would only repeat it in worse words.
+      if (statusEl) statusEl.textContent = '⚠ sync waiting — the network answered with a sign-in page';
+      return;
+    }
     if (isNotConfigured(err)) {
       // No GitHub secrets on this instance — local-only mode, not a fault.
       // Runs on every login (syncFromServer is part of the login flow), so it
@@ -991,6 +1042,22 @@ export async function syncFromServer() {
     if (statusEl) statusEl.textContent = `⚠ sync error: ${err.message}`;
     toast(`⚠ Sync failed: ${err.message}`, 'error');
   }
+}
+
+// The last publish from this device, for the Bridge's deploy readout: it says
+// BUILDING until /api/version reports a deploy newer than this, then LIVE.
+// `connected` is the same repo flag the success line reads — a fork with no
+// connected repo has nothing building, and must not be told it does.
+const LAST_PUBLISH_KEY = 'oaklens_last_publish';
+function _rememberPublish(sha) {
+  const connected = document.getElementById('publish-deploy-hint')?.dataset.repoConnected === '1';
+  try { localStorage.setItem(LAST_PUBLISH_KEY, JSON.stringify({ at: Date.now(), sha, connected })); } catch {}
+}
+export function lastPublish() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST_PUBLISH_KEY) || 'null');
+    return v && typeof v.at === 'number' ? v : null;
+  } catch { return null; }
 }
 
 export async function publishToServer() {
@@ -1047,6 +1114,7 @@ export async function publishToServer() {
     // which is how a post-publish sync used to revert fresh focal/pin edits.
     setSyncedSha(data.sha);
     _lastImportedSha = data.sha;
+    _rememberPublish(data.sha);
 
     // WHAT HAPPENS NEXT DEPENDS ON THE REPO, so say the one that is true.
     // This line used to promise "Cloudflare Pages deploying (~30s)" after every

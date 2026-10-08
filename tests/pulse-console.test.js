@@ -108,7 +108,8 @@ describe('the packs are reachable from the console', () => {
     // uses the same class, so it matches them by construction rather than by
     // someone remembering to.
     expect(consoleHtml).toMatch(/class="settings-btn"[^>]*id="pulse-topbar-btn"/);
-    expect(consoleHtml).toMatch(/id="pulse-topbar-btn"[^>]*onclick="showView\('pulse'\)"/);
+    // Pressed again while Pulse is up, it goes back to the Bridge (2026-10-06).
+    expect(consoleHtml).toMatch(/id="pulse-topbar-btn"[^>]*onclick="topbarKey\('pulse'\)"/);
   });
 
   it('the topbar chip and the More-sheet entry wear the SAME glyph', () => {
@@ -184,15 +185,18 @@ describe('the SMD indicator', () => {
     // The snippet set `box-shadow: none` at rest, which drops the inset
     // highlight along with the glow and flattens the part to a painted square
     // between beats. Only the outer glow should go.
-    for (const [label, css, frames] of [
-      ['card', mainCss, /@keyframes wk-p-led \{[\s\S]*?\n\}/],
-      ['sys lamp', consoleCss, /@keyframes lamp-smd \{[\s\S]*?\n\}/],
-    ]) {
-      const block = css.match(frames);
-      expect(block, `the ${label} LED has no SMD keyframes`).toBeTruthy();
-      expect(block[0], `the ${label} LED drops its inset specular at rest`).not.toMatch(/box-shadow:\s*none/);
-      expect(block[0]).toContain('inset 0 0 2px');
-    }
+    const block = mainCss.match(/@keyframes wk-p-led \{[\s\S]*?\n\}/);
+    expect(block, 'the card LED has no SMD keyframes').toBeTruthy();
+    expect(block[0], 'the card LED drops its inset specular at rest').not.toMatch(/box-shadow:\s*none/);
+    expect(block[0]).toContain('inset 0 0 2px');
+    // The SYS lamp (K69): its specular is its own static box-shadow, the beat
+    // moves opacity only (the compositor's), and the glow rides on ::after.
+    const smd = consoleCss.match(/@keyframes lamp-smd \{[\s\S]*?\n\}/);
+    expect(smd, 'the sys lamp has no SMD keyframes').toBeTruthy();
+    expect(smd[0]).not.toMatch(/box-shadow/);
+    expect(consoleCss).toMatch(/\.sys-lamp-led \{[^}]*box-shadow: inset 0 0 2px var\(--led-spec\);/);
+    expect(consoleCss).toMatch(/#sys-lamp\[data-state="idle"\] \.sys-lamp-led::after \{[^}]*box-shadow: 0 0 12px[^}]*animation: lamp-smd-glow/);
+    expect(consoleCss.match(/@keyframes lamp-smd-glow \{[\s\S]*?\n\}/)[0]).not.toMatch(/box-shadow/);
   });
 
   it('both LEDs have a reduced-motion escape', () => {

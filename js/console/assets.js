@@ -52,7 +52,7 @@ export function isVideoAsset(entry) {
   return /\.(mp4|webm|mov)$/i.test(entry.filename || '');
 }
 
-export function cdnThumb(entry, folder = 'archive') {
+export function cdnThumb(entry, folder = 'archive', width = 1024) {
   // If we have a local dataURL (from drag-drop), use it
   if (entry.image) return entry.image;
   // Video entries: the generated poster frame stands in for a thumbnail
@@ -63,15 +63,29 @@ export function cdnThumb(entry, folder = 'archive') {
   // If we have a filename, construct CDN URL for the 1024w preview
   if (entry.filename) {
     const base = entry.filename.replace(/\.[^.]+$/, '');
-    return `${CDN_BASE}/${folder}/${base}-1024w.webp`;
+    return `${CDN_BASE}/${folder}/${base}-${width}w.webp`;
   }
   return '';
 }
 
-// The same address at a chosen width. cdnThumb() is hardcoded to 1024w because
-// that is the only size a grid cell ever wants; anything pointing at a full
+// The same address at a chosen width. cdnThumb() defaults to 1024w because
+// that is what a grid cell usually wants — but a SMALL thumb names its width
+// (2026-10-04: the archive's 92×62 thumbs were each decoding a 1024w frame;
+// measured on the owner's machine, 5.2s of image decode inside a 2s scroll of
+// the real archive, and a 429ms frame. Every staged archive frame has a 480w
+// variant — the stager writes it and the public archive's srcset uses it); anything pointing at a full
 // frame (the homepage hero line, for one) needs 2048w, and building that string
 // by hand at the call site is how a folder or a suffix drifts.
+// A grid cell's srcset (K49): the 480w and 1024w variants, so the browser
+// takes the small one wherever it is enough — a phone was pulling a 172KB
+// 1024w frame into every one of the buffer's 729 cells at once, ~125MB.
+// Empty for a local dataURL or a video poster, which have one size.
+export function cdnSrcset(entry, folder = 'archive') {
+  if (!entry?.filename || entry.image || folder === 'videos' || isVideoAsset(entry)) return '';
+  const base = entry.filename.replace(/\.[^.]+$/, '');
+  return `${CDN_BASE}/${folder}/${base}-480w.webp 480w, ${CDN_BASE}/${folder}/${base}-1024w.webp 1024w`;
+}
+
 export function cdnVariant(entry, width = 2048, folder = 'archive') {
   if (!entry?.filename) return '';
   const base = entry.filename.replace(/\.[^.]+$/, '');
@@ -194,17 +208,22 @@ export async function generateVariants(file, baseName, folder = 'archive') {
 // '' means a stamp made before styles existed, which every reader treats as
 // 'card', because that is what all of them are.
 let OG_CARD_SET = new Map();
+// Bumped on every change, so a surface that shows the stamps can tell
+// whether it is still current (the Buffer's render, K79).
+let OG_CARD_GEN = 0;
+export function _ogCardGen() { return OG_CARD_GEN; }
 /** Accepts bare markers (legacy, and every test that does not care about style)
  *  or [marker, style] pairs, which is what loadOgCards passes. */
 export function _setOgCardSet(bases) {
   OG_CARD_SET = new Map((bases || []).map((b) => (Array.isArray(b) ? [b[0], b[1] || ''] : [b, ''])));
+  OG_CARD_GEN++;
 }
-export function _addOgCard(base, style = '') { OG_CARD_SET.set(base, style || ''); }
+export function _addOgCard(base, style = '') { OG_CARD_SET.set(base, style || ''); OG_CARD_GEN++; }
 // The counterpart to _addOgCard, for turning a stamp OFF. A stamp has no
 // publish horizon in either direction: it is live the moment it lands on R2 and
 // gone the moment it is deleted, so the set follows immediately rather than
 // waiting for a publish.
-export function _removeOgCard(base) { OG_CARD_SET.delete(base); }
+export function _removeOgCard(base) { OG_CARD_SET.delete(base); OG_CARD_GEN++; }
 export function _hasOgCard(base) { return OG_CARD_SET.has(base); }
 /** Which style the live stamp is, or '' when unknown/unstamped. */
 export function _ogCardStyle(base) { return OG_CARD_SET.get(base) || ''; }

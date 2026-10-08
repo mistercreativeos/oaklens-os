@@ -15,9 +15,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { plainUnits } from './helpers/units.js';
 
 const ROOT = join(import.meta.dirname, '..');
-const CSS = readFileSync(join(ROOT, 'css', 'field-console.css'), 'utf8');
+const CSS = plainUnits(readFileSync(join(ROOT, 'css', 'field-console.css'), 'utf8'));
 const MAIN = readFileSync(join(ROOT, 'css', 'main.css'), 'utf8');
 const VIEW = readFileSync(join(ROOT, 'js', 'console', 'cards.js'), 'utf8');
 

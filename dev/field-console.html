@@ -4,7 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title data-site-title="prefix">FIELD CONSOLE v0.13.1</title>
+<!-- The surface this site opens to when the device has no preference of its
+     own: site.config.js console.startView, stamped here by the edge
+     (src/edge/chrome.js). No view below is marked .active — init() seats one
+     (js/console/chrome.js, START VIEW). -->
+<meta name="console-start-view" content="">
+<title data-site-title="plain">Field Console</title>
+<!-- The console's own version (K97, 1.0: the launch). Settings reads it here. -->
+<meta name="console-version" content="1.0.0">
 
 <!-- PWA: installable + lite offline shell for iPad field use -->
 <link rel="icon" type="image/svg+xml" href="/dev/icon.svg">
@@ -21,6 +28,38 @@ try {
   document.querySelector('meta[name="theme-color"]')
     .setAttribute('content', _t === 'light' ? '#f4f1ea' : '#000000');
 } catch (e) {}
+/* The scale (K74): a large screen at 1x zooms the whole console, in steps of
+   0.05, so it lays out like a desk of at least 1500 x 880 and every
+   breakpoint answers as it does there. A fine pointer only (a desk); a touch
+   screen stays at 1x. --ui-zoom takes the zoom back out of viewport units
+   (css: THE SCALE); --cq-zoom takes it out of container units where the
+   engine counts them twice (WebKit), measured here once. Settings > Display
+   scale can hold it at 1x (localStorage console_scale = '1'). */
+(function () {
+  var de = document.documentElement, cqTwice = null;
+  function scale() {
+    var z = 1;
+    try {
+      if (localStorage.getItem('console_scale') !== '1' && matchMedia('(pointer: fine)').matches) {
+        z = Math.floor(Math.min(innerWidth / 1500, innerHeight / 880, 2.5) * 20) / 20;
+        if (z < 1.1) z = 1;
+      }
+    } catch (e) {}
+    if (z === (parseFloat(de.style.zoom) || 1)) return;
+    if (cqTwice === null) {
+      var p = document.createElement('div');
+      p.style.cssText = 'position:absolute;visibility:hidden;zoom:2;width:50px;container-type:inline-size';
+      p.innerHTML = '<i style="display:block;width:100cqi"></i>';
+      de.appendChild(p); cqTwice = p.firstChild.offsetWidth > 75; de.removeChild(p);
+    }
+    de.style.zoom = z === 1 ? '' : String(z);
+    de.style.setProperty('--ui-zoom', String(z));
+    de.style.setProperty('--cq-zoom', cqTwice ? String(z) : '1');
+  }
+  scale();
+  addEventListener('resize', scale);
+  window.consoleScale = scale;
+})();
 </script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -51,12 +90,12 @@ try {
      DOM half bails here too — no player is mounted in this document. -->
 <script src="/js/audio-player.js?v=9" defer></script>
 
-<link rel="stylesheet" href="/css/field-console.css?v=107">
+<link rel="stylesheet" href="/css/field-console.css?v=169">
 </head>
 <body>
 
 <header class="topbar">
-  <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" title="Collapse navigation" aria-label="Toggle navigation">‹‹</button>
+  <button class="sidebar-toggle" id="sidebar-toggle" data-backlit onclick="toggleSidebar()" title="Collapse navigation" aria-label="Toggle navigation">‹‹</button>
   <div class="brand"><span data-site-wordmark="accent">SITE<span class="accent">.NAME</span></span><span class="brand-sub">FIELD CONSOLE</span><span class="brand-sub" id="demo-badge" style="display:none; color:var(--accent);">DEMO · BROWSE-ONLY</span></div>
   <div class="topbar-spacer"></div>
   <div class="topbar-stat" id="topbar-stage-stat">NO PENDING CHANGES</div>
@@ -73,19 +112,26 @@ try {
        presentation, so it renders monochrome beside its neighbours instead of
        turning into a colour emoji. The same glyph marks Pulse in the More sheet
        so the two are obviously one thing. -->
-  <button class="settings-btn" id="pulse-topbar-btn" onclick="showView('pulse')" title="Post a pulse" aria-label="Post a pulse">☺</button>
-  <button class="settings-btn theme-btn" id="theme-toggle" onclick="themeToggle()" title="Switch STUDIO / DAYLIGHT mode" aria-label="Toggle light or dark mode">☀</button>
-  <button class="settings-btn" id="help-topbar-btn" onclick="helpToggle()"
+  <!-- FIVE KEYS, AND NO MORE (K63 — the owner: "5 is the correct limit"):
+       the Bridge (home) · Pulse · ? · settings · PUBLISH. The Bridge key
+       leads, in the Bridge's own glyph (the sidebar's and the tab bar's ◈).
+       Day/night moved off this row onto the Bridge's mast, and into
+       Settings so every view still reaches it. A key whose surface is up is
+       lit (data-key-for, chrome.js _markActive). Where there is a tab bar it
+       already holds the Bridge, so this key stands down there, like PUBLISH. -->
+  <button class="settings-btn topbar-home" id="bridge-topbar-btn" data-backlit data-key-for="bridge" onclick="topbarKey('bridge')" title="The Bridge" aria-label="The Bridge">◈</button>
+  <button class="settings-btn" id="pulse-topbar-btn" data-backlit data-key-for="pulse" onclick="topbarKey('pulse')" title="Post a pulse (press again for the Bridge)" aria-label="Post a pulse">☺</button>
+  <button class="settings-btn" id="help-topbar-btn" data-backlit onclick="helpToggle()"
           title="What does this do? — outlines everything on this screen you can ask about"
           aria-label="Show help" aria-expanded="false">?</button>
-  <button class="settings-btn" id="settings-topbar-btn" onclick="openSettings()" title="Console Settings">
+  <button class="settings-btn" id="settings-topbar-btn" data-backlit onclick="openSettings()" title="Console Settings">
     ⚙<span class="settings-status-dot" id="settings-dot"></span>
   </button>
   <!-- Status light, not a counter. The pip says only "there is something to
        publish"; the count lives one glance left in #topbar-stage-stat (and on
        the publish page, now itemised). Square + static — deliberately NOT a
        second SYS lamp, which is the round bezelled LED with the glow. -->
-  <button class="publish-btn publish-btn--idle" id="publish-btn" data-pending="0" onclick="openPublishView()"
+  <button class="publish-btn publish-btn--idle" id="publish-btn" data-backlit data-pending="0" onclick="openPublishView()"
           aria-label="Publish — no pending changes">
     <span class="pip" id="publish-pip" aria-hidden="true"></span> Publish
   </button>
@@ -94,51 +140,60 @@ try {
 </header>
 
 <div class="layout">
+  <!-- The Bridge's floor light (css THE ROOM): a layer of its own over the
+       pane's grid cell, so the cold start fades it without a repaint. -->
+  <div class="room-floor" aria-hidden="true"></div>
 
-  <nav class="sidebar">
+  <nav class="sidebar" data-seam="box" data-backlit>
+    <div class="nav-group">
+      <button class="nav-btn" data-view="bridge" onclick="showView('bridge')">
+        <span class="nav-icon" data-text="act">◈</span> <span class="nav-label" data-text="act">Bridge</span>
+      </button>
+    </div>
+
     <div class="nav-group">
       <div class="nav-group-label">Content</div>
-      <button class="nav-btn active" data-view="buffer" onclick="showView('buffer')">
-        <span class="nav-icon">◉</span> Buffer
-        <span class="nav-count" id="nav-count-buffer">0</span>
+      <button class="nav-btn" data-view="buffer" onclick="showView('buffer')">
+        <span class="nav-icon" data-text="act">◉</span> <span class="nav-label" data-text="act">Buffer</span>
+        <span class="nav-count" data-text="stat" id="nav-count-buffer">0</span>
       </button>
       <button class="nav-btn" data-view="archive" onclick="showView('archive')">
-        <span class="nav-icon">▦</span> Archive
-        <span class="nav-count" id="nav-count-archive">0</span>
+        <span class="nav-icon" data-text="act">▦</span> <span class="nav-label" data-text="act">Archive</span>
+        <span class="nav-count" data-text="stat" id="nav-count-archive">0</span>
       </button>
       <button class="nav-btn" data-view="fn" onclick="showView('fn')">
-        <span class="nav-icon">✍</span> FN//
-        <span class="nav-count" id="nav-count-fn">0</span>
+        <span class="nav-icon" data-text="act">✎</span> <span class="nav-label" data-text="act">FN//</span>
+        <span class="nav-count" data-text="stat" id="nav-count-fn">0</span>
       </button>
     </div>
 
     <div class="nav-group">
       <div class="nav-group-label">Manage</div>
       <button class="nav-btn" data-view="wall" onclick="showView('wall')">
-        <span class="nav-icon">▤</span> Wall
-        <span class="nav-count" id="nav-count-wall">0</span>
+        <span class="nav-icon" data-text="act">▤</span> <span class="nav-label" data-text="act">Wall</span>
+        <span class="nav-count" data-text="stat" id="nav-count-wall">0</span>
       </button>
       <button class="nav-btn" data-view="friends" onclick="showView('friends')">
-        <span class="nav-icon">⬡</span> Network
-        <span class="nav-count" id="nav-count-friends">0</span>
+        <span class="nav-icon" data-text="act">⬡</span> <span class="nav-label" data-text="act">Network</span>
+        <span class="nav-count" data-text="stat" id="nav-count-friends">0</span>
       </button>
       <button class="nav-btn" data-view="library" onclick="showView('library')">
-        <span class="nav-icon">◎</span> Library
-        <span class="nav-count" id="nav-count-library">0</span>
+        <span class="nav-icon" data-text="act">◎</span> <span class="nav-label" data-text="act">Library</span>
+        <span class="nav-count" data-text="stat" id="nav-count-library">0</span>
       </button>
       <button class="nav-btn" data-view="audio" onclick="showView('audio')">
-        <span class="nav-icon">♪</span> Audio
-        <span class="nav-count" id="nav-count-audio">0</span>
+        <span class="nav-icon" data-text="act">♪</span> <span class="nav-label" data-text="act">Audio</span>
+        <span class="nav-count" data-text="stat" id="nav-count-audio">0</span>
       </button>
       <button class="nav-btn" data-view="cards" onclick="showView('cards')">
-        <span class="nav-icon">▥</span> Cards
-        <span class="nav-count" id="nav-count-cards">0</span>
+        <span class="nav-icon" data-text="act">▥</span> <span class="nav-label" data-text="act">Cards</span>
+        <span class="nav-count" data-text="stat" id="nav-count-cards">0</span>
       </button>
       <!-- Config-gated (site.config.js -> console.bench). The edge removes this
            button, the More-sheet item and #view-bench when the flag is off. -->
       <button class="nav-btn" data-console-feature="bench" data-view="bench" onclick="showView('bench')">
-        <span class="nav-icon">▤</span> Bench
-        <span class="nav-count" id="nav-count-bench">0</span>
+        <span class="nav-icon" data-text="act">▤</span> <span class="nav-label" data-text="act">Bench</span>
+        <span class="nav-count" data-text="stat" id="nav-count-bench">0</span>
       </button>
     </div>
 
@@ -146,26 +201,170 @@ try {
 
     <div class="nav-group">
       <button class="nav-btn" data-view="publish" onclick="showView('publish')">
-        <span class="nav-icon">▲</span> Publish
+        <span class="nav-icon" data-text="act">▲</span> <span class="nav-label" data-text="act">Publish</span>
         <span class="nav-stage-pip" id="nav-stage-pip" style="display:none;"></span>
       </button>
       <button class="nav-btn" onclick="openSettings()">
-        <span class="nav-icon">⚙</span> Settings
+        <span class="nav-icon" data-text="act">⚙</span> <span class="nav-label" data-text="act">Settings</span>
         <span class="settings-status-dot" id="sidebar-settings-dot" style="margin-left:auto;"></span>
       </button>
     </div>
 
 
     <div class="sidebar-foot">
-      v0.13.1 // REMOTE ENABLED<br>
+      v1.0.0 // REMOTE ENABLED<br>
       REPO: set GITHUB_REPO<br>
       <span style="color:var(--text-dim);">⌥ + R to reset</span>
     </div>
   </nav>
 
-  <main class="main">
+  <main class="main" data-light-layer data-light-spill>
 
-    <section class="view active" id="view-buffer">
+    <!-- THE BRIDGE — the console's front page (js/console/bridge.js,
+         docs/ideas/bridge.md). Type, not panels, on a strict grid of rows and
+         channels so the eye learns where each thing lives. Every piece of
+         text has a type role (its size and ink) and a text class, data-text
+         = stat | act | live | info, which decides whether it gives light
+         (css/field-console.css, TYPE). The accent means "needs you" and
+         nothing else; the clock is the one thing in its own colour. The
+         whole view takes a drop; the headline says where the files go. -->
+    <section class="view" id="view-bridge">
+      <div class="bridge">
+        <!-- Row 1: the clock (a dot-matrix readout in its own colour). How
+             full this browser is and day or night left the mast in K95 (the
+             owner: "they already live in settings"). -->
+        <header class="br-mast">
+          <div class="br-clock" id="br-clock" data-backlit></div>
+        </header>
+
+        <!-- Row 2: the one state that matters now, and the two instruments
+             read at a glance, each on a channel's column: days since the last
+             thing went live (over 02), storage (over 03). -->
+        <div class="br-top" id="br-top">
+          <h1 class="br-headline" id="br-headline">&nbsp;</h1>
+          <!-- What the headline says, for a screen reader, said once: the
+               headline's own letters turn (split-flap, K64) and are hidden
+               from it. -->
+          <p class="br-said" id="br-said" aria-live="polite" data-text="info"></p>
+          <div class="br-resume" id="br-resume"></div>
+          <!-- The console's bay, as a strip under the headline (2026-10-06,
+               the owner: "move the dropzone here and tone down its glow"; it
+               was under the pulse for an afternoon, and a square key in the
+               capture row before that). Tap for the picker, or drop on it;
+               the whole page takes a drop too. Quiet at rest; a hand or a
+               drag heats it as any bay. -->
+          <div class="dropzone br-bay br-bay--strip" data-seam="box" data-backlit id="br-dropzone" role="button" tabindex="0" aria-label="Add files">
+            <input type="file" id="br-add-input" class="dz-hidden-input" multiple
+                   accept="image/*,audio/*,video/mp4,video/webm,.md,.markdown,.dng,.cr2,.cr3,.nef,.arw,.raf,.orf,.rw2">
+            <div class="dz-icon">◎</div>
+            <div class="dz-prompt" id="br-bay-prompt">DROP</div>
+          </div>
+          <!-- THE SHIP STATION (K81, the owner: "it's a ship station within
+               the console"). Days since, painted on the tick; under it, static
+               (it is a light source: a repaint would start the light over), a
+               mail slot with the room's light coming out under its lip and
+               falling on what goes through it next (the slot is that act),
+               and the three things that go out (the tab bar's icons), each
+               opening the picker on its own bucket.
+               js/console/bridge.js _paintShip, js/console/send-out.js. -->
+          <div class="br-station">
+            <div class="br-inst br-inst--since" id="br-since"></div>
+            <div class="br-ship" id="br-ship" data-tier="panel" data-seam="box" data-backlit role="group" aria-label="Outgoing">
+              <!-- The module's face (K82, the owner: "a physical module that
+                   was pushed into a spring loaded slot with contacts … now the
+                   physical module is in and lit"): OUTGOING in neon set into
+                   the plate, between two machined contacts. One word, drawn in
+                   layers (the cut, its lit lip, the tube, the glow, the haze),
+                   so it is a lamp, not type. -->
+              <div class="br-ship-face" aria-hidden="true">
+                <span class="br-contact"><i class="br-ship-lamp" data-lamp="contact"></i></span>
+                <span class="br-neon">
+                  <span class="br-neon-lip">Outgoing</span>
+                  <span class="br-neon-cut">Outgoing</span>
+                  <span class="br-neon-haze br-ship-lamp" data-lamp="neon">Outgoing</span>
+                  <span class="br-neon-glow br-ship-lamp" data-lamp="neon">Outgoing</span>
+                  <span class="br-neon-tube br-ship-lamp" data-lamp="neon">Outgoing</span>
+                </span>
+                <span class="br-contact"><i class="br-ship-lamp" data-lamp="contact"></i></span>
+              </div>
+              <!-- The slot sends the newest piece and says which on the control
+                   itself (bridge.js _paintShip; the owner, K82 notes: "remove
+                   the recent send option from here"). -->
+              <button type="button" class="br-mailslot" id="br-mailslot" onclick="sendOutOpen()" aria-label="Send the newest piece out">
+                <span class="br-mailslot-mouth" id="br-mailslot-mouth" data-seam="bottom" aria-hidden="true"><i class="br-slit br-ship-lamp" data-lamp="slit"></i></span>
+              </button>
+              <div class="br-ship-keys" role="group" aria-label="Choose what to send">
+                <button type="button" class="br-ship-key" data-text="act" onclick="sendOutPick('pictures')"><span class="br-ship-icon" aria-hidden="true">▦</span><span class="br-ship-word">Pictures</span></button>
+                <button type="button" class="br-ship-key" data-text="act" onclick="sendOutPick('notes')"><span class="br-ship-icon" aria-hidden="true">✎</span><span class="br-ship-word">Notes</span></button>
+                <button type="button" class="br-ship-key" data-text="act" onclick="sendOutPick('audio')"><span class="br-ship-icon" aria-hidden="true">♪</span><span class="br-ship-word">Audio</span></button>
+              </div>
+            </div>
+          </div>
+          <!-- Storage, and under it whether the site is live (K85). -->
+          <div class="br-store">
+            <div class="br-inst br-inst--storage" id="br-storage"></div>
+            <div class="br-status" id="br-status"></div>
+          </div>
+        </div>
+
+        <!-- Row 3: three channels, each read top to bottom under its own
+             numbered header. -->
+        <div class="br-channels">
+          <section class="br-channel" aria-labelledby="br-h-wait">
+            <h2 class="br-h" id="br-h-wait" data-text="info"><span class="br-h-n" data-text="stat">01</span>Waiting on you</h2>
+            <ol class="br-list" id="br-waiting"></ol>
+          </section>
+          <section class="br-channel" aria-labelledby="br-h-pulse">
+            <h2 class="br-h" id="br-h-pulse" data-text="info"><span class="br-h-n" data-text="stat">02</span>Pulse</h2>
+            <div class="br-pulse" id="br-pulse"></div>
+            <form class="br-say" id="br-say" onsubmit="bridgeSay(event)" hidden>
+              <input id="br-say-input" class="br-say-input" type="text" maxlength="280" autocomplete="off"
+                     placeholder="What are you working on?" aria-label="A line for your homepage">
+              <button type="submit" class="btn btn-sm br-send">SEND ▲</button>
+            </form>
+            <p class="br-meta br-say-note" data-text="info">One line, straight onto your homepage. No publish.</p>
+          </section>
+          <section class="br-channel" aria-labelledby="br-h-front">
+            <h2 class="br-h" id="br-h-front" data-text="info"><span class="br-h-n" data-text="stat">03</span>On the front page</h2>
+            <ol class="br-list" id="br-front"></ol>
+          </section>
+        </div>
+
+        <!-- Row 4 (K66): capture what is fleeting, and the frames to cite.
+             04 is the spark (a two-line quick draft that keeps itself
+             privately and EXPANDs into the full editor); the bay moved up
+             into 02's spare height (2026-10-06). 05 is the shelf: the newest
+             frames with their f#, a tap away from the spark.
+             js/console/capture.js. -->
+        <footer class="br-foot">
+          <div class="br-intake">
+            <h2 class="br-h br-h--lead" data-text="live"><span class="br-h-n" data-text="stat">04</span>Ideas capture</h2>
+            <div class="br-capture">
+              <div class="br-spark">
+                <!-- A caret at rest (the owner: "add blinking caret from field
+                     notes here"): Field Notes' accent block, blinking where
+                     the first word goes, while the field is empty and not
+                     yet taken. A tap gives the real one. -->
+                <span class="br-spark-caret" aria-hidden="true"></span>
+                <textarea id="br-spark" class="br-spark-input" rows="2" maxlength="20000" spellcheck="true"
+                          placeholder="Catch a thought before it goes" aria-label="A quick draft, kept private"
+                          oninput="sparkInput()" onkeydown="sparkKey(event)"></textarea>
+                <div class="br-spark-foot">
+                  <span class="br-meta" id="br-spark-said" data-text="live">kept private</span>
+                  <button type="button" class="br-line br-line--quiet" data-text="act" id="br-spark-expand" onclick="sparkExpand()">Expand <span aria-hidden="true">→</span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="br-recent">
+            <h2 class="br-h" data-text="info"><span class="br-h-n" data-text="stat">05</span>Frames to cite</h2>
+            <ol class="br-shelf" id="br-shelf"></ol>
+          </div>
+        </footer>
+      </div>
+    </section>
+
+    <section class="view" id="view-buffer">
       <div class="view-header">
         <div>
           <div class="view-title">THE ROLLING <em>BUFFER</em></div>
@@ -177,7 +376,7 @@ try {
         </div>
       </div>
 
-      <div class="dropzone dropzone-big" id="buffer-dropzone">
+      <div class="dropzone dropzone-big" data-seam="box" data-backlit id="buffer-dropzone">
         <input type="file" id="buffer-file-input" class="dz-hidden-input" multiple accept="image/*">
         <div class="dz-icon">◢ ◣</div>
         <div class="dz-prompt">DROP PHOTOS HERE</div>
@@ -229,7 +428,7 @@ try {
 
       <div class="archive-compose">
         <div class="compose-photo">
-          <div class="dropzone" id="archive-dropzone">
+          <div class="dropzone" data-seam="box" data-backlit id="archive-dropzone">
             <input type="file" id="archive-file-input" class="dz-hidden-input" accept="image/*">
             <div class="dz-icon" style="font-size:1.4rem;">◢</div>
             <div class="dz-prompt">DROP PHOTO</div>
@@ -239,7 +438,7 @@ try {
             <button class="btn btn-sm btn-ghost" onclick="openAssetLibrary(assetToArchiveForm, 'archive')">◎ FROM LIBRARY</button>
             <button class="btn btn-sm btn-ghost" onclick="RawLens.open('archive')" title="Pick one frame from a RAW card — extracts the embedded JPEG on-device">◇ RAW</button>
           </div>
-          <div class="preview-wrap" id="archive-preview-wrap">
+          <div class="preview-wrap" data-seam="box" data-backlit data-tier="panel" id="archive-preview-wrap">
             <div class="preview-empty">// NO IMAGE LOADED</div>
           </div>
           <div class="filename" id="archive-filename"></div>
@@ -248,61 +447,68 @@ try {
         </div>
 
         <div class="compose-form">
-          <div class="field">
-            <label class="field-label">Title</label>
-            <input class="field-input" id="arch-title" placeholder="The Pause">
-          </div>
-          <div class="field">
-            <label class="field-label">Subtitle / Description</label>
-            <input class="field-input" id="arch-sub" placeholder="Redwood Solitude">
-          </div>
-          <div class="field">
-            <label class="field-label">Location, Year</label>
-            <input class="field-input" id="arch-loc" placeholder="Location, Year">
-          </div>
-          <!-- Gear is free text, not a fixed list: one instance shoots two bodies,
-               the next paints or scans, and hardcoding either one into the engine
-               made the form wrong for every fork (these were three fixed option
-               lists until 2026-08-19). The <datalist> is the memory — values you
-               have used before, offered back. See js/console/archive.js. -->
-          <div class="field-row cols-3">
-            <div class="field" style="margin:0;">
-              <label class="field-label">Camera</label>
-              <input class="field-input" id="arch-cam" list="arch-cam-memory"
-                     placeholder="Camera / tool" autocomplete="off" spellcheck="false">
-              <datalist id="arch-cam-memory"></datalist>
+          <!-- ONE LIGHT, NOT SEVEN (K46, the owner: "each field being a light
+               source … is a bit incoherent … design it as a unified panel as
+               one source of light"). The metadata is one lit panel; its fields
+               are dark wells cut into that glass. Focus lifts the panel's
+               light, not the field's. -->
+          <div class="compose-fields" data-seam="box" data-backlit data-tier="panel">
+            <div class="field">
+              <label class="field-label">Title</label>
+              <input class="field-input" data-tier="field" id="arch-title" placeholder="The Pause">
             </div>
-            <div class="field" style="margin:0;">
-              <label class="field-label">Lens</label>
-              <input class="field-input" id="arch-lens" list="arch-lens-memory"
-                     placeholder="Lens" autocomplete="off" spellcheck="false">
-              <datalist id="arch-lens-memory"></datalist>
+            <div class="field">
+              <label class="field-label">Subtitle / Description</label>
+              <input class="field-input" data-tier="field" id="arch-sub" placeholder="Redwood Solitude">
             </div>
-            <div class="field" style="margin:0;">
-              <label class="field-label">Medium</label>
-              <input class="field-input" id="arch-med" list="arch-med-memory"
-                     placeholder="Medium" autocomplete="off" spellcheck="false">
-              <datalist id="arch-med-memory"></datalist>
+            <div class="field">
+              <label class="field-label">Location, Year</label>
+              <input class="field-input" data-tier="field" id="arch-loc" placeholder="Location, Year">
             </div>
-          </div>
-          <div class="gear-memory">
-            <label class="gear-memory-toggle" for="arch-gear-remember">
-              <input type="checkbox" id="arch-gear-remember" checked>
-              <span>Remember this gear</span>
-            </label>
-            <button class="btn btn-sm btn-ghost" onclick="archiveForgetGear()"
-                    title="Clear the saved camera / lens / medium suggestions">Forget saved</button>
-            <div class="gear-memory-hint">
-              Saved on this device · what you type comes back as a suggestion and prefills the next frame
+            <!-- Gear is free text, not a fixed list: one instance shoots two bodies,
+                 the next paints or scans, and hardcoding either one into the engine
+                 made the form wrong for every fork (these were three fixed option
+                 lists until 2026-08-19). The <datalist> is the memory — values you
+                 have used before, offered back. See js/console/archive.js. -->
+            <div class="field-row cols-3">
+              <div class="field" style="margin:0;">
+                <label class="field-label">Camera</label>
+                <input class="field-input" data-tier="field" id="arch-cam" list="arch-cam-memory"
+                       placeholder="Camera / tool" autocomplete="off" spellcheck="false">
+                <datalist id="arch-cam-memory"></datalist>
+              </div>
+              <div class="field" style="margin:0;">
+                <label class="field-label">Lens</label>
+                <input class="field-input" data-tier="field" id="arch-lens" list="arch-lens-memory"
+                       placeholder="Lens" autocomplete="off" spellcheck="false">
+                <datalist id="arch-lens-memory"></datalist>
+              </div>
+              <div class="field" style="margin:0;">
+                <label class="field-label">Medium</label>
+                <input class="field-input" data-tier="field" id="arch-med" list="arch-med-memory"
+                       placeholder="Medium" autocomplete="off" spellcheck="false">
+                <datalist id="arch-med-memory"></datalist>
+              </div>
+            </div>
+            <div class="gear-memory">
+              <label class="gear-memory-toggle" for="arch-gear-remember">
+                <input type="checkbox" id="arch-gear-remember" checked>
+                <span>Remember this gear</span>
+              </label>
+              <button class="btn btn-sm btn-ghost" onclick="archiveForgetGear()"
+                      title="Clear the saved camera / lens / medium suggestions">Forget saved</button>
+              <div class="gear-memory-hint">
+                Saved on this device · what you type comes back as a suggestion and prefills the next frame
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field-label">Hash <span style="color:var(--text-faint);font-size:0.55rem;letter-spacing:1px;">(auto-generated on image drop)</span></label>
+              <input class="field-input" data-tier="field" id="arch-hash" placeholder="// awaiting image" readonly style="color:var(--text-ghost);cursor:default;">
             </div>
           </div>
 
-          <div class="field">
-            <label class="field-label">Hash <span style="color:var(--text-faint);font-size:0.55rem;letter-spacing:1px;">(auto-generated on image drop)</span></label>
-            <input class="field-input" id="arch-hash" placeholder="// awaiting image" readonly style="color:var(--text-ghost);cursor:default;">
-          </div>
-
-          <div class="archive-tag-preview" id="arch-tag-preview">
+          <div class="archive-tag-preview" data-seam="box" data-backlit data-tier="panel" id="arch-tag-preview">
             <strong>Title</strong><br>
             Subtitle<br>
             Location, Year<br>
@@ -365,7 +571,7 @@ try {
              second copy of a button to drift out of sync. -->
         <header class="fn-bar">
           <div class="fn-bar-doc">
-            <select class="fn-doc-select" id="fn-doc-select"
+            <select class="fn-doc-select" data-tier="field" id="fn-doc-select"
                     onchange="fnLoadPost(this.value)"
                     aria-label="Open a field note">
               <option value="">— no notes yet —</option>
@@ -419,7 +625,7 @@ try {
               <!-- Cover. The dropzone IS the picture: empty it is a shallow
                    dashed band, filled it is the banner with its controls on the
                    glass. (id + dataset are the contract fn-editor.js writes to.) -->
-              <div class="fn-hero" id="fn-hero-slot" title="Drop a picture here, or click to choose one">
+              <div class="fn-hero" data-seam="box" id="fn-hero-slot" title="Drop a picture here, or click to choose one">
                 <input type="file" id="fn-hero-input" class="dz-hidden-input" accept="image/*">
                 <img class="fn-hero-img" id="fn-hero-thumb" style="display:none;" alt="">
                 <div class="fn-hero-empty" id="fn-hero-empty">
@@ -494,7 +700,7 @@ try {
                Six sources, one row, labels and all. Hidden on compact screens,
                where ⊕ INSERT in the bar opens the same drawer instead — so no
                source is ever reachable from two controls at once. -->
-          <div class="fn-dock" id="fn-dock" role="toolbar" aria-label="Insert into this note">
+          <div class="fn-dock" data-seam="box" data-backlit data-tier="panel" id="fn-dock" role="toolbar" aria-label="Insert into this note">
             <button class="fn-tool" id="fn-frames-btn" onclick="fnOpenDrawer('frames')" title="Cite frames from the buffer, or drop a strip of them">▦ FRAMES</button>
             <button class="fn-tool" id="fn-dates-btn" onclick="fnOpenDrawer('days')" title="Embed a whole day out of the buffer">▤ DAYS</button>
             <span class="fn-dock-rule" aria-hidden="true"></span>
@@ -563,7 +769,7 @@ try {
         </div>
       </div>
 
-      <div class="dropzone" id="wall-dropzone" style="margin-bottom: 0;">
+      <div class="dropzone" data-seam="box" data-backlit id="wall-dropzone" style="margin-bottom: 0;">
         <input type="file" id="wall-file-input" class="dz-hidden-input" accept="image/*" multiple>
         <div class="dz-icon" style="font-size:1.4rem;">+</div>
         <div class="dz-prompt">DROP WALLPAPER</div>
@@ -572,21 +778,21 @@ try {
 
       <button class="btn btn-sm btn-ghost" onclick="openAssetLibrary(assetToWallForm, 'wallpaper')" style="margin-top: 8px;">◎ FROM LIBRARY</button>
 
-      <div class="entry-form-card gap-top">
+      <div class="entry-form-card gap-top" data-seam="box" data-backlit data-tier="panel">
         <div class="entry-form-title">
           + ADD BY FILENAME
           <span class="entry-form-note">// OR DROP AN IMAGE ABOVE</span>
         </div>
         <div class="entry-form-row wall-cols">
-          <input class="field-input" id="wall-url" placeholder="Filename (e.g. Title.webp)">
-          <input class="field-input" id="wall-title" placeholder="Title">
-          <input class="field-input" id="wall-desc" placeholder="Description">
+          <input class="field-input" data-tier="field" id="wall-url" placeholder="Filename (e.g. Title.webp)">
+          <input class="field-input" data-tier="field" id="wall-title" placeholder="Title">
+          <input class="field-input" data-tier="field" id="wall-desc" placeholder="Description">
           <button class="btn btn-stage" onclick="wallAdd()">+ Add</button>
           <button class="btn btn-ghost btn-sm" id="wall-cancel-btn" onclick="wallClearEdit()" style="display:none;">Cancel</button>
         </div>
       </div>
 
-      <div class="list-table" id="wall-list"></div>
+      <div class="list-table" data-seam="box" data-backlit data-tier="panel" id="wall-list"></div>
     </section>
 
     <section class="view" id="view-friends">
@@ -607,7 +813,7 @@ try {
            site.config.js edit. The CTA ships with NO href; session.js sets it at
            boot, because a literal mailto here would be rewritten to this site's
            own address by the edge chrome that runs on this document too. -->
-      <div class="entry-form-card" id="ring-card">
+      <div class="entry-form-card" data-seam="box" data-backlit data-tier="panel" id="ring-card">
         <div class="entry-form-title">
           ⬡ ANALOGS // THE RING
           <span class="entry-form-note">// A WEBRING OF INDEPENDENT, CREATIVE-RUN SITES</span>
@@ -623,16 +829,16 @@ try {
         <a class="btn btn-stage" id="ring-join-cta" target="_blank" rel="noopener">Email the monitor →</a>
       </div>
 
-      <div class="entry-form-card">
+      <div class="entry-form-card" data-seam="box" data-backlit data-tier="panel">
         <div class="entry-form-title">
           ⬡ ADD NODE
           <span class="entry-form-note">// PHOTOGRAPHER-RUN SITES · LINKED FROM THE ABOUT PAGE</span>
         </div>
         <div class="entry-form-row friends-cols">
-          <input class="field-input" id="friends-name" placeholder="GREY.AREA">
-          <input class="field-input" id="friends-tag" placeholder="film">
-          <input class="field-input" id="friends-location" placeholder="Portland, OR">
-          <input class="field-input" id="friends-url" placeholder="https://grey.area  (optional)">
+          <input class="field-input" data-tier="field" id="friends-name" placeholder="GREY.AREA">
+          <input class="field-input" data-tier="field" id="friends-tag" placeholder="film">
+          <input class="field-input" data-tier="field" id="friends-location" placeholder="Portland, OR">
+          <input class="field-input" data-tier="field" id="friends-url" placeholder="https://grey.area  (optional)">
           <button class="btn btn-stage" onclick="networkAdd()">+ Add</button>
           <button class="btn btn-ghost btn-sm" id="friends-cancel-btn" onclick="networkClearEdit()" style="display:none;">Cancel</button>
         </div>
@@ -642,7 +848,7 @@ try {
         </div>
       </div>
 
-      <div class="list-table" id="friends-list"></div>
+      <div class="list-table" data-seam="box" data-backlit data-tier="panel" id="friends-list"></div>
     </section>
 
     <section class="view" id="view-library">
@@ -657,7 +863,7 @@ try {
         </div>
       </div>
 
-      <div class="dropzone" id="library-dropzone">
+      <div class="dropzone" data-seam="box" data-backlit id="library-dropzone">
         <input type="file" id="library-file-input" class="dz-hidden-input" multiple accept="image/*,video/mp4,video/webm">
         <div class="dz-icon">◎</div>
         <div class="dz-prompt">DROP IMAGES OR VIDEO TO STAGE</div>
@@ -695,7 +901,7 @@ try {
         </div>
       </div>
 
-      <div class="dropzone" id="audio-dropzone">
+      <div class="dropzone" data-seam="box" data-backlit id="audio-dropzone">
         <input type="file" id="audio-file-input" class="dz-hidden-input" multiple accept="audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac">
         <div class="dz-icon">♪</div>
         <div class="dz-prompt">DROP AUDIO TO ADD IT TO THE SHELF</div>
@@ -775,10 +981,13 @@ try {
     <section class="view" id="view-bench" data-console-feature="bench">
       <div class="view-header">
         <div>
-          <div class="view-title">BENCH <button class="icon-btn" onclick="refreshBench()" title="Refresh" style="font-size: 1rem; margin-left: 0.5rem; transform: translateY(-2px);">↺</button></div>
+          <div class="view-title">BENCH</div>
           <div class="view-sub" id="bench-stats">// 0 QUEUED · 0 IN-PROGRESS · 0 DONE</div>
         </div>
         <div class="view-meta">
+          <!-- The refresh lives with the other control, not in the title (K53):
+               on the iPad and the phone the title is hidden and the controls stay. -->
+          <button class="icon-btn" onclick="refreshBench()" title="Refresh" aria-label="Refresh the bench" style="font-size: 1rem;">↺</button>
           <button class="action-btn danger" id="bench-clear-done-btn" onclick="clearDoneBenchEntries()" style="display: none; background: none; border: 1px solid var(--accent); color: var(--accent); padding: 0.25rem 0.5rem; font-family: 'Syne Mono', monospace; cursor: pointer; text-transform: uppercase;">CLEAR DONE</button>
         </div>
       </div>
@@ -802,7 +1011,7 @@ try {
         <img class="detail-preview" id="bench-detail-preview" src="">
         <div class="detail-meta" id="bench-detail-meta"></div>
         <div class="status-controls" id="bench-detail-status-controls"></div>
-        <textarea class="notes-area" id="bench-detail-notes" placeholder="Notes..."></textarea>
+        <textarea class="notes-area" data-tier="field" id="bench-detail-notes" placeholder="Notes..."></textarea>
         <div class="action-row">
           <button class="action-btn" onclick="saveBenchNotes()" style="background: var(--text); color: #000; font-weight: bold;">SAVE NOTES</button>
           <button class="action-btn" id="bench-detail-download" onclick="downloadBenchRaw(this)">DOWNLOAD RAW</button>
@@ -815,25 +1024,23 @@ try {
       <div class="view-header">
         <div>
           <div class="view-title">PUBLISH <em>QUEUE</em></div>
-          <div class="view-sub">// REVIEW + DEPLOY TO 03-site/</div>
+          <div class="view-sub">// REVIEW · THEN SEND IT LIVE</div>
         </div>
-        <div class="view-meta">
-          <div><span class="accent">PATH A · STATIC · GIT-COMMIT</span></div>
-        </div>
+        <div class="view-meta"></div>
       </div>
 
-      <div class="publish-summary">
-        <div class="summary-card" id="sum-buffer" onclick="publishToggleChanges('buffer')">
+      <div class="publish-summary" data-wake-row>
+        <div class="summary-card" data-seam="box" data-backlit data-tier="card" id="sum-buffer" onclick="publishToggleChanges('buffer')">
           <div class="label">Buffer</div>
           <div class="count" id="sum-count-buffer">0</div>
           <div class="delta" id="sum-delta-buffer"></div>
         </div>
-        <div class="summary-card" id="sum-archive" onclick="publishToggleChanges('archive')">
+        <div class="summary-card" data-seam="box" data-backlit data-tier="card" id="sum-archive" onclick="publishToggleChanges('archive')">
           <div class="label">Archive</div>
           <div class="count" id="sum-count-archive">0</div>
           <div class="delta" id="sum-delta-archive"></div>
         </div>
-        <div class="summary-card" id="sum-fn" onclick="publishToggleChanges('fn')">
+        <div class="summary-card" data-seam="box" data-backlit data-tier="card" id="sum-fn" onclick="publishToggleChanges('fn')">
           <!-- "FN//" not "FN// Posts": the sidebar and the tab bar both call
                this surface FN//, and it is the one label long enough to clip
                its own counter card at the narrow end of the desktop rail. -->
@@ -841,27 +1048,27 @@ try {
           <div class="count" id="sum-count-fn">0</div>
           <div class="delta" id="sum-delta-fn"></div>
         </div>
-        <div class="summary-card" id="sum-wall" onclick="publishToggleChanges('wall')">
+        <div class="summary-card" data-seam="box" data-backlit data-tier="card" id="sum-wall" onclick="publishToggleChanges('wall')">
           <div class="label">Wall</div>
           <div class="count" id="sum-count-wall">0</div>
           <div class="delta" id="sum-delta-wall"></div>
         </div>
-        <div class="summary-card" id="sum-network" onclick="publishToggleChanges('network')">
+        <div class="summary-card" data-seam="box" data-backlit data-tier="card" id="sum-network" onclick="publishToggleChanges('network')">
           <div class="label">Network</div>
           <div class="count" id="sum-count-network">0</div>
           <div class="delta" id="sum-delta-network"></div>
         </div>
-        <div class="summary-card" id="sum-audio" onclick="publishToggleChanges('audio')">
+        <div class="summary-card" data-seam="box" data-backlit data-tier="card" id="sum-audio" onclick="publishToggleChanges('audio')">
           <div class="label">Audio</div>
           <div class="count" id="sum-count-audio">0</div>
           <div class="delta" id="sum-delta-audio"></div>
         </div>
-        <div class="summary-card" id="sum-cards" onclick="publishToggleChanges('cards')">
+        <div class="summary-card" data-seam="box" data-backlit data-tier="card" id="sum-cards" onclick="publishToggleChanges('cards')">
           <div class="label">Cards</div>
           <div class="count" id="sum-count-cards">0</div>
           <div class="delta" id="sum-delta-cards"></div>
         </div>
-        <div class="summary-card" id="sum-library">
+        <div class="summary-card" data-seam="box" data-backlit data-tier="card" id="sum-library">
           <div class="label">Library</div>
           <div class="count" id="sum-count-library">0</div>
         </div>
@@ -871,14 +1078,38 @@ try {
            staged changes render here by name (from STATE.stagedLog). -->
       <div id="publish-changes-panel" class="publish-changes" style="display:none;"></div>
 
-      <div class="import-zone">
+      <!-- PUBLISH comes first: it is what this view is for. No heading — the
+           button names the action, and "PUBLISH TO GITHUB" over "▲ PUBLISH TO
+           GITHUB" said it twice. One line under it says the thing worth
+           knowing in that moment: where it goes and when it is live. CLEAR
+           STAGED stays, small and at the far end, so the eye and the thumb
+           land on Publish first (owner, 2026-10-04). -->
+      <div class="publish-action publish-commit" data-seam="box" data-backlit data-tier="panel">
+        <div class="publish-go">
+          <button class="btn btn-primary" id="gh-publish-btn" onclick="publishToServer()">▲ Publish</button>
+          <!-- Deploy copy defaults to the not-connected truth; session.js
+               applyInstancePosture() swaps in "live in about a minute" when
+               site.config.js says repoConnected — where publish IS the
+               deploy. The safe failure mode is telling a fork it still has a
+               step, never promising a deploy that nothing performs. No
+               command here: setup.md carries the how (owner, 2026-10-04). -->
+          <div class="hint publish-hint">
+            Saves to GitHub · <span id="publish-deploy-hint">deploy to go live (see setup.md).</span>
+          </div>
+          <button class="btn btn-sm btn-danger btn--unlit publish-clear" id="gh-clear-staged-btn" onclick="publishClearStaged()">⌫ Clear Staged</button>
+        </div>
+        <div id="publish-receipt-slot"></div>
+        <div class="publish-log" data-seam="box" data-tier="panel" data-backlit id="publish-log"></div>
+      </div>
+
+      <div class="import-zone" data-seam="box" data-backlit data-tier="panel">
         <h4>REMOTE SYNC</h4>
         <div class="import-sub">
           Fetches live <span style="color:var(--accent);">data/*.json</span> from GitHub <span style="color:var(--accent);">main</span> on load (requires PAT in Settings).<br>
           Imported entries appear dimmed and are not editable. New entries merge on top.
         </div>
         <div class="btn-row">
-          <button class="btn btn-sm" onclick="syncFromServer()">↓ Sync from GitHub</button>
+          <button class="btn btn-sm" onclick="syncFromServer({ force: true })">↓ Sync from GitHub</button>
           <button class="btn btn-sm btn-ghost" onclick="clearImported()">Clear Imported</button>
           <button class="btn btn-sm btn-ghost" onclick="document.getElementById('import-file-input').click()">↑ Manual Import</button>
           <button class="btn btn-sm btn-ghost" id="purge-r2-btn" onclick="drainOrphanedR2Deletes()" style="display:none;">⚠ Purge Queued R2</button>
@@ -888,29 +1119,7 @@ try {
         <div id="upload-queue-status" style="display:none; margin-top:6px; font-size:0.62rem; color:var(--accent); letter-spacing:1.5px;"></div>
       </div>
 
-      <div class="publish-action publish-commit">
-        <h3>PUBLISH TO GITHUB</h3>
-        <div class="hint">
-          Commits updated JSON + markdown directly to <span style="color:var(--accent);">main</span>.<br>
-          <!-- Deploy copy defaults to the not-connected truth; session.js
-               applyInstancePosture() swaps in the auto-deploy line when
-               site.config.js says repoConnected — the safe failure mode is
-               telling a fork to deploy, never promising a deploy that
-               nothing performs. -->
-          <span id="publish-deploy-hint">Then run <span style="color:var(--accent);">npx wrangler deploy</span> to take it live — or connect this repo to Cloudflare Builds (see setup.md) and skip that step forever.</span>
-        </div>
-        <div class="btn-row publish-act-row">
-          <button class="btn btn-primary" id="gh-publish-btn" onclick="publishToServer()">▲ Publish to GitHub</button>
-          <button class="btn btn-danger btn--unlit" id="gh-clear-staged-btn" onclick="publishClearStaged()">⌫ Clear Staged</button>
-        </div>
-        <div id="publish-receipt-slot"></div>
-        <div class="publish-log" id="publish-log"></div>
-        <div class="hint-text publish-workflow">
-          <span class="accent">WORKFLOW:</span> Drop photos (auto-upload to R2) → write notes → <span style="color:var(--green);">Publish → done</span>
-        </div>
-      </div>
-
-      <div class="publish-action publish-export">
+      <div class="publish-action publish-export" data-seam="box" data-backlit data-tier="panel">
         <h3>SITE-IN-A-ZIP</h3>
         <div class="hint">
           Full offline mirror of the <span style="color:var(--accent);">published</span> site: rendered pages, content, and CDN media,<br>
@@ -937,7 +1146,7 @@ try {
         <div id="site-export-status" class="import-status"></div>
       </div>
 
-      <details class="publish-legacy">
+      <details class="publish-legacy" data-seam="box" data-backlit data-tier="panel">
         <summary class="publish-legacy-sum">
           ▸ Legacy: Export ZIP Bundle
         </summary>
@@ -962,11 +1171,11 @@ try {
           </div>
           <button class="btn btn-sm btn-danger" onclick="trashClearAll()">Empty Trash</button>
         </div>
-        <div class="list-table" id="trash-container"></div>
+        <div class="list-table" data-seam="box" data-backlit data-tier="panel" id="trash-container"></div>
       </div>
 
       <!-- DANGER ZONE -->
-      <div class="danger-zone">
+      <div class="danger-zone" data-seam="box" data-backlit data-tier="panel">
         <div class="danger-zone-title">DANGER ZONE_</div>
         <div class="danger-zone-row">
           <button class="btn btn-sm btn-danger" onclick="resetConsole()">⌫ Reset All Data</button>
@@ -982,16 +1191,19 @@ try {
 </div>
 
 <!-- ============ BOTTOM TAB BAR (≤1180px / touch — primary nav) ============
-     The field loop lives here: Buffer → FN// → Archive → Publish. Everything
-     else is in the More sheet. Same data-view contract as the sidebar, so
+     The Bridge, then the field loop: Buffer → FN// → Archive → Publish.
+     Everything else is in the More sheet. Same data-view contract as the sidebar, so
      showView() drives both. -->
-<nav class="tabbar" aria-label="Primary">
-  <button class="tab-btn active" data-view="buffer" onclick="showView('buffer')">
+<nav class="tabbar" aria-label="Primary" data-backlit>
+  <button class="tab-btn" data-view="bridge" onclick="showView('bridge')">
+    <span class="tab-icon">◈</span><span class="tab-label">Bridge</span>
+  </button>
+  <button class="tab-btn" data-view="buffer" onclick="showView('buffer')">
     <span class="tab-icon">◉</span><span class="tab-label">Buffer</span>
     <span class="tab-count" id="tab-count-buffer"></span>
   </button>
   <button class="tab-btn" data-view="fn" onclick="showView('fn')">
-    <span class="tab-icon">✍</span><span class="tab-label">FN//</span>
+    <span class="tab-icon">✎</span><span class="tab-label">FN//</span>
     <span class="tab-count" id="tab-count-fn"></span>
   </button>
   <button class="tab-btn" data-view="archive" onclick="showView('archive')">
@@ -1077,19 +1289,19 @@ try {
          behind glyphs, because this pane is the only place a compact
          screen can reach them. -->
     <div class="fn-drawer-pane fn-drawer-pane--media" id="fn-media-pane" role="tabpanel" aria-labelledby="fn-tab-media" hidden>
-      <button class="fn-media-row" onclick="fnCloseDrawer(); openAssetLibrary(assetToPostBody, 'archive', true)">
+      <button class="fn-media-row" data-tier="card" onclick="fnCloseDrawer(); openAssetLibrary(assetToPostBody, 'archive', true)">
         <span class="fn-media-mark">◎</span>
         <span class="fn-media-txt"><b>Picture</b><small>from the asset library — pick several and they place as a strip</small></span>
       </button>
-      <button class="fn-media-row" onclick="fnCloseDrawer(); openAssetLibrary(assetToPostVideo, 'videos')">
+      <button class="fn-media-row" data-tier="card" onclick="fnCloseDrawer(); openAssetLibrary(assetToPostVideo, 'videos')">
         <span class="fn-media-mark">▷</span>
         <span class="fn-media-txt"><b>Video banner</b><small>a short loop, muted, full width</small></span>
       </button>
-      <button class="fn-media-row" onclick="fnCloseDrawer(); fnInsertMusic()">
+      <button class="fn-media-row" data-tier="card" onclick="fnCloseDrawer(); fnInsertMusic()">
         <span class="fn-media-mark">♫</span>
         <span class="fn-media-txt"><b>Apple Music</b><small>paste a share link or the embed code</small></span>
       </button>
-      <button class="fn-media-row" onclick="fnCloseDrawer(); fnAttachAudio()">
+      <button class="fn-media-row" data-tier="card" onclick="fnCloseDrawer(); fnAttachAudio()">
         <span class="fn-media-mark">♪</span>
         <span class="fn-media-txt"><b>Your own audio</b><small>lands on the Audio shelf and plays inside the note</small></span>
       </button>
@@ -1167,6 +1379,40 @@ try {
   </div>
 </div>
 
+<!-- Send it out (K67, js/console/send-out.js): the newest live piece, how
+     its link unfurls, the post counted for each platform, and the story card
+     with its QR home. Opened from the Bridge's days-since instrument. -->
+<div class="sheet-overlay hidden" id="sendout-sheet" onclick="if(event.target===this)sendOutClose()">
+  <div class="sheet sendout-sheet" role="dialog" aria-label="Send it out">
+    <div class="sheet-grabber"></div>
+    <div class="sheet-title" id="sendout-title">Send it out</div>
+    <div class="sendout-body" id="sendout-body"></div>
+  </div>
+</div>
+
+<!-- Choose your media (K81): the asset library's look, over pieces that
+     have an address. js/console/send-out.js sendOutPick. -->
+<div class="modal-overlay hidden" id="sendpick-modal" onclick="if(event.target===this)sendOutPickClose()">
+  <div class="modal sendpick-modal" role="dialog" aria-labelledby="sendpick-title">
+    <div class="modal-grabber" aria-hidden="true"></div>
+    <div class="modal-header">
+      <div class="modal-title" id="sendpick-title">CHOOSE YOUR MEDIA</div>
+      <button class="modal-close" onclick="sendOutPickClose()" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" style="padding: 0;">
+      <div class="asset-lib-toolbar">
+        <div class="sendpick-pills" id="sendpick-pills" role="group" aria-label="What kind"></div>
+        <input class="asset-lib-search" data-tier="field" id="sendpick-search" type="search" placeholder="search a title or f#…" autocomplete="off" oninput="sendOutPickSearch()">
+      </div>
+      <div class="sendpick-scroll">
+        <div class="asset-lib-grid sendpick-grid" id="sendpick-grid"></div>
+        <div class="sendpick-rows" id="sendpick-rows"></div>
+        <div class="asset-lib-empty" id="sendpick-empty" hidden></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-overlay hidden" id="pulse-log-sheet" onclick="if(event.target===this)_pulseCloseLog()">
   <div class="sheet" role="menu" aria-label="Recent pulses">
     <div class="sheet-grabber"></div>
@@ -1193,19 +1439,19 @@ try {
   <header class="rl-topbar">
     <div class="rl-title">◇ RAW <em>LENS</em> <span class="rl-target" id="rl-target-label">→ BUFFER</span></div>
     <div class="rl-status" id="rl-status">// 0 FRAMES</div>
-    <button class="rl-close" onclick="RawLens.close()" aria-label="Close RAW Lens">×</button>
+    <button class="btn btn-sm rl-close" onclick="RawLens.close()" aria-label="Close RAW Lens">×</button>
   </header>
   <div class="rl-toolbar">
     <div class="rl-seg" role="group" aria-label="Grid density">
       <button type="button" id="rl-mode-dense" onclick="RawLens.setMode('dense')">DENSE</button>
       <button type="button" id="rl-mode-grid" class="active" onclick="RawLens.setMode('grid')">GRID</button>
     </div>
-    <button type="button" class="rl-tool active" id="rl-bursts-toggle" onclick="RawLens.toggleBursts()">⛓ BURSTS</button>
+    <button type="button" class="btn btn-sm rl-tool active" id="rl-bursts-toggle" onclick="RawLens.toggleBursts()">⛓ BURSTS</button>
     <span id="rl-multi-actions">
-      <button type="button" class="rl-tool" onclick="RawLens.selectAll()">ALL</button>
-      <button type="button" class="rl-tool" onclick="RawLens.selectNone()">NONE</button>
+      <button type="button" class="btn btn-sm rl-tool" onclick="RawLens.selectAll()">ALL</button>
+      <button type="button" class="btn btn-sm rl-tool" onclick="RawLens.selectNone()">NONE</button>
     </span>
-    <button type="button" class="rl-tool" onclick="RawLens.pick()">+ ADD</button>
+    <button type="button" class="btn btn-sm rl-tool" onclick="RawLens.pick()">+ ADD</button>
   </div>
   <div class="rl-body">
     <div class="rl-empty" id="rl-empty">
@@ -1276,49 +1522,91 @@ try {
       <div class="modal-title">⚙ CONSOLE SETTINGS</div>
       <button class="modal-close" onclick="closeSettings()">×</button>
     </div>
+    <!-- THE TWO THINGS YOU OPEN THIS FOR, FIRST AND LARGE (2026-10-06, the
+         owner on the iPad: "a lot of info fatigue … keep the info collapsed
+         and let's scale the logout / close button pair much larger", in "the
+         top 3rd"). Everything below is folded, each fold saying its current
+         value, so the sheet reads at a glance and opens what you came to
+         change. -->
+    <div class="settings-actions">
+      <button type="button" class="btn settings-action" onclick="closeSettings()">Close</button>
+      <button type="button" class="btn btn-danger settings-action" onclick="logout()">⏏ Log out</button>
+    </div>
     <div class="modal-body">
-      <div class="modal-section">
-        <div class="modal-section-title">Session</div>
-        <div id="settings-status" style="font-size:0.65rem; letter-spacing:1.5px; line-height:2.2; color:var(--text-faint);">
-          // checking…
+      <!-- Only when this device kept a copy of saved work it could not read
+           (K68): an alarm, so never folded. -->
+      <div class="modal-section" id="settings-unreadable" hidden>
+        <div class="modal-section-title">Unreadable saved work <span style="color:var(--text-faint);">// this device</span></div>
+        <div style="font-size:0.6rem; letter-spacing:0.5px; line-height:1.7; color:var(--text-faint);">
+          This device found saved work it could not read and kept it here rather than write over it. Download it to recover what is in it.
         </div>
+        <div id="settings-unreadable-list" style="font-size:0.65rem; letter-spacing:1px; line-height:2.2; margin-top:6px;"></div>
       </div>
       <div class="modal-section">
-        <div class="modal-section-title">Site Settings</div>
-        <div id="site-settings-card" style="font-size:0.65rem; letter-spacing:1px; line-height:2; color:var(--text-faint);">
-          // loading…
-        </div>
-        <div style="margin-top:10px; font-size:0.6rem; letter-spacing:0.5px; line-height:1.7; color:var(--text-faint);">
-          Settings live in <code>site.config.js</code>. Changes deploy with the site
-          — or hand them to your AI maintainer:
-        </div>
-        <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="copySiteSettingsPrompt()">⧉ Copy prompt for AI maintainer</button>
+        <details class="build-details settings-fold">
+          <summary class="modal-section-title">Session <span class="settings-fold-value" id="settings-fold-session"></span></summary>
+          <div id="settings-status" style="font-size:0.65rem; letter-spacing:1.5px; line-height:2.2; color:var(--text-faint);">
+            // checking…
+          </div>
+        </details>
+      </div>
+      <div class="modal-section">
+        <details class="build-details settings-fold">
+          <summary class="modal-section-title">Studio or daylight <span class="settings-fold-value" id="settings-fold-theme"></span></summary>
+          <div class="start-view-picker" role="radiogroup" aria-label="Studio or daylight">
+            <button type="button" class="focal-style-btn" role="radio" aria-checked="false" data-theme-choice="dark" onclick="themeSet('dark')">Studio</button>
+            <button type="button" class="focal-style-btn" role="radio" aria-checked="false" data-theme-choice="light" onclick="themeSet('light')">Daylight</button>
+          </div>
+        </details>
+      </div>
+      <!-- How large the console is drawn on a big screen at 1x (K74, the boot
+           script in <head>): Auto zooms it in steps, 1x holds it. Per device. -->
+      <div class="modal-section">
+        <details class="build-details settings-fold">
+          <summary class="modal-section-title">Display scale <span class="settings-fold-value" id="settings-fold-scale"></span></summary>
+          <div class="start-view-picker" role="radiogroup" aria-label="Display scale">
+            <button type="button" class="focal-style-btn" role="radio" aria-checked="false" data-scale-choice="auto" onclick="scaleSet('auto')">Auto</button>
+            <button type="button" class="focal-style-btn" role="radio" aria-checked="false" data-scale-choice="1" onclick="scaleSet('1')">1×</button>
+          </div>
+        </details>
+      </div>
+      <!-- Which surface this device opens to (js/console/session.js,
+           _renderStartViewPicker). Per device: the phone and the desk are
+           different jobs. -->
+      <div class="modal-section">
+        <details class="build-details settings-fold">
+          <summary class="modal-section-title">Opens to <span class="settings-fold-value" id="settings-fold-start"></span></summary>
+          <div id="settings-start-view" class="start-view-picker" role="radiogroup" aria-label="Opens to"></div>
+        </details>
+      </div>
+      <div class="modal-section">
+        <details class="build-details settings-fold">
+          <summary class="modal-section-title">Site settings <span class="settings-fold-value" id="settings-fold-site"></span></summary>
+          <div id="site-settings-card" style="font-size:0.65rem; letter-spacing:1px; line-height:2; color:var(--text-faint);">
+            // loading…
+          </div>
+          <div style="margin-top:10px; font-size:0.6rem; letter-spacing:0.5px; line-height:1.7; color:var(--text-faint);">
+            Settings live in <code>site.config.js</code>. Changes deploy with the site
+            — or hand them to your AI maintainer:
+          </div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="copySiteSettingsPrompt()">⧉ Copy prompt for AI maintainer</button>
+        </details>
       </div>
       <!-- Which build is actually running. The sidebar footer carries a version
            too, but the sidebar is display:none below 1180px — so on the iPad,
            where the console mostly gets used, there was no way to tell whether
-           an update had landed. Settings is reachable at every size. -->
+           an update had landed. Settings is reachable at every size. Collapsed
+           to the console's version by default (K50c — the owner: "too much
+           stuff"); the service worker and the module versions open on demand.
+           (The Display panel that sat below it went in the same pass.) -->
       <div class="modal-section">
-        <div class="modal-section-title">Build</div>
-        <div id="settings-build" style="font-size:0.65rem; letter-spacing:1px; line-height:2; color:var(--text-faint);">
-          // reading…
-        </div>
+        <details class="build-details" id="settings-build-details">
+          <summary class="modal-section-title">Build <span class="accent" id="settings-build-version">// reading…</span></summary>
+          <div id="settings-build" style="font-size:0.65rem; letter-spacing:1px; line-height:2; color:var(--text-faint);">
+            // reading…
+          </div>
+        </details>
       </div>
-      <!-- What the device gives the console to draw in. An installed web app is
-           a black box from the outside: when a layout comes up wrong on someone's
-           tablet there is otherwise no way to see whether the screen's safe-area
-           numbers are wrong or the window is simply shorter than it looks. Those
-           two produce an identical gap and want opposite fixes. -->
-      <div class="modal-section">
-        <div class="modal-section-title">Display</div>
-        <div id="settings-display" style="font-size:0.65rem; letter-spacing:1px; line-height:2; color:var(--text-faint);">
-          // measuring…
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost btn-sm" onclick="closeSettings()">Close</button>
-      <button class="btn btn-danger btn-sm" onclick="logout()">⏏ Log Out</button>
     </div>
   </div>
 </div>
@@ -1337,7 +1625,7 @@ try {
         cropped to a thumbnail. The full-frame view is never cropped.
       </div>
       <div class="focal-layout">
-        <div class="focal-stage" id="focal-stage">
+        <div class="focal-stage" data-tier="panel" id="focal-stage">
           <img id="focal-img" alt="">
           <div class="focal-guide thumb" id="focal-guide-thumb"></div>
           <div class="focal-guide og" id="focal-guide-og"></div>
@@ -1450,7 +1738,7 @@ try {
     <div class="modal-body">
       <div class="field">
         <label class="field-label">Password</label>
-        <input class="field-input" type="password" id="login-password"
+        <input class="field-input" data-tier="field" type="password" id="login-password"
                autocomplete="current-password"
                onkeydown="if(event.key==='Enter')loginSubmit()">
       </div>
@@ -1484,42 +1772,49 @@ try {
 <script type="importmap">
 {
   "imports": {
-    "/js/console-telemetry.js": "/js/console-telemetry.js?v=2",
-    "/js/console-api.js":       "/js/console-api.js?v=12",
-    "/js/console-state.js":     "/js/console-state.js?v=17",
-    "/js/console-ui.js":        "/js/console-ui.js?v=68",
-    "/js/console/chrome.js":    "/js/console/chrome.js?v=20",
-    "/js/console/lighting.js":  "/js/console/lighting.js?v=3",
-    "/js/console/help.js":      "/js/console/help.js?v=12",
-    "/js/console/assets.js":    "/js/console/assets.js?v=5",
-    "/js/console/utils.js":     "/js/console/utils.js?v=3",
+    "/js/console-telemetry.js": "/js/console-telemetry.js?v=5",
+    "/js/console-api.js":       "/js/console-api.js?v=14",
+    "/js/console-state.js":     "/js/console-state.js?v=20",
+    "/js/console-ui.js":        "/js/console-ui.js?v=74",
+    "/js/console/chrome.js":    "/js/console/chrome.js?v=49",
+    "/js/console/lighting.js":  "/js/console/lighting.js?v=28",
+    "/js/console/text-light.js": "/js/console/text-light.js?v=1",
+    "/js/console/matrix.js":    "/js/console/matrix.js?v=1",
+    "/js/console/flap.js":      "/js/console/flap.js?v=3",
+    "/js/console/help.js":      "/js/console/help.js?v=21",
+    "/js/console/assets.js":    "/js/console/assets.js?v=8",
+    "/js/console/utils.js":     "/js/console/utils.js?v=4",
     "/js/console/sync.js":      "/js/console/sync.js?v=1",
     "/js/console/upload.js":    "/js/console/upload.js?v=4",
-    "/js/console/more-views.js": "/js/console/more-views.js?v=6",
-    "/js/console/archive.js":   "/js/console/archive.js?v=5",
-    "/js/console/buffer.js":    "/js/console/buffer.js?v=5",
-    "/js/console/fn-editor.js": "/js/console/fn-editor.js?v=9",
-    "/js/console/card-paint.js": "/js/console/card-paint.js?v=7",
-    "/js/console/focal.js":     "/js/console/focal.js?v=15",
-    "/js/console/share.js":     "/js/console/share.js?v=4",
-    "/js/console/asset-library.js": "/js/console/asset-library.js?v=3",
-    "/js/console/audio.js":     "/js/console/audio.js?v=16",
-    "/js/console/cards.js":     "/js/console/cards.js?v=33",
-    "/js/console/publish.js":   "/js/console/publish.js?v=31",
-    "/js/console/session.js":   "/js/console/session.js?v=11",
-    "/js/console/bench.js":     "/js/console/bench.js?v=1",
+    "/js/console/more-views.js": "/js/console/more-views.js?v=10",
+    "/js/console/archive.js":   "/js/console/archive.js?v=10",
+    "/js/console/buffer.js":    "/js/console/buffer.js?v=11",
+    "/js/console/fn-editor.js": "/js/console/fn-editor.js?v=15",
+    "/js/console/card-paint.js": "/js/console/card-paint.js?v=9",
+    "/js/console/focal.js":     "/js/console/focal.js?v=16",
+    "/js/console/share.js":     "/js/console/share.js?v=5",
+    "/js/console/asset-library.js": "/js/console/asset-library.js?v=5",
+    "/js/console/audio.js":     "/js/console/audio.js?v=19",
+    "/js/console/cards.js":     "/js/console/cards.js?v=39",
+    "/js/console/publish.js":   "/js/console/publish.js?v=36",
+    "/js/console/session.js":   "/js/console/session.js?v=19",
+    "/js/console/bench.js":     "/js/console/bench.js?v=3",
     "/js/pulse-packs.js":       "/js/pulse-packs.js?v=3",
-    "/js/console/pulse.js":     "/js/console/pulse.js?v=4",
-    "/js/console/init.js":      "/js/console/init.js?v=16",
+    "/js/console/pulse.js":     "/js/console/pulse.js?v=8",
+    "/js/console/bridge.js":    "/js/console/bridge.js?v=24",
+    "/js/console/capture.js":   "/js/console/capture.js?v=5",
+    "/js/console/send-out.js":  "/js/console/send-out.js?v=2",
+    "/js/console/init.js":      "/js/console/init.js?v=26",
     "/js/markdown-engine.js":   "/js/markdown-engine.js?v=5",
     "/js/recent-index.js":      "/js/recent-index.js?v=34",
+    "/js/qr.js":                "/js/qr.js?v=1",
     "/js/audio-player.js":      "/js/audio-player.js?v=9",
     "/js/jpeg-privacy.js":      "/js/jpeg-privacy.js?v=1",
     "/js/raw-lens.js":          "/js/raw-lens.js?v=5",
     "/js/raw-extract.js":       "/js/raw-extract.js?v=4",
     "/js/site-export.js":       "/js/site-export.js?v=4",
     "/js/site-export-core.js":  "/js/site-export-core.js?v=3",
-    "/js/export-manifest.js":   "/js/export-manifest.js?v=20"
+    "/js/export-manifest.js":   "/js/export-manifest.js?v=21"
   }
 }
 </script>
