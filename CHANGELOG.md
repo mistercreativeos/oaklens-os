@@ -25,10 +25,10 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
-## 2026-10-07, later (two false alarms in the health check)
+## 2026-10-07, later (two false alarms in the health check, and a frame's size)
 
 **Nothing to do.** Two things made `scripts/doctor.sh` report a problem on a
-healthy site:
+healthy site, and one tile on the console was the wrong size:
 
 - Once your site had published field notes of its own, `npm test` (which the
   doctor runs) failed three tests that were checking the original site's
@@ -40,6 +40,9 @@ healthy site:
   said "This folder isn't a git project", and `setup.sh` skipped saving your
   settings, because there `.git` is a file rather than a folder. Both now
   recognise it.
+- On the console's front page, a frame with no picture (or one whose picture
+  would not load) was drawn as a small tile beside the full-size ones. It is
+  now the same size. `css/field-console.css`.
 
 ## 2026-10-07 (Field Console 1.0)
 

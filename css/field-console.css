@@ -12687,8 +12687,12 @@ img.br-thumb:not(.is-in) { opacity: 0; }
 .br-cite { flex: 0 0 min(51px, calc((100% - 32px) / 5)); min-width: 0; }
 .br-cite .br-thumb { width: 100%; height: auto; aspect-ratio: 1; }
 .br-shelf > [hidden] { display: none; }
+/* The key fills its slot, so a frame with no picture (the lit panel, or a
+   picture that would not load) is the picture's size: a button shrinks to
+   its content, and the panel's content is one letter. 51 px either way,
+   and the frames keep the spark's floor (K85). */
 .br-cite-key {
-  display: grid; justify-items: center; gap: 4px; padding: 0; margin: 0;
+  display: grid; justify-items: center; gap: 4px; padding: 0; margin: 0; width: 100%;
   background: none; border: 0; color: inherit; cursor: pointer; -webkit-touch-callout: none; user-select: none;
 }
 .br-cite-key:focus-visible { outline: none; }

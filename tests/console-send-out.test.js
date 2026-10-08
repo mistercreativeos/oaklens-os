@@ -378,4 +378,10 @@ describe('the bottom row: the spark and the frames meet (K85)', () => {
     expect(css).toMatch(/\.br-cite \{ flex: 0 0 min\(51px, calc\(\(100% - 32px\) \/ 5\)\); min-width: 0; \}/);
     expect(css).toMatch(/min-height: calc\(2 \* 1\.4em \+ 6px\);/);
   });
+  it('a frame with no picture is a picture\'s size: the key fills its slot', () => {
+    // A button shrinks to its content, and the lit panel's content is one
+    // letter: with the pictures not loading the frames were 37 px, on a
+    // fork's frame without one 24 (found 2026-10-07, standby fork).
+    expect(CSS()).toMatch(/\.br-cite-key \{\n  display: grid; justify-items: center; gap: 4px; padding: 0; margin: 0; width: 100%;/);
+  });
 });
