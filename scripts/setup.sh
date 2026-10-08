@@ -452,7 +452,8 @@ if (out !== src) fs.writeFileSync('site.config.js', out);
 # else's work-in-progress is not ours to commit.
 step 6 "Saving your settings"
 git_ok=0
-if [ -d .git ] && command -v git >/dev/null 2>&1; then git_ok=1; fi
+# -e: a worktree's `.git` is a file, and it is still a clone.
+if [ -e .git ] && command -v git >/dev/null 2>&1; then git_ok=1; fi
 if [ "$git_ok" != "1" ]; then
   warn "This folder isn't a git project, so there's nothing to save your settings into."
   info "That usually means the code was downloaded as a ZIP rather than cloned."

@@ -21,7 +21,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync, cpSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -345,6 +345,19 @@ function makeGitFork({ identity = true } = {}) {
   return dir;
 }
 
+/**
+ * Make `.git` a FILE pointing at the repository, the way git lays out a
+ * worktree or a submodule (an AI helper's session is often a worktree). The
+ * scripts tested for a `.git` folder and called this "not a git project".
+ * Returns the moved repository, for the caller to remove.
+ */
+function gitDirAsFile(dir) {
+  const gitdir = join(mkdtempSync(join(tmpdir(), 'oak-gitdir-')), 'repo.git');
+  renameSync(join(dir, '.git'), gitdir);
+  writeFileSync(join(dir, '.git'), `gitdir: ${gitdir}\n`);
+  return gitdir;
+}
+
 /** Read back a repo's history. */
 function gitLog(dir, ...args) {
   return execFileSync('git', ['log', ...args], { cwd: dir, env: GIT_ENV, encoding: 'utf8' });
@@ -603,6 +616,20 @@ describe('setup.sh — saving the settings into the project history', () => {
     expect(r.siteConfig).toMatch(/preset:\s*'passe-partout'/);
   });
 
+  it('saves the settings in a worktree, where .git is a file', () => {
+    dir = makeGitFork();
+    const gitdir = gitDirAsFile(dir);
+    try {
+      const r = runSetup(dir, ANSWERS, GIT_HERMETIC);
+      expect(r.status).toBe(0);
+      expect(r.stdout).not.toMatch(/isn't a git project/);
+      const files = gitLog(dir, '-1', '--name-only', '--format=').trim().split('\n').sort();
+      expect(files).toEqual(['site.config.js', 'wrangler.jsonc']);
+    } finally {
+      rmSync(join(gitdir, '..'), { recursive: true, force: true });
+    }
+  });
+
   it('says so plainly, and carries on, when the folder is not a git project', () => {
     // A downloaded ZIP rather than a clone. Nothing here is fatal — the site
     // still deploys — but publishing later needs a real repo, so say it now.
@@ -758,6 +785,20 @@ describe('doctor.sh', () => {
     expect(r.stdout).toContain('Your settings are saved in your project\'s history');
     expect(r.stdout).toContain('Everything saved here has been sent to GitHub');
     expect(r.stdout).not.toMatch(/not sent to GitHub yet/);
+  });
+
+  it('reads the history in a worktree, where .git is a file', () => {
+    runSetup(dir, ANSWERS);
+    execFileSync('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'],
+      { cwd: dir, env: GIT_ENV });
+    const gitdir = gitDirAsFile(dir);
+    try {
+      const r = runDoctor(dir);
+      expect(r.stdout).not.toMatch(/isn't a git project/);
+      expect(r.stdout).toContain('Everything saved here has been sent to GitHub');
+    } finally {
+      rmSync(join(gitdir, '..'), { recursive: true, force: true });
+    }
   });
 
   it('calls out a folder that is not a git project at all', () => {

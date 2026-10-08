@@ -9,6 +9,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderMarkdown, appleMusicEmbedSrc, appleMusicIframe, appleMusicEmbedsEnabled } from '../js/markdown-engine.js';
 import { hasPosts } from './helpers/instance-content.js';
+import { IS_INSTANCE } from './helpers/instance.js';
 
 // The dialect tests below are engine behaviour and always run. The corpus
 // tests need this instance's published posts, which the extracted engine tree
@@ -185,7 +186,9 @@ describe.skipIf(!HAS_POSTS)('published corpus invariants', () => {
     }
   });
 
-  it('fn-004 keeps its video, fn-007 its buffer-inline embed', () => {
+  // Named posts are this instance's, not the engine's: a fork that publishes
+  // its own notes has posts, but not these (tests/helpers/instance.js).
+  it.skipIf(!IS_INSTANCE)('fn-004 keeps its video, fn-007 its buffer-inline embed', () => {
     expect(renderMarkdown(bodyOf('fn-004.md'))).toContain('<video src="/api/cdn/blog/rolling_buffer_update_v2.mp4"');
     expect(renderMarkdown(bodyOf('fn-007.md'))).toContain('<div class="buffer-inline"');
   });

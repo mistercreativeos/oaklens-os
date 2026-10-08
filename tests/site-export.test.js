@@ -6,6 +6,7 @@
 // no origin-dependent references the offline runtime can't cover.
 import { describe, it, expect } from 'vitest';
 import { HAS_CONTENT } from './helpers/instance-content.js';
+import { IS_INSTANCE } from './helpers/instance.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -438,7 +439,9 @@ describe('integration: repo pages survive the export rewrite', () => {
     expect(css).not.toMatch(/url\(['"]?\//);
   });
 
-  it.skipIf(!HAS_CONTENT)('real data files expand to a plausible media set', () => {
+  // This instance's numbers and posts: a fork with content of its own has
+  // neither (tests/helpers/instance.js), so these skip there.
+  it.skipIf(!HAS_CONTENT || !IS_INSTANCE)('real data files expand to a plausible media set', () => {
     const datasets = Object.fromEntries(
       EXPORT_MANIFEST.dataFiles.map((p) => [p, readJson(p)])
     );
@@ -509,7 +512,7 @@ describe('integration: repo pages survive the export rewrite', () => {
     expect([...merged.keys()]).toEqual([]);
   });
 
-  it.skipIf(!HAS_CONTENT)('real post bodies surface their inline CDN media', () => {
+  it.skipIf(!HAS_CONTENT || !IS_INSTANCE)('real post bodies surface their inline CDN media', () => {
     const keys = harvestCdnKeys(read('posts/fn-004.md'), CDN_BASES);
     expect([...keys]).toContain('blog/rolling_buffer_update_v2.mp4');
   });

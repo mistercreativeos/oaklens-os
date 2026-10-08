@@ -25,6 +25,22 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-10-07, later (two false alarms in the health check)
+
+**Nothing to do.** Two things made `scripts/doctor.sh` report a problem on a
+healthy site:
+
+- Once your site had published field notes of its own, `npm test` (which the
+  doctor runs) failed three tests that were checking the original site's
+  posts and photo counts, not yours. They now skip in a fork, the same way the
+  other original-site checks already did, and a new test
+  (`tests/instance-content-guard.test.js`) keeps it that way. The check that
+  every one of your posts renders cleanly still runs.
+- In a git worktree (where AI helpers like Claude Code often work), the doctor
+  said "This folder isn't a git project", and `setup.sh` skipped saving your
+  settings, because there `.git` is a file rather than a folder. Both now
+  recognise it.
+
 ## 2026-10-07 (Field Console 1.0)
 
 **Nothing to do.** The console is stamped **v1.0.0**: the first official

@@ -16,6 +16,11 @@
 //   engine behaviour   -> always runs (the markdown engine's own dialect, the
 //                         export rewriter's URL math, the entity JSON-LD shape)
 //   instance content   -> runs only where content exists
+//   THIS instance's    -> also needs IS_INSTANCE (./instance.js): a test that
+//   named content         names a post (fn-004) or this site's scale (1,200
+//                         frames) fails in a fork that has published its own
+//                         work, so `npm test` went red on a healthy fork.
+//                         Found on a standby fork, 2026-10-07.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
