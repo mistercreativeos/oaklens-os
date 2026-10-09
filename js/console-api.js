@@ -402,6 +402,19 @@ export function fetchSiteSettings() {
   return apiFetch('/api/site/settings', { retries: 1, tel: { channel: 'site', label: 'SITE ▼', latch: false } });
 }
 
+// The Publish key, set from the console and kept by the site
+// (src/api/publish-key.js). Never read back: GET answers its last four.
+export function fetchPublishKey({ check = false } = {}) {
+  return apiFetch(`/api/publish/key${check ? '?check=1' : ''}`, { tel: { channel: 'site', label: 'KEY ▼', latch: false } });
+}
+export function setPublishKey(token, repo) {
+  return apiFetch('/api/publish/key', { method: 'PUT', ...jsonBody({ token, repo: repo || undefined }),
+    tel: { channel: 'site', label: 'KEY ▲', latch: false } });
+}
+export function removePublishKey() {
+  return apiFetch('/api/publish/key', { method: 'DELETE', tel: { channel: 'site', label: 'KEY ✕', latch: false } });
+}
+
 // ============== BENCH (darkroom RAW queue, D1 + B2) ==============
 export function fetchBench({ timeoutMs, retries = 2 } = {}) {   // resolves a raw array
   return apiFetch('/api/bench', { retries, timeoutMs, tel: { channel: 'bench', label: 'BENCH ▼' } });

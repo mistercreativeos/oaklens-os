@@ -14,7 +14,7 @@
 //
 // Extracted from console-ui.js 2026-07-29. See dev/console-module-plan.md.
 
-import { SESSION_KEY, getToken, setToken, clearToken, _tokenSecondsLeft, isLoggedIn, login, logoutServer, fetchSiteSettings, fetchWelcome, markWelcomed } from '../console-api.js';
+import { SESSION_KEY, getToken, setToken, clearToken, _tokenSecondsLeft, isLoggedIn, login, logoutServer, fetchSiteSettings, fetchWelcome, markWelcomed, fetchPublishKey, setPublishKey, removePublishKey, isDemoMode } from '../console-api.js';
 import { showToast, setSystemState } from '../console-telemetry.js';
 import { toast, hideOverlay, renderBuildStamp, escapeHTML, escapeAttrJS, refreshSurface, START_VIEW_KEY, resolveStartView, availableViews, siteStartView } from './chrome.js';
 import { _librarySyncFailed } from './sync.js';
@@ -79,6 +79,7 @@ export async function loginSubmit() {
     _repaintShowing();
     setTimeout(() => syncFromServer({ quiet: true }), 200);   // the lamp says it (K76)
     maybeShowWelcome();   // the site is asked once there is a bearer to ask with
+    maybeResumePublishSetup();   // back from GitHub to a reloaded tab
   } catch (err) {
     const msg = err.status === 0 ? 'network error — try again' : (err.data?.error || 'invalid credentials');
     if (errEl) errEl.textContent = '✕ ' + msg;
@@ -189,12 +190,156 @@ export async function _renderSiteSettings() {
       `<div>preset <span style="color:var(--accent-text, var(--accent));">${s.theme.preset}</span>` +
       ` · mode ${s.theme.defaultMode} · visitor toggle ${s.theme.toggle ? 'on' : 'off'}</div>` +
       `<div style="margin-top:4px;">${Object.entries(s.pages).map(([k, v]) => chip(k, v)).join('')}</div>` +
-      `<div style="margin-top:4px;">${chip('demo mode', s.demoMode)}${chip('git deploy', s.repoConnected)}</div>`;
+      `<div style="margin-top:4px;">${chip('demo mode', s.demoMode)}${chip('git deploy', s.repoConnected)}</div>` +
+      `<div id="publish-key-line" style="margin-top:4px;">publish key · …</div>`;
+    _renderPublishKeyLine();
   } catch {
     _siteSettings = null;
     _fold('settings-fold-site', 'unavailable');
     el.innerHTML = '// unavailable — the worker answers /api/site/settings once deployed';
   }
+}
+
+// ---- Turn on Publish (the key, set from the console) ----
+//
+// Publish saves to the site's GitHub repo, so the site needs a key to it. It
+// was two Cloudflare secrets, a second dashboard on a phone; now the owner
+// pastes the key here and the site checks it with GitHub and keeps it
+// (src/api/publish-key.js). Reached from the welcome card, from a Publish that
+// found no key (publish.js says so with 'publish:needs-key'), and Settings.
+//
+// A phone reloads a background tab while the owner is on GitHub making the
+// key, so an open sheet is remembered (one key) and reopened after the boot or
+// the login that follows. The key itself is never kept in the browser.
+const PK_OPEN_KEY = 'oaklens-publish-setup';
+const GH_KEYS = 'https://github.com/settings/personal-access-tokens';   // where a key is revoked
+let _pkBusy = false;
+const $pk = (id) => document.getElementById(id);
+
+const PK_SAYS = {
+  ok: (r) => `✓ Publish is on. Your work saves to ${r.repo}.`,
+  rejected: () => 'GitHub turned that key away. Copy it again, or make a new one with the link above.',
+  'not-granted': (r) => `That key can't reach ${r.repo}. When you make it, choose Only select repositories and pick ${r.repo}.`,
+  'read-only': (r) => `That key can read ${r.repo} but can't save to it. Make a new one with the link above: it asks for Read and write.`,
+  'need-repo': (r) => (r.choices && r.choices.length > 1
+    ? `That key reaches ${r.choices.length} repos, more than it needs. Pick this site's repo below, or (safer) make a key for this site only.`
+    : 'Which repo is this site? Type it below, like your-name/your-site.'),
+  'not-a-key': () => "That doesn't look like a key. Copy the whole thing GitHub showed you.",
+  'bad-repo': () => "That repo name doesn't look right. It's your-name/your-site.",
+  'no-storage': () => 'This site has nowhere to keep the key. Set it as a Cloudflare secret instead (the setup notes say how).',
+  demo: () => "The demo can't take a key.",
+  offline: () => "You're offline. Connect, then try again.",
+  unreachable: () => "Couldn't reach GitHub just now. Try again in a moment.",
+};
+
+function _pkSay(text, tone = '') {
+  const el = $pk('pk-status');
+  if (!el) return;
+  el.textContent = text;
+  el.dataset.tone = tone;
+}
+
+export async function openPublishKey() {
+  const el = $pk('publish-key-sheet');
+  if (!el) return;
+  try { localStorage.setItem(PK_OPEN_KEY, '1'); } catch { /* reopening is a nicety */ }
+  el.classList.remove('hidden');
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('open')));
+  _pkSay('');
+  try {
+    const s = await fetchPublishKey();
+    if (s && s.repo && $pk('pk-repo-name')) $pk('pk-repo-name').textContent = s.repo;
+    if (s && s.configured) _pkSay(`Publish is on: your work saves to ${s.repo} (key ending ${s.last4}). Paste a new key to replace it.`, 'ok');
+  } catch { /* the sheet works without it */ }
+}
+
+export function closePublishKey() {
+  try { localStorage.removeItem(PK_OPEN_KEY); } catch { /* nothing to forget */ }
+  const el = $pk('publish-key-sheet');
+  if (!el) return;
+  el.classList.remove('open');
+  setTimeout(() => el.classList.add('hidden'), 200);
+}
+
+export async function publishKeyPaste() {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (t && $pk('pk-token')) $pk('pk-token').value = t.trim();
+  } catch {
+    _pkSay('Your browser kept the clipboard to itself: press and hold the field, then Paste.', 'warn');
+  }
+}
+
+export async function publishKeyConnect() {
+  if (_pkBusy) return;
+  const token = ($pk('pk-token')?.value || '').trim();
+  const repo = ($pk('pk-repo')?.value || '').trim();
+  if (!token) { _pkSay('Paste your key first.', 'warn'); return; }
+  const btn = $pk('pk-connect');
+  _pkBusy = true;
+  if (btn) btn.disabled = true;
+  _pkSay('Checking with GitHub…');
+  let r;
+  try {
+    r = await setPublishKey(token, repo);
+  } catch (err) {
+    r = (err && err.data && err.data.state) ? err.data
+      : { state: err && err.offline ? 'offline' : (isDemoMode(err) ? 'demo' : 'unreachable') };
+  } finally {
+    _pkBusy = false;
+    if (btn) btn.disabled = false;
+  }
+  if (r && r.ok) {
+    if ($pk('pk-token')) $pk('pk-token').value = '';
+    _pkSay(PK_SAYS.ok(r), 'ok');
+    try { localStorage.removeItem(PK_OPEN_KEY); } catch { /* fine */ }
+    _renderPublishKeyLine();
+    setTimeout(closePublishKey, 2200);
+    return;
+  }
+  if (r && r.needRepo) {
+    $pk('pk-repo-row')?.classList.remove('hidden');
+    const list = $pk('pk-repo-choices');
+    if (list) list.innerHTML = (r.choices || []).map((c) => `<option value="${escapeHTML(c)}"></option>`).join('');
+    if (r.repo && $pk('pk-repo') && !$pk('pk-repo').value) $pk('pk-repo').value = r.repo;
+  }
+  _pkSay((PK_SAYS[r && r.state] || PK_SAYS.unreachable)(r || {}), 'warn');
+}
+
+export async function publishKeyRemove() {
+  if (!window.confirm("Remove this site's Publish key? Publish stops until you add one again. "
+    + '(This forgets it here; to end the key itself, revoke it on GitHub too.)')) return;
+  try { await removePublishKey(); } catch { /* the line below says what is true */ }
+  _renderPublishKeyLine();
+}
+
+/** After a boot or a login: reopen a setup the owner was in the middle of. */
+export function maybeResumePublishSetup() {
+  if (!isLoggedIn()) return;
+  let open = null;
+  try { open = localStorage.getItem(PK_OPEN_KEY); } catch { /* fine */ }
+  if (open === '1') openPublishKey();
+}
+
+export async function _renderPublishKeyLine() {
+  const el = $pk('publish-key-line');
+  if (!el) return;
+  try {
+    const s = await fetchPublishKey();
+    el.innerHTML = s.configured
+      ? `publish key · on · ${escapeHTML(s.repo)} · key ending ${escapeHTML(s.last4)}`
+        + (s.source === 'secret' ? ' (Cloudflare secret)' : '')
+        + ` <button class="btn btn-ghost btn-sm" onclick="openPublishKey()">Change</button>`
+        + (s.source === 'console' ? ` <button class="btn btn-ghost btn-sm" onclick="publishKeyRemove()">Remove</button>` : '')
+        + ` <a href="${GH_KEYS}" target="_blank" rel="noopener">your keys on GitHub&nbsp;&#8599;</a>`
+      : `publish key · off <button class="btn btn-ghost btn-sm" onclick="openPublishKey()">Turn on Publish</button>`;
+  } catch {
+    el.textContent = 'publish key · unavailable';
+  }
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('publish:needs-key', () => { openPublishKey(); });
 }
 
 // ---- First run ----

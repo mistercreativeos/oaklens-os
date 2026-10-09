@@ -195,7 +195,13 @@ Keep commits focused on one change; write a message that explains *why*, not jus
   token** (`console`); the **console-shell cookie** (`console-shell`, mutually
   exclusive scope) only unlocks *serving the console document* — it can never
   authorize an API mutation (no CSRF surface). Secrets live in Worker bindings,
-  never the browser. Any new gate ships with a test.
+  never the browser. **One owner-approved exception (2026-10-08):** the
+  Publish key may be pasted into the console once, checked with GitHub and
+  kept in KV (`__publish_key`, `src/api/publish-key.js`), so a phone-only
+  owner never needs the Cloudflare dashboard. It is never sent back to a
+  browser, only the console bearer sets or removes it, the dashboard secrets
+  win when both are set, and demo mode cannot write it. Don't widen this to
+  other secrets without the same decision. Any new gate ships with a test.
 - **Reversibility is a rule, and it has exactly three layers — there is no undo
   stack.** Every destructive or overwriting gesture must be undoable *from the
   view that made it*: **(1) structural** — the reverse is the same affordance,
@@ -297,7 +303,7 @@ Keep commits focused on one change; write a message that explains *why*, not jus
 |------|---------|
 | `src/shared/` | `config` (site.config.js over engine defaults — every server module reads config through it), `http` (CORS/JSON + `notConfigured` 501), `csp` (per-surface CSP + pre-paint hash), `pages` (public-page list + config gating), `text` (escapeHtml/baseName/localDay), `auth` (JWT HS256 + scopes + cookies), `site` (config-derived meta/cdnBase/entity JSON-LD), `pulse` (pure pulse rules: states, limits, TTL), `podcast` (frozen iTunes taxonomy + feed-readiness validators), `webring` (ANALOGS seat guard + token/href builders), `shortlinks` (branded `/<code>` → 302 table + collision guards) |
 | `src/edge/` | `chrome` (HTMLRewriter: OG + nav + heroes + `injectSiteChrome`), `data` (edge-cached data-JSON loader), `weather` (Open-Meteo SWR) |
-| `src/api/` | `publish` (GitHub publish/sync + guards), `bench` (D1 queue + Backblaze RAW proxy), `drafts` (FN cloud drafts), `console-auth` (`/api/auth`·`/api/logout` + rate limit), `pulse` (D1 current-pulse + log, one-live invariant), `subscribers` (subscribe/export), `assets` (R2 upload/delete + `/api/cdn` proxy + `/api/og-cards`), `site-meta` (manifest/sitemap/feed/buffer-summary/site-settings), `storage` (how full R2/D1/the repo are), `devfeed` (the `/dev` commit grid), `welcome` (the first-run card, once per site) |
+| `src/api/` | `publish` (GitHub publish/sync + guards), `bench` (D1 queue + Backblaze RAW proxy), `drafts` (FN cloud drafts), `console-auth` (`/api/auth`·`/api/logout` + rate limit), `pulse` (D1 current-pulse + log, one-live invariant), `subscribers` (subscribe/export), `assets` (R2 upload/delete + `/api/cdn` proxy + `/api/og-cards`), `site-meta` (manifest/sitemap/feed/buffer-summary/site-settings), `storage` (how full R2/D1/the repo are), `devfeed` (the `/dev` commit grid), `welcome` (the first-run card, once per site), `publish-key` (the Publish key set from the console) |
 | `src/cron/` | `archive` (daily Wayback Save-Page-Now) |
 
 `worker.js` re-exports a few symbols (`pageDisabled`, `publicPages`,

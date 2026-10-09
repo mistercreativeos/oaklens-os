@@ -90,7 +90,7 @@ try {
      DOM half bails here too — no player is mounted in this document. -->
 <script src="/js/audio-player.js?v=9" defer></script>
 
-<link rel="stylesheet" href="/css/field-console.css?v=170">
+<link rel="stylesheet" href="/css/field-console.css?v=171">
 </head>
 <body>
 
@@ -1234,9 +1234,13 @@ try {
   <div class="welcome" role="dialog" aria-modal="true" aria-labelledby="welcome-h">
     <div class="welcome-h">
       <h2 id="welcome-h">Your site is live.</h2>
-      <p>Five things worth knowing, then it's yours.</p>
+      <p>Six things worth knowing, then it's yours.</p>
     </div>
     <ol class="welcome-list">
+      <li><b>Turn on Publish.</b> Publishing saves your work to your site's GitHub
+        repo, so your site needs a key to it. About five minutes, once, and it
+        works from a phone.
+        <button class="btn btn-ghost btn-sm welcome-act" onclick="dismissWelcome(); openPublishKey()">Turn on Publish</button></li>
       <li><b>Those photographs aren't yours yet.</b> Your site ships with sample
         frames so it looks like a real site from minute one instead of an empty
         shell. They step aside on their own as soon as you publish your own
@@ -1257,6 +1261,44 @@ try {
     <div class="welcome-foot">
       <button class="btn btn-stage" onclick="dismissWelcome()">Got it</button>
       <span class="welcome-note">This won't show again.</span>
+    </div>
+  </div>
+</div>
+
+<!-- TURN ON PUBLISH (js/console/session.js; the site keeps the key,
+     src/api/publish-key.js). The welcome card's panel and classes: a short
+     note with one job, on a phone as on a desk. -->
+<div class="sheet-overlay hidden" id="publish-key-sheet" onclick="if(event.target===this)closePublishKey()">
+  <div class="welcome" role="dialog" aria-modal="true" aria-labelledby="pk-h">
+    <div class="welcome-h">
+      <h2 id="pk-h">Turn on Publish.</h2>
+      <p>Publishing saves your work to your site's GitHub repo, so your site needs a key to it. Once, about five minutes.</p>
+    </div>
+    <ol class="welcome-list">
+      <li><b>Make your key on GitHub.</b>
+        <a id="pk-make" href="https://github.com/settings/personal-access-tokens/new?name=Oaklens+Publish&amp;description=Lets+your+Field+Console+save+work+to+your+site%27s+repo&amp;contents=write&amp;expires_in=365" target="_blank" rel="noopener">Open GitHub&nbsp;&#8599;</a>
+        The name, the permission and a year&rsquo;s expiry are filled in. Under
+        <b>Repository access</b>, switch to <b>Only select repositories</b> and pick
+        <span id="pk-repo-name">this site&rsquo;s repo</span>. Then <b>Generate token</b>, and copy it.</li>
+      <li><b>Paste it here.</b>
+        <span class="pk-row">
+          <input class="field-input" data-tier="field" type="password" id="pk-token" autocomplete="off"
+                 autocapitalize="off" spellcheck="false" placeholder="github_pat_…" aria-label="Your key">
+          <button class="btn btn-ghost btn-sm" type="button" onclick="publishKeyPaste()">Paste</button>
+        </span>
+        <span class="pk-row hidden" id="pk-repo-row">
+          <input class="field-input" data-tier="field" type="text" id="pk-repo" autocomplete="off" list="pk-repo-choices"
+                 autocapitalize="off" spellcheck="false" placeholder="your-name/your-site" aria-label="Your site's repo">
+          <datalist id="pk-repo-choices"></datalist>
+        </span>
+        <span class="pk-note">It goes only to this site, which runs in your own Cloudflare
+          account, and is kept there to talk to GitHub. Never stored in this browser, never
+          shown again. Revoke it on GitHub any time.</span></li>
+    </ol>
+    <p class="welcome-note pk-status" id="pk-status" role="status" aria-live="polite"></p>
+    <div class="welcome-foot">
+      <button class="btn btn-stage" id="pk-connect" onclick="publishKeyConnect()">Connect</button>
+      <button class="btn btn-ghost btn-sm" onclick="closePublishKey()">Later</button>
     </div>
   </div>
 </div>
@@ -1773,7 +1815,7 @@ try {
 {
   "imports": {
     "/js/console-telemetry.js": "/js/console-telemetry.js?v=5",
-    "/js/console-api.js":       "/js/console-api.js?v=15",
+    "/js/console-api.js":       "/js/console-api.js?v=16",
     "/js/console-state.js":     "/js/console-state.js?v=20",
     "/js/console-ui.js":        "/js/console-ui.js?v=74",
     "/js/console/chrome.js":    "/js/console/chrome.js?v=49",
@@ -1796,15 +1838,15 @@ try {
     "/js/console/asset-library.js": "/js/console/asset-library.js?v=5",
     "/js/console/audio.js":     "/js/console/audio.js?v=19",
     "/js/console/cards.js":     "/js/console/cards.js?v=39",
-    "/js/console/publish.js":   "/js/console/publish.js?v=36",
-    "/js/console/session.js":   "/js/console/session.js?v=20",
+    "/js/console/publish.js":   "/js/console/publish.js?v=37",
+    "/js/console/session.js":   "/js/console/session.js?v=21",
     "/js/console/bench.js":     "/js/console/bench.js?v=3",
     "/js/pulse-packs.js":       "/js/pulse-packs.js?v=3",
     "/js/console/pulse.js":     "/js/console/pulse.js?v=8",
     "/js/console/bridge.js":    "/js/console/bridge.js?v=24",
     "/js/console/capture.js":   "/js/console/capture.js?v=5",
     "/js/console/send-out.js":  "/js/console/send-out.js?v=2",
-    "/js/console/init.js":      "/js/console/init.js?v=27",
+    "/js/console/init.js":      "/js/console/init.js?v=28",
     "/js/markdown-engine.js":   "/js/markdown-engine.js?v=5",
     "/js/recent-index.js":      "/js/recent-index.js?v=34",
     "/js/qr.js":                "/js/qr.js?v=1",

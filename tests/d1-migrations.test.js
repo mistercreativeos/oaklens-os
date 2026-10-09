@@ -117,7 +117,9 @@ describe('the migrations are the single source of truth for console tables', () 
     // fork named its database.
     const pkg = JSON.parse(read('package.json'));
     expect(pkg.scripts['db:migrate']).toContain('d1 migrations apply DB --remote');
-    expect(pkg.scripts.deploy).toMatch(/db:migrate.*wrangler deploy/);
+    expect(pkg.scripts.deploy).toMatch(/db:migrate.*node scripts\/deploy\.mjs/);
+    // …and that script is wrangler deploy (tests/deploy-script.test.js).
+    expect(read('scripts/deploy.mjs')).toMatch(/'wrangler', 'deploy'/);
   });
 
   it('setup.sh applies the migrations (CLI path, same files)', () => {

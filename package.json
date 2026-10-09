@@ -8,7 +8,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate": "wrangler d1 migrations apply DB --remote",
-    "deploy": "npm run db:migrate && wrangler deploy"
+    "deploy": "npm run db:migrate && node scripts/deploy.mjs"
   },
   "repository": {
     "type": "git",

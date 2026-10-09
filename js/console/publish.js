@@ -821,13 +821,13 @@ export function _renderSyncReadout(el, verdict, pairs) {
 export function _githubHint(message) {
   const m = String(message || '');
   if (/not found/i.test(m)) {
-    return 'The GITHUB_REPO secret probably doesn\'t match your repo — it must be '
-      + 'exactly owner/repo-name as it appears on github.com. Re-run '
-      + '"npx wrangler secret put GITHUB_REPO" to fix it.';
+    return 'The key can\'t see the repo it was set for — it must be exactly '
+      + 'owner/repo-name as it appears on github.com. Set it again in Settings → '
+      + 'Site settings → Publish key (or the GITHUB_REPO secret, if you used one).';
   }
   if (/bad credentials/i.test(m)) {
-    return 'GitHub rejected the token — expired, revoked, or mis-pasted. Make a '
-      + 'fresh one and re-run "npx wrangler secret put GITHUB_TOKEN".';
+    return 'GitHub rejected the key — expired, revoked, or mis-pasted. Make a '
+      + 'fresh one and paste it in Settings → Site settings → Publish key.';
   }
   return null;
 }
@@ -989,7 +989,7 @@ async function _syncFromServer(opts) {
       if (statusEl) statusEl.textContent = `✕ nothing synced from GitHub (${verdict.error})`;
       // kind:'error' also writes the ledger, so this is the one full record.
       showToast(`✕ Nothing synced — GitHub answered "${verdict.error}" for every file${asked}. `
-        + (_githubHint(verdict.error) || 'Check the GITHUB_TOKEN and GITHUB_REPO secrets.'),
+        + (_githubHint(verdict.error) || 'Check the Publish key in Settings.'),
         { kind: 'error', id: 'sync-ghdown' });
     } else if (results.length) {
       save();
@@ -1223,10 +1223,11 @@ export async function publishToServer() {
     if (isNotConfigured(err)) {
       // User-initiated, so it deserves a clear answer — but a warning, not a
       // fault: the instance simply has no GitHub backing. Changes stay staged.
-      logLine('⊘ GitHub publish is not configured on this instance.', 'log-err');
-      logLine('  Set the GITHUB_TOKEN + GITHUB_REPO secrets to enable it (see setup.md).');
+      logLine('⊘ Publish isn\'t on yet: this site has no key to its GitHub repo.', 'log-err');
+      logLine('  Turn it on in a few minutes (the sheet that just opened, or Settings).');
       logLine('  Your changes are still staged locally.');
-      showToast('⊘ GitHub publish not configured — changes remain staged locally', { kind: 'warning', id: 'publish-noconf' });
+      // The sheet lives above this module (session.js); it listens for this.
+      document.dispatchEvent(new CustomEvent('publish:needs-key'));
       return;
     }
     if (err.status === 0) {

@@ -26,6 +26,7 @@
 
 import { verifyToken } from '../shared/auth.js';
 import { jsonRes } from '../shared/http.js';
+import { githubCreds } from './publish-key.js';
 
 export const STORAGE_KV_KEY = '__storage';
 export const R2_FREE_BYTES = 10e9;              // Cloudflare R2's free storage, 10 GB
@@ -70,11 +71,12 @@ async function measureD1(env) {
 }
 
 async function measureRepo(env) {
-  if (!env || !env.GITHUB_TOKEN || !env.GITHUB_REPO) return null;
+  const gh = env ? await githubCreds(env) : null;
+  if (!gh) return null;
   try {
-    const res = await fetch(`https://api.github.com/repos/${env.GITHUB_REPO}`, {
+    const res = await fetch(`https://api.github.com/repos/${gh.repo}`, {
       headers: {
-        Authorization: `token ${env.GITHUB_TOKEN}`,
+        Authorization: `token ${gh.token}`,
         Accept: 'application/vnd.github.v3+json',
         'User-Agent': 'oaklens-worker/1.0',
       },

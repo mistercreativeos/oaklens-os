@@ -87,19 +87,24 @@ under **Builds**, looks the same but only reaches the build, never your site.
 
 ### Then make it yours
 
-1. **Make Publish work.** Publishing needs two more secrets, `GITHUB_TOKEN` and
-   `GITHUB_REPO`, added in the same place as the password.
-   `GITHUB_REPO` is `your-github-name/your-project-name`. The token takes a few
-   minutes to make: [how](#github_token--github_repo--what-makes-publish-work)
-   (skip the `wrangler` commands there; the dashboard does the same job).
-2. **Tell the site it's connected, and give it your name.** In your new repo on
-   github.com, open `site.config.js`, press the pencil to edit, change
-   `repoConnected: false` to `true`, and fill in your name, tagline and contact.
-   Commit it. That commit redeploys the site on its own, which is the proof the
-   loop works. For everything else you might change, and which changes survive
-   future updates, see [CUSTOMIZE.md](CUSTOMIZE.md).
-3. **Open the console** at `/dev/field-console` on your new address and log in.
-   [quickstart.md](quickstart.md) takes it from there.
+1. **Open the console** at `/dev/field-console` on your new address and log in.
+2. **Turn on Publish, from the console.** It's the first thing on the welcome
+   card (and in Settings → Site settings). Tap the link to make your key on
+   GitHub: everything is filled in except one choice, **Repository access →
+   Only select repositories**, then pick your site's repo, **Generate token**,
+   copy it, and paste it in the console. Your site checks the key with GitHub
+   before keeping it and finds your repo itself. No dashboard, and it works
+   from a phone. (The dashboard way still works: the two secrets
+   [below](#github_token--github_repo--what-makes-publish-work), which win if
+   both are set.)
+3. **Give it your name.** In your new repo on github.com, open
+   `site.config.js`, press the pencil, fill in your name, tagline and contact,
+   and commit. That commit redeploys the site on its own, which is the proof
+   the loop works. (You don't need to touch `repoConnected`: a site installed
+   with the button is marked connected by its own build.) For everything else
+   you might change, and which changes survive future updates, see
+   [CUSTOMIZE.md](CUSTOMIZE.md). [quickstart.md](quickstart.md) takes it from
+   there.
 
 ### What the engine does so the button works
 
