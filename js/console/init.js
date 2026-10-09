@@ -34,7 +34,7 @@ import { cardsRepaint } from './cards.js';
 import { renderAudio, audioAddFiles } from './audio.js';
 import { _pulseCloseLog, _pulseCloseTray } from './pulse.js';
 import { renderPublish, syncFromServer } from './publish.js';
-import { checkAuth, closeSettings, _updateSettingsDots, _checkSessionExpiry, _initOfflineIndicator, applyInstancePosture, _wireRingJoin, maybeShowWelcome } from './session.js';
+import { checkAuth, closeSettings, _updateSettingsDots, _checkSessionExpiry, _initOfflineIndicator, applyInstancePosture, _wireRingJoin, maybeShowWelcome, maybeResumePublishSetup } from './session.js';
 import { renderBench } from './bench.js';
 import { bridgeWire } from './bridge.js';
 
@@ -173,6 +173,7 @@ export function init() {
   _wireRingJoin();          // ring join mailto; must be built at runtime, not markup
   applyInstancePosture();   // demo badge + truthful deploy copy; async, cosmetic
   maybeShowWelcome();       // first run only: the site decides, once (src/api/welcome.js)
+  maybeResumePublishSetup();   // a Turn on Publish left open by a reloaded tab
   if (isLoggedIn()) {
     // At once, with the Bridge's first reads (K76): the lamp goes amber once
     // and turns green when the console is ready. (It waited 400ms, which

@@ -303,8 +303,8 @@ describe('_githubHint: config mistakes get their fix named', () => {
   it('"Not Found" points at GITHUB_REPO', () => {
     expect(ui._githubHint('Not Found')).toMatch(/GITHUB_REPO/);
   });
-  it('"Bad credentials" points at GITHUB_TOKEN', () => {
-    expect(ui._githubHint('Bad credentials')).toMatch(/GITHUB_TOKEN/);
+  it('"Bad credentials" points at the Publish key', () => {
+    expect(ui._githubHint('Bad credentials')).toMatch(/Publish key/);
   });
   it('anything else stays unmapped — the raw error stands', () => {
     expect(ui._githubHint('API rate limit exceeded')).toBeNull();

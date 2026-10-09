@@ -25,6 +25,26 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-10-08, later (turn on Publish from the console)
+
+**Nothing to do** if Publish already works for you: the `GITHUB_TOKEN` and
+`GITHUB_REPO` secrets you set still win.
+
+If it doesn't yet, you no longer need the Cloudflare dashboard for it. Open
+your console, choose **Turn on Publish** (it's the first thing on the welcome
+card, it opens by itself when a Publish finds no key, and it's in Settings →
+Site settings), make your key with the link it gives you, and paste it. Your
+site checks the key with GitHub before keeping it, finds your repo itself, and
+tells you plainly if the key can't reach it or can't save to it. The key is
+kept by your site (one entry in your existing KV namespace) and never shown
+again in any browser; Settings shows its last four characters and can remove
+it.
+
+And if your site was installed with the Deploy button, you no longer need to
+set `repoConnected: true` in `site.config.js`: each build from your repo now
+tells the site it is connected (`scripts/deploy.mjs`, run by `npm run deploy`).
+`src/api/publish-key.js` (new `/api/publish/key` routes), `js/console/session.js`.
+
 ## 2026-10-08 (the welcome card shows once)
 
 **Nothing to do.** The console's first-run card ("Your site is live") now

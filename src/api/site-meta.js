@@ -83,7 +83,9 @@ export function handleSiteSettings(request, env) {
     // decides which deploy instruction the publish card shows (the Worker
     // cannot detect Cloudflare git integration itself, so config carries it).
     demoMode: siteConfig.demoMode === true,
-    repoConnected: siteConfig.repoConnected === true,
+    // …or the build says so: a deploy run by Cloudflare's own builds is, by
+    // definition, connected (scripts/deploy.mjs stamps REPO_CONNECTED).
+    repoConnected: siteConfig.repoConnected === true || (env && env.REPO_CONNECTED) === 'true',
     // Webring seat, or null when this instance has not joined. Both values are
     // already public by design — the footer chip renders them and
     // /.well-known/analogs.txt serves them as a deliberately readable claim —

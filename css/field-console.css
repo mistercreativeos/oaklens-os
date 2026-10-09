@@ -5525,6 +5525,14 @@ html, body { overscroll-behavior: none; }
 }
 .welcome-foot { display: flex; align-items: center; gap: 14px; }
 .welcome-note { color: var(--ink-3); font-size: .74rem; }
+/* The welcome's act, and the Publish sheet's field rows (same panel). */
+.welcome-act { display: inline-block; margin-top: 8px; }
+.welcome-list a { color: var(--accent-text); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.pk-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.pk-row.hidden { display: none; }
+.pk-row .field-input { flex: 1; min-width: 0; }
+.pk-status { min-height: 1.6em; margin: -8px 0 14px; }
+.pk-note { display: block; margin-top: 8px; color: var(--ink-3); font-size: .74rem; line-height: 1.5; }
 
 .sheet-grabber {
   width: 36px;

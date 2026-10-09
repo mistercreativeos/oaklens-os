@@ -32,6 +32,7 @@ import {
 import { handleDevFeed, warmDevFeed } from './src/api/devfeed.js';
 import { handleGetStorage, handleMeasureStorage, measureStorage } from './src/api/storage.js';
 import { handleGetWelcome, handlePostWelcome } from './src/api/welcome.js';
+import { handleGetPublishKey, handlePutPublishKey, handleDeletePublishKey } from './src/api/publish-key.js';
 
 // Re-exported for the public contract: tests/page-gate.test.js imports the page
 // helpers + _navLinksHtml, and tests/publish-guard.test.js imports the two pure
@@ -66,7 +67,7 @@ function logSecretHealth(env) {
     console.error(`[health] REQUIRED secrets missing: ${missingRequired.join(', ')} — console login is broken until they are set`);
   }
   const offFeatures = [
-    ['GitHub publish/sync', ['GITHUB_TOKEN', 'GITHUB_REPO']],
+    ['GitHub publish/sync (unless its key is set from the console)', ['GITHUB_TOKEN', 'GITHUB_REPO']],
     ['subscriber export', ['ADMIN_KEY']],
     ['Wayback archive cron', ['ARCHIVE_S3_ACCESS', 'ARCHIVE_S3_SECRET']],
     ['bench RAW cold storage', ['B2_BUCKET_NAME', 'B2_KEY_ID', 'B2_APP_KEY']],
@@ -144,6 +145,10 @@ const EXACT_ROUTES = new Map([
   // The first-run welcome, decided once per site (src/api/welcome.js).
   ['GET /api/welcome', (request, env) => handleGetWelcome(request, env)],
   ['POST /api/welcome', (request, env) => handlePostWelcome(request, env)],
+  // The Publish key, set from the console (src/api/publish-key.js).
+  ['GET /api/publish/key', (request, env) => handleGetPublishKey(request, env)],
+  ['PUT /api/publish/key', (request, env) => handlePutPublishKey(request, env)],
+  ['DELETE /api/publish/key', (request, env) => handleDeletePublishKey(request, env)],
 ]);
 
 // Allowed methods per exact pathname, DERIVED from the table above rather than
@@ -185,6 +190,9 @@ export const DEMO_LOCKED_ROUTES = new Set([
   'DELETE /api/pulse',
   // …nor mark the demo's first run as seen for every visitor after.
   'POST /api/welcome',
+  // …nor take a key to anyone's repo.
+  'PUT /api/publish/key',
+  'DELETE /api/publish/key',
 ]);
 
 // ---- Main handler ----

@@ -419,6 +419,161 @@ describe('the first-run welcome', () => {
   });
 });
 
+// Turn on Publish (session.js; the site keeps the key, src/api/publish-key.js).
+// The wall between a one-click install and a working studio on a phone was a
+// second dashboard. The sheet is where the key is pasted; these pin that it
+// says what the site said in words an owner can act on, keeps nothing secret
+// in the browser, survives the trip to GitHub and back, and opens itself when
+// a Publish finds no key.
+describe('turn on Publish', () => {
+  const sheet = () => document.getElementById('publish-key-sheet');
+  const status = () => document.getElementById('pk-status').textContent;
+  const b64 = (o) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const login = () => sessionStorage.setItem('oaklens_session',
+    `${b64({ alg: 'HS256' })}.${b64({ exp: Math.floor(Date.now() / 1000) + 3600 })}.sig`);
+  let sent = [];
+  /** The site's answers to /api/publish/key: (method, body) -> [status, json]. */
+  const siteSays = (answer) => {
+    sent = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      const path = new URL(String(url), 'https://example.test').pathname;
+      if (path !== '/api/publish/key') return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+      const method = (opts.method || 'GET').toUpperCase();
+      const body = opts.body ? JSON.parse(opts.body) : null;
+      sent.push({ method, body });
+      const [st, o] = answer(method, body);
+      return new Response(JSON.stringify(o), { status: st, headers: { 'content-type': 'application/json' } });
+    };
+  };
+  const settle = async () => { for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0)); };
+  const reset = () => {
+    localStorage.removeItem('oaklens-publish-setup');
+    sheet().classList.add('hidden');
+    sheet().classList.remove('open');
+    document.getElementById('pk-token').value = '';
+    document.getElementById('pk-repo').value = '';
+    document.getElementById('pk-repo-row').classList.add('hidden');
+    document.getElementById('pk-status').textContent = '';
+    login();
+  };
+  const KEY = 'fake-key-for-tests-0123456789-abcdefghijklmnopqrstuvwxyz-WXYZ';
+
+  it('opens, remembers it is open, and forgets on Later', async () => {
+    reset();
+    siteSays(() => [200, { ok: true, configured: false, repo: 'ada/my-studio' }]);
+    await window.openPublishKey();
+    expect(sheet().classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('pk-repo-name').textContent).toBe('ada/my-studio');
+    expect(localStorage.getItem('oaklens-publish-setup')).toBe('1');
+    window.closePublishKey();
+    expect(localStorage.getItem('oaklens-publish-setup')).toBe(null);
+  });
+
+  it('the link makes a key with the right permission, in a new tab', () => {
+    const a = document.getElementById('pk-make');
+    expect(a.getAttribute('href')).toMatch(/^https:\/\/github\.com\/settings\/personal-access-tokens\/new\?/);
+    expect(a.getAttribute('href')).toMatch(/contents=write/);
+    expect(a.getAttribute('href')).toMatch(/expires_in=365/);
+    expect(a.getAttribute('target')).toBe('_blank');
+    expect(a.getAttribute('rel')).toMatch(/noopener/);
+  });
+
+  it('connects a good key, clears the field, and says where work will save', async () => {
+    reset();
+    siteSays((m) => (m === 'PUT'
+      ? [200, { ok: true, state: 'ok', repo: 'ada/my-studio', last4: 'WXYZ', configured: true, source: 'console' }]
+      : [200, { ok: true, configured: true, repo: 'ada/my-studio', last4: 'WXYZ', source: 'console' }]));
+    await window.openPublishKey();
+    document.getElementById('pk-token').value = `  ${KEY}  `;
+    await window.publishKeyConnect();
+    expect(sent.find((x) => x.method === 'PUT').body).toEqual({ token: KEY });
+    expect(status()).toMatch(/Publish is on\. Your work saves to ada\/my-studio/);
+    expect(document.getElementById('pk-token').value, 'the key does not linger in the page').toBe('');
+    expect(localStorage.getItem('oaklens-publish-setup')).toBe(null);
+  });
+
+  it('says what is wrong, in words an owner can act on', async () => {
+    const cases = [
+      [{ state: 'rejected' }, /turned that key away/],
+      [{ state: 'not-granted', repo: 'ada/my-studio' }, /can't reach ada\/my-studio.*Only select repositories/],
+      [{ state: 'read-only', repo: 'ada/my-studio' }, /can't save to it.*Read and write/],
+      [{ state: 'unreachable' }, /Couldn't reach GitHub/],
+    ];
+    for (const [answer, words] of cases) {
+      reset();
+      siteSays((m) => (m === 'PUT' ? [200, { ok: false, ...answer }] : [200, { ok: true, configured: false }]));
+      document.getElementById('pk-token').value = KEY;
+      await window.publishKeyConnect();
+      expect(status(), answer.state).toMatch(words);
+    }
+    reset();
+    siteSays((m) => (m === 'PUT' ? [400, { ok: false, state: 'not-a-key' }] : [200, { ok: true, configured: false }]));
+    document.getElementById('pk-token').value = 'hunter2hunter2hunter2';
+    await window.publishKeyConnect();
+    expect(status()).toMatch(/doesn't look like a key/);
+  });
+
+  it('asks for the repo when the site cannot tell, offering the key\'s repos', async () => {
+    reset();
+    siteSays((m) => (m === 'PUT'
+      ? [200, { ok: false, state: 'need-repo', needRepo: true, repo: null, choices: ['ada/portfolio', 'ada/site'] }]
+      : [200, { ok: true, configured: false }]));
+    document.getElementById('pk-token').value = KEY;
+    await window.publishKeyConnect();
+    expect(document.getElementById('pk-repo-row').classList.contains('hidden')).toBe(false);
+    expect([...document.querySelectorAll('#pk-repo-choices option')].map((o) => o.value)).toEqual(['ada/portfolio', 'ada/site']);
+    expect(status()).toMatch(/reaches 2 repos, more than it needs/);
+    document.getElementById('pk-repo').value = 'ada/site';
+    siteSays((m) => (m === 'PUT' ? [200, { ok: true, state: 'ok', repo: 'ada/site', last4: 'WXYZ' }] : [200, { ok: true, configured: true, repo: 'ada/site', last4: 'WXYZ', source: 'console' }]));
+    await window.publishKeyConnect();
+    expect(sent.find((x) => x.method === 'PUT').body).toEqual({ token: KEY, repo: 'ada/site' });
+  });
+
+  it('back from GitHub to a reloaded tab, the setup reopens', async () => {
+    reset();
+    localStorage.setItem('oaklens-publish-setup', '1');
+    siteSays(() => [200, { ok: true, configured: false }]);
+    window.maybeResumePublishSetup();
+    await settle();
+    expect(sheet().classList.contains('hidden')).toBe(false);
+  });
+
+  it('a Publish that finds no key opens the sheet', async () => {
+    reset();
+    siteSays(() => [200, { ok: true, configured: false }]);
+    document.dispatchEvent(new CustomEvent('publish:needs-key'));
+    await settle();
+    expect(sheet().classList.contains('hidden')).toBe(false);
+  });
+
+  it('says where the key goes, and that it can be revoked', () => {
+    const note = document.querySelector('#publish-key-sheet .pk-note').textContent;
+    expect(note).toMatch(/only to this site/);
+    expect(note).toMatch(/your own Cloudflare/);
+    expect(note).toMatch(/Never stored in this browser/);
+  });
+
+  it('Settings shows the key, and links to revoking it on GitHub', async () => {
+    reset();
+    document.getElementById('site-settings-card').innerHTML = '<div id="publish-key-line"></div>';
+    siteSays(() => [200, { ok: true, configured: true, source: 'console', repo: 'ada/my-studio', last4: 'WXYZ' }]);
+    await window._renderPublishKeyLine();
+    const line = document.getElementById('publish-key-line');
+    expect(line.textContent).toMatch(/on · ada\/my-studio · key ending WXYZ/);
+    expect([...line.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Change', 'Remove']);
+    expect(line.querySelector('a').getAttribute('href')).toBe('https://github.com/settings/personal-access-tokens');
+    siteSays(() => [200, { ok: true, configured: false }]);
+    await window._renderPublishKeyLine();
+    expect(line.textContent).toMatch(/publish key · off/);
+  });
+
+  it('the welcome card offers it first', () => {
+    const first = document.querySelector('#welcome-card .welcome-list li');
+    expect(first.textContent).toMatch(/Turn on Publish/);
+    expect(first.querySelector('button').getAttribute('onclick')).toMatch(/openPublishKey\(\)/);
+  });
+});
+
 describe('long-press registry', () => {
   const bufferTarget = () => window._registeredLongPress().find((t) => t.hostId === 'buffer-display');
 

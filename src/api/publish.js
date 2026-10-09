@@ -9,6 +9,7 @@
 
 import { verifyToken } from '../shared/auth.js';
 import { jsonRes, notConfiguredRes } from '../shared/http.js';
+import { githubCreds } from './publish-key.js';
 
 // ---- GitHub helpers ----
 
@@ -206,7 +207,9 @@ export async function handlePublish(request, env) {
     return jsonRes({ ok: false, error: 'unauthorized' }, 401);
   }
 
-  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
+  // The dashboard secrets, or the key set from the console (src/api/publish-key.js).
+  const gh = await githubCreds(env);
+  if (!gh) {
     return notConfiguredRes('GitHub publish', ['GITHUB_TOKEN', 'GITHUB_REPO']);
   }
 
@@ -259,7 +262,7 @@ export async function handlePublish(request, env) {
     }, 400);
   }
 
-  const [owner, repo] = env.GITHUB_REPO.split('/');
+  const [owner, repo] = gh.repo.split('/');
 
   // Safety guard: never let a publish blank a live data manifest. Only pay the
   // extra GitHub round-trips when an incoming manifest is actually empty — the
@@ -290,7 +293,7 @@ export async function handlePublish(request, env) {
     const unknown = [];
     await Promise.all(suspects.map(async (f) => {
       try {
-        const data = await _ghFetch(env.GITHUB_TOKEN, owner, repo, `contents/${f.path}?ref=main`);
+        const data = await _ghFetch(gh.token, owner, repo, `contents/${f.path}?ref=main`);
         currentByPath[f.path] = new TextDecoder().decode(
           Uint8Array.from(atob(data.content.replace(/\s/g, '')), (c) => c.charCodeAt(0))
         );
@@ -326,7 +329,7 @@ export async function handlePublish(request, env) {
 
   try {
     const sha = await _commitFiles(
-      env.GITHUB_TOKEN, owner, repo, body.files,
+      gh.token, owner, repo, body.files,
       typeof body.baseSha === 'string' && body.baseSha ? body.baseSha : null
     );
     return jsonRes({ ok: true, sha }, 200);
@@ -353,7 +356,8 @@ export async function handleSync(request, env) {
     return jsonRes({ ok: false, error: 'unauthorized' }, 401);
   }
 
-  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) {
+  const gh = await githubCreds(env);
+  if (!gh) {
     return notConfiguredRes('GitHub sync', ['GITHUB_TOKEN', 'GITHUB_REPO']);
   }
 
@@ -376,7 +380,7 @@ export async function handleSync(request, env) {
   ];
   const filesToFetch = requestedFiles.length > 0 ? requestedFiles : defaultFiles;
 
-  const [owner, repo] = env.GITHUB_REPO.split('/');
+  const [owner, repo] = gh.repo.split('/');
   const results = {};
 
   // Current main HEAD, resolved BEFORE the file reads so they can be pinned to
@@ -402,7 +406,7 @@ export async function handleSync(request, env) {
   // says so (`headShaError`) and the console surfaces it, rather than the
   // protection quietly evaporating.
   let headShaError = null;
-  const headSha = await _headSha(env.GITHUB_TOKEN, owner, repo)
+  const headSha = await _headSha(gh.token, owner, repo)
     .catch((err) => {
       headShaError = err.message || 'ref fetch failed';
       console.error('[sync] main HEAD unavailable:', headShaError);
@@ -417,7 +421,7 @@ export async function handleSync(request, env) {
     // Prevent path traversal
     if (filePath.includes('..') || filePath.startsWith('/')) return;
     try {
-      const data = await _ghFetch(env.GITHUB_TOKEN, owner, repo, `contents/${filePath}?ref=${contentRef}`);
+      const data = await _ghFetch(gh.token, owner, repo, `contents/${filePath}?ref=${contentRef}`);
       const content = JSON.parse(
         new TextDecoder().decode(
           Uint8Array.from(atob(data.content.replace(/\s/g, '')), c => c.charCodeAt(0))
@@ -437,7 +441,7 @@ export async function handleSync(request, env) {
     // "github.com/<what-you-typed> was not found" points straight at a
     // mistyped GITHUB_REPO secret (the cold-run-4 failure). The endpoint is
     // console-authed, so naming the repo leaks nothing.
-    repo: env.GITHUB_REPO,
+    repo: gh.repo,
     headSha,
     ...(headSha ? {} : {
       headShaError: headShaError || 'main HEAD unavailable',

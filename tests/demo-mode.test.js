@@ -83,6 +83,8 @@ describe('demoMode: true — every locked route refuses, explained', () => {
       'POST /api/upload',
       'POST /api/welcome',
       'PUT /api/drafts',
+      'PUT /api/publish/key',
+      'DELETE /api/publish/key',
     ].sort());
   });
 });
