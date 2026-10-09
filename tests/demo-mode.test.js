@@ -81,6 +81,7 @@ describe('demoMode: true — every locked route refuses, explained', () => {
       'POST /api/publish',
       'POST /api/subscribe',
       'POST /api/upload',
+      'POST /api/welcome',
       'PUT /api/drafts',
     ].sort());
   });
@@ -96,6 +97,15 @@ describe('demoMode: true — exploration stays open', () => {
       }), { ...env, AUTH_PASSWORD_HASH: 'a'.repeat(64) }, ctx);
     expect(res.status).toBe(401);
     expect((await res.json()).demoMode).toBeUndefined();
+  });
+
+  it('a demo console is never welcomed as a new site (src/api/welcome.js)', async () => {
+    const { createToken } = await import('../src/shared/auth.js');
+    const res = await worker.fetch(new Request('https://example.com/api/welcome', {
+      headers: { Authorization: `Bearer ${await createToken(env)}` },
+    }), env, ctx);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, show: false, reason: 'demo' });
   });
 
   it('reads are untouched (site settings reports demoMode: true)', async () => {

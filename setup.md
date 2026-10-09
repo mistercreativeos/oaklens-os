@@ -266,6 +266,14 @@ configured"* — deliberate, not a fault, but also not a finished site.
 "password" when you push (see "Connect your repo"). Make it once, save it once,
 use it in both places.
 
+**The quick way:** [make your key on GitHub](https://github.com/settings/personal-access-tokens/new?name=Oaklens+Publish&description=Lets+your+Field+Console+save+work+to+your+site%27s+repo&contents=write&expires_in=365).
+It opens GitHub's new-key page with the name, **Contents: Read and write** and
+a year's expiry already filled in. Two things are yours: under **Repository
+access**, switch from **All repositories** to **Only select repositories** and
+pick your site's repo (the page starts on All, which would give the key to
+every repo you own), then press **Generate token**. The rest of this section is
+the same thing by hand.
+
 **Make the token** (GitHub → your avatar → **Settings** → **Developer
 settings** → **Personal access tokens**). Two kinds exist; the first is
 better:

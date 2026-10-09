@@ -25,6 +25,18 @@ resources. Keep yours. [setup.md](setup.md) has the exact commands.
 
 ---
 
+## 2026-10-08 (the welcome card shows once)
+
+**Nothing to do.** The console's first-run card ("Your site is live") now
+shows once per site, as it promises. It used to be decided by each browser,
+so it came back on every new device, on the console installed as an app, in
+a private window and after clearing browser data, and a device that keeps
+nothing showed it even on a site full of work, until its first sync. Your
+site now decides: only while you have published nothing, and once you press
+**Got it** no device shows it again. A site that already has work never sees
+it. `src/api/welcome.js` (a new `/api/welcome` route; one key in your existing
+KV namespace), `js/console/session.js`.
+
 ## 2026-10-07, later (two false alarms in the health check, and a frame's size)
 
 **Nothing to do.** Two things made `scripts/doctor.sh` report a problem on a

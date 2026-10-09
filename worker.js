@@ -31,6 +31,7 @@ import {
 } from './src/api/site-meta.js';
 import { handleDevFeed, warmDevFeed } from './src/api/devfeed.js';
 import { handleGetStorage, handleMeasureStorage, measureStorage } from './src/api/storage.js';
+import { handleGetWelcome, handlePostWelcome } from './src/api/welcome.js';
 
 // Re-exported for the public contract: tests/page-gate.test.js imports the page
 // helpers + _navLinksHtml, and tests/publish-guard.test.js imports the two pure
@@ -140,6 +141,9 @@ const EXACT_ROUTES = new Map([
   // below and kept in KV; POST re-measures, rate-limited (src/api/storage.js).
   ['GET /api/storage', (request, env) => handleGetStorage(request, env)],
   ['POST /api/storage', (request, env) => handleMeasureStorage(request, env)],
+  // The first-run welcome, decided once per site (src/api/welcome.js).
+  ['GET /api/welcome', (request, env) => handleGetWelcome(request, env)],
+  ['POST /api/welcome', (request, env) => handlePostWelcome(request, env)],
 ]);
 
 // Allowed methods per exact pathname, DERIVED from the table above rather than
@@ -179,6 +183,8 @@ export const DEMO_LOCKED_ROUTES = new Set([
   // The pulse READ stays open — the demo should show a pulse card like any site.
   'POST /api/pulse',
   'DELETE /api/pulse',
+  // …nor mark the demo's first run as seen for every visitor after.
+  'POST /api/welcome',
 ]);
 
 // ---- Main handler ----
