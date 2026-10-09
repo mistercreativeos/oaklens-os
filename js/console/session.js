@@ -14,7 +14,7 @@
 //
 // Extracted from console-ui.js 2026-07-29. See dev/console-module-plan.md.
 
-import { SESSION_KEY, getToken, setToken, clearToken, _tokenSecondsLeft, isLoggedIn, login, logoutServer, fetchSiteSettings } from '../console-api.js';
+import { SESSION_KEY, getToken, setToken, clearToken, _tokenSecondsLeft, isLoggedIn, login, logoutServer, fetchSiteSettings, fetchWelcome, markWelcomed } from '../console-api.js';
 import { showToast, setSystemState } from '../console-telemetry.js';
 import { toast, hideOverlay, renderBuildStamp, escapeHTML, escapeAttrJS, refreshSurface, START_VIEW_KEY, resolveStartView, availableViews, siteStartView } from './chrome.js';
 import { _librarySyncFailed } from './sync.js';
@@ -78,6 +78,7 @@ export async function loginSubmit() {
     _updateSettingsDots();
     _repaintShowing();
     setTimeout(() => syncFromServer({ quiet: true }), 200);   // the lamp says it (K76)
+    maybeShowWelcome();   // the site is asked once there is a bearer to ask with
   } catch (err) {
     const msg = err.status === 0 ? 'network error — try again' : (err.data?.error || 'invalid credentials');
     if (errEl) errEl.textContent = '✕ ' + msg;
@@ -204,34 +205,55 @@ export async function _renderSiteSettings() {
 // their first five minutes. All four answers already existed; none of them was
 // discoverable, which is the same as not existing.
 //
-// Two conditions, both required, so this never surprises a working site:
-//   · nothing published yet — a real site has posts, frames or archive entries
-//   · not dismissed before — one localStorage key, set on close
-// The key is checked FIRST and is the cheap one, so the usual path is a single
-// read and a return.
+// The card says "This won't show again", so it shows ONCE PER SITE, and the
+// site decides (src/api/welcome.js): never welcomed, and nothing published.
+// It used to decide here, from this browser's storage and this device's copy
+// of the site, and both lied: every new device, home-screen app or cleared
+// browser got it again, and a device that keeps nothing (THIS DEVICE 0%)
+// welcomed an established site before its sync landed (2026-10-08).
+//
+// This browser keeps one key so the usual boot is a single read:
+//   '1'        the site has answered: welcomed, or nothing to welcome
+//   'pending'  dismissed here, the site not told yet (offline); told next boot
+// Asked only when logged in (the site needs the bearer), again right after a
+// login, and anything uncertain (offline, an error, a demo) shows nothing.
 const WELCOME_KEY = 'oaklens-console-welcomed';
+let _welcomeAsking = false;
 
-export function maybeShowWelcome(state) {
-  let seen = false;
-  try { seen = localStorage.getItem(WELCOME_KEY) === '1'; } catch { /* private mode */ }
-  if (seen) return;
-  const empty = ['posts', 'buffer', 'archive', 'wallpapers', 'library']
-    .every((k) => !(state?.[k] || []).length);
-  if (!empty) {
-    // An existing site should never see this, and should never see it LATER
-    // either — mark it read rather than leaving a card primed to appear the
-    // first time someone empties their buffer.
-    dismissWelcome();
-    return;
+function _welcomeLocal() {
+  try { return localStorage.getItem(WELCOME_KEY); } catch { return null; }
+}
+function _welcomeRemember(v) {
+  try { localStorage.setItem(WELCOME_KEY, v); } catch { /* private mode: the site still knows */ }
+}
+
+export async function maybeShowWelcome() {
+  const local = _welcomeLocal();
+  if (local === '1' || _welcomeAsking || !isLoggedIn()) return;
+  _welcomeAsking = true;
+  try {
+    if (local === 'pending') {
+      await markWelcomed();
+      _welcomeRemember('1');
+      return;
+    }
+    const r = await fetchWelcome();
+    if (!r || r.ok !== true) return;          // ask again next boot
+    if (r.show !== true) { _welcomeRemember('1'); return; }
+    const el = document.getElementById('welcome-card');
+    if (!el) return;
+    el.classList.remove('hidden');
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('open')));
+  } catch {
+    /* offline, an error, a demo: show nothing, ask next boot */
+  } finally {
+    _welcomeAsking = false;
   }
-  const el = document.getElementById('welcome-card');
-  if (!el) return;
-  el.classList.remove('hidden');
-  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('open')));
 }
 
 export function dismissWelcome() {
-  try { localStorage.setItem(WELCOME_KEY, '1'); } catch { /* private mode */ }
+  _welcomeRemember('pending');
+  markWelcomed().then(() => _welcomeRemember('1'), () => { /* told on the next boot */ });
   const el = document.getElementById('welcome-card');
   if (!el) return;
   el.classList.remove('open');

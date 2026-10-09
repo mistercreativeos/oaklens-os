@@ -172,7 +172,7 @@ export function init() {
   checkAuth();
   _wireRingJoin();          // ring join mailto; must be built at runtime, not markup
   applyInstancePosture();   // demo badge + truthful deploy copy; async, cosmetic
-  maybeShowWelcome(STATE);  // first run only; no-ops on a site with any content
+  maybeShowWelcome();       // first run only: the site decides, once (src/api/welcome.js)
   if (isLoggedIn()) {
     // At once, with the Bridge's first reads (K76): the lamp goes amber once
     // and turns green when the console is ready. (It waited 400ms, which

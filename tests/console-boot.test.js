@@ -308,47 +308,104 @@ describe('build stamp', () => {
 // how to change the hero, and whether link previews were on. Every answer
 // existed and none was anywhere they would look.
 //
-// Tested here rather than by reading the source, because the failure modes are
-// both behavioural: showing to someone who has been running the site for a year
-// (patronising, and they cannot make it stop), and never showing at all
-// (silently useless). Both need a real DOM and the real markup.
+// The card says "This won't show again", so the SITE decides, once
+// (src/api/welcome.js; its answers are pinned in tests/welcome-api.test.js).
+// It used to decide from this browser, and a device that keeps nothing
+// welcomed an established site before its sync landed, while every new
+// device, home-screen app or cleared browser got it again (2026-10-08).
+// These pin the console's half: it asks only when logged in, believes only a
+// clear "show", remembers the answer so it asks once, never shows on a doubt,
+// and tells the site about a dismissal even if it was offline at the time.
 describe('the first-run welcome', () => {
   const card = () => document.getElementById('welcome-card');
+  const KEY = 'oaklens-console-welcomed';
+  const b64 = (o) => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const login = () => sessionStorage.setItem('oaklens_session',
+    `${b64({ alg: 'HS256' })}.${b64({ exp: Math.floor(Date.now() / 1000) + 3600 })}.sig`);
+  let calls = [];
+  /** The site's answers: a function (method) -> Response, or throws for offline. */
+  const siteSays = (answer) => {
+    calls = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      const path = new URL(String(url), 'https://example.test').pathname;
+      if (path !== '/api/welcome') return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+      const method = (opts.method || 'GET').toUpperCase();
+      calls.push(method);
+      return answer(method);
+    };
+  };
+  const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json' } });
+  const offline = () => { throw new TypeError('Failed to fetch'); };
+  const settle = () => new Promise((r) => setTimeout(r, 0));
   const reset = () => {
-    localStorage.removeItem('oaklens-console-welcomed');
+    localStorage.removeItem(KEY);
+    sessionStorage.removeItem('oaklens_session');
     card().classList.add('hidden');
     card().classList.remove('open');
   };
 
-  it('shows on a console with nothing in it', () => {
-    reset();
-    window.maybeShowWelcome({ posts: [], buffer: [], archive: [], wallpapers: [], library: [] });
+  it('shows when the site says this is its first run', async () => {
+    reset(); login();
+    siteSays(() => json({ ok: true, show: true }));
+    await window.maybeShowWelcome();
     expect(card().classList.contains('hidden'), 'a brand new owner should see it').toBe(false);
   });
 
-  it('stays away from a site that already has work in it', () => {
+  it('asks nothing and shows nothing before login', async () => {
     reset();
-    window.maybeShowWelcome({ posts: [], buffer: [{ id: 'f1' }], archive: [], wallpapers: [], library: [] });
+    siteSays(() => json({ ok: true, show: true }));
+    await window.maybeShowWelcome();
+    expect(calls).toEqual([]);
     expect(card().classList.contains('hidden')).toBe(true);
   });
 
-  it('does not lie in wait for the day an existing site empties its buffer', () => {
-    // The subtle one. Skipping without recording it leaves the card primed, so
-    // a year-old site that clears its buffer gets welcomed to its new space.
-    reset();
-    window.maybeShowWelcome({ posts: [{ id: 'p1' }], buffer: [], archive: [], wallpapers: [], library: [] });
-    expect(localStorage.getItem('oaklens-console-welcomed')).toBe('1');
+  it('stays away when the site says no, and remembers it so it never asks again', async () => {
+    // The established site on a device that keeps nothing: this device's copy
+    // is empty, and that no longer matters.
+    reset(); login();
+    siteSays(() => json({ ok: true, show: false, reason: 'has-content' }));
+    await window.maybeShowWelcome();
+    expect(card().classList.contains('hidden')).toBe(true);
+    expect(localStorage.getItem(KEY)).toBe('1');
+    await window.maybeShowWelcome();
+    expect(calls, 'asked once').toEqual(['GET']);
   });
 
-  it('shows once, then never again', () => {
-    reset();
-    const empty = { posts: [], buffer: [], archive: [], wallpapers: [], library: [] };
-    window.maybeShowWelcome(empty);
+  it('shows nothing on a doubt (offline, an error) and asks again next time', async () => {
+    reset(); login();
+    siteSays(offline);
+    await window.maybeShowWelcome();
+    expect(card().classList.contains('hidden')).toBe(true);
+    expect(localStorage.getItem(KEY), 'nothing decided yet').toBe(null);
+    siteSays(() => json({ ok: false, error: 'boom' }, 500));
+    await window.maybeShowWelcome();
+    expect(card().classList.contains('hidden')).toBe(true);
+    expect(localStorage.getItem(KEY)).toBe(null);
+  });
+
+  it('a dismissal is told to the site, so no device shows it again', async () => {
+    reset(); login();
+    siteSays(() => json({ ok: true, show: true }));
+    await window.maybeShowWelcome();
+    siteSays(() => json({ ok: true }));
     window.dismissWelcome();
-    expect(localStorage.getItem('oaklens-console-welcomed')).toBe('1');
+    await settle(); await settle();
+    expect(calls).toEqual(['POST']);
+    expect(localStorage.getItem(KEY)).toBe('1');
+  });
+
+  it('a dismissal made offline is told on the next boot, and the card stays away', async () => {
+    reset(); login();
+    siteSays(offline);
+    window.dismissWelcome();
+    await settle(); await settle();
+    expect(localStorage.getItem(KEY), 'kept as owed').toBe('pending');
     card().classList.add('hidden');
-    window.maybeShowWelcome(empty);
-    expect(card().classList.contains('hidden'), 'dismissed means dismissed').toBe(true);
+    siteSays(() => json({ ok: true }));
+    await window.maybeShowWelcome();
+    expect(calls, 'the owed dismissal, not a question').toEqual(['POST']);
+    expect(localStorage.getItem(KEY)).toBe('1');
+    expect(card().classList.contains('hidden')).toBe(true);
   });
 
   it('answers the four questions the cold run actually asked', () => {

@@ -389,6 +389,15 @@ export function remeasureStorage() {
 // ============== SITE TEMPLATE SETTINGS ==============
 // Public read-only endpoint; no auth. latch:false — the Site Settings card
 // is informational, a failure belongs in the ledger, not the lamp.
+// The first-run welcome is decided by the site, once (src/api/welcome.js).
+// latch:false — a welcome that can't be asked about is simply not shown.
+export function fetchWelcome() {
+  return apiFetch('/api/welcome', { tel: { channel: 'site', label: 'SITE ▼', latch: false } });
+}
+export function markWelcomed() {
+  return apiFetch('/api/welcome', { method: 'POST', tel: { channel: 'site', label: 'SITE ▲', latch: false } });
+}
+
 export function fetchSiteSettings() {
   return apiFetch('/api/site/settings', { retries: 1, tel: { channel: 'site', label: 'SITE ▼', latch: false } });
 }
